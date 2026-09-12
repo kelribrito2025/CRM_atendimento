@@ -68,6 +68,7 @@ function lerCookies(req) {
 
 module.exports = {
   NOME_COOKIE,
+  hashToken,
   criarSessao,
   buscarUsuarioDaSessao,
   encerrarSessao,

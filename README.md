@@ -33,6 +33,35 @@ Depois abra <http://localhost:3100> no navegador.
 
 Troque essa senha logo depois (veja abaixo). Os usuários de exemplo `marina@bigteck.com.br` e `rafael@bigteck.com.br` usam a mesma senha inicial.
 
+## Telas de acesso
+
+Todas ocupam a página inteira (lado escuro à esquerda, formulário à direita) e funcionam de verdade:
+
+| Tela | Endereço | O que faz |
+|---|---|---|
+| Entrar | `/login` | E-mail e senha. "Entrar com Google Workspace" ainda não está disponível. |
+| Criar conta por convite | `/convite?token=…` | A pessoa recebe um link do administrador, escolhe nome e senha e já entra. |
+| Código de verificação | `/verificar` | Segunda etapa do login, ligada por `DOIS_FATORES=true` no `.env`. Código de 6 dígitos, vale 5 minutos. |
+| Recuperar acesso | `/recuperar` | Envia um link de nova senha que vale 30 minutos e só funciona uma vez. |
+| Definir nova senha | `/nova-senha?token=…` | Ao salvar, todas as sessões antigas dessa pessoa são encerradas. |
+
+Senhas escolhidas pelo usuário precisam ter **pelo menos 10 caracteres, uma letra maiúscula e um número**.
+
+### E-mails em modo de teste
+
+Ainda não há serviço de e-mail configurado. Por enquanto, o código de verificação e o link de nova senha aparecem **na janela preta do servidor**, e as telas avisam isso. Quando houver um serviço de e-mail, basta adaptar o arquivo `src/email.js`.
+
+### Convidar alguém para a equipe
+
+```bash
+npm run convite -- --email joao@empresa.com.br
+npm run convite -- --email joao@empresa.com.br --papel admin
+npm run convite -- --email joao@empresa.com.br --equipes "Reembolso,Cobrança" --dias 7
+npm run convite -- --listar
+```
+
+O comando mostra um link. Envie o link para a pessoa: ela abre, escolhe nome e senha e já entra no sistema com o papel e as equipes definidos no convite.
+
 ## Criar usuários e trocar senhas
 
 ```bash
@@ -53,6 +82,7 @@ npm run usuario -- --listar
 - Login com e-mail e senha (senhas guardadas com hash, nunca em texto puro).
 - Bloqueio temporário após 8 tentativas erradas seguidas.
 - Sessão por cookie seguro (12 h, ou 30 dias com "Manter conectado").
+- Convite por link, recuperação de senha e verificação em duas etapas (opcional).
 - Tela de atendimento com o visual aprovado:
   - caixas **Todas / Minhas / Sem resposta** e filtro por **equipe**;
   - lista de conversas com busca por nome, empresa, CNPJ ou protocolo;
@@ -64,7 +94,7 @@ npm run usuario -- --listar
 
 ## O que ainda é só visual ("em breve")
 
-Botões que mostram um aviso e ainda não fazem nada: **Conectar canal**, **Anexo**, **Respostas rápidas**, **Estornar**, **Ver faturas**, **Abrir conta**, **Nova equipe**, **Adicionar à equipe**, **Filtros** e os outros módulos do menu lateral.
+Botões que mostram um aviso e ainda não fazem nada: **Entrar com Google Workspace**, **Conectar canal**, **Anexo**, **Respostas rápidas**, **Estornar**, **Ver faturas**, **Abrir conta**, **Nova equipe**, **Adicionar à equipe**, **Filtros** e os outros módulos do menu lateral.
 
 As mensagens hoje ficam só dentro do sistema. A **integração real com WhatsApp e Telegram** é o próximo passo.
 
@@ -79,6 +109,8 @@ Copie `.env.example` para `.env` e ajuste:
 | `ADMIN_SENHA`   | Senha inicial do administrador                            |
 | `ADMIN_NOME`    | Nome do administrador                                     |
 | `DADOS_EXEMPLO` | `false` para começar sem conversas de exemplo             |
+| `DOIS_FATORES`  | `true` para pedir um código por e-mail a cada login       |
+| `BASE_URL`      | Endereço público do sistema, usado nos links de convite e nova senha |
 | `COOKIE_SEGURO` | `true` quando o sistema estiver publicado com HTTPS       |
 
 O banco de dados fica em `data/crm.sqlite`. Para começar do zero, pare o servidor e apague essa pasta.
@@ -91,12 +123,19 @@ src/app.js                rotas de login, sessão e páginas
 src/rotas-api.js          API de conversas, mensagens, equipes
 src/db.js                 banco de dados (SQLite) e dados de exemplo
 src/senha.js              hash e verificação de senha
+src/acesso.js             convites, recuperação de senha e verificação em duas etapas
+src/email.js              envio de e-mails (modo de teste: mostra na janela do servidor)
 src/sessoes.js            sessões por cookie
 src/limitador.js          bloqueio de tentativas de login
-public/login.html         tela de login
+public/login.html         tela de entrar
+public/convite.html       criar conta por convite
+public/verificar.html     código de verificação (duas etapas)
+public/recuperar.html     recuperar acesso
+public/nova-senha.html    definir nova senha
 public/atendimento.html   tela de atendimento
 public/assets/            CSS, JavaScript e ícones
 scripts/criar-usuario.js  gerenciar usuários pelo terminal
+scripts/criar-convite.js  gerar links de convite
 test/                     testes automáticos
 ```
 
@@ -108,3 +147,4 @@ test/                     testes automáticos
 | `npm run dev`     | Inicia e reinicia sozinho quando um arquivo muda          |
 | `npm test`        | Roda os testes automáticos                                |
 | `npm run usuario` | Cria usuários / troca senhas                              |
+| `npm run convite` | Gera um link de convite                                   |

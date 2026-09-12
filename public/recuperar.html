@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recuperar acesso · CRM Atendimento</title>
+<link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/css/app.css">
+<link rel="stylesheet" href="/assets/css/acesso.css">
+</head>
+<body data-pagina="recuperar">
+<div class="acesso">
+  <aside class="hero">
+    <div class="hero-glow"></div>
+    <a class="marca" href="/login">
+      <span class="logo"><svg width="27" height="27" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="23" stroke="#FFFFFF" stroke-width="10" opacity=".38"></circle><path d="M55 32a23 23 0 01-36 19" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round"></path></svg></span>
+      <span><span class="nome">Bigteck</span><span class="sub">Atendimento</span></span>
+    </a>
+    <div class="hero-conteudo">
+      <span class="hero-badge" id="hero-badge">Recuperação</span>
+      <h1 id="hero-titulo">Perdeu a senha?</h1>
+      <p id="hero-texto">Enviamos um link para o e-mail corporativo. Ele vale por 30 minutos e só funciona uma vez.</p>
+
+    </div>
+    <span class="hero-rodape">Acesso restrito à equipe de atendimento.</span>
+  </aside>
+  <main class="formulario">
+    <div class="formulario-miolo">
+      <div class="titulo"><h2>Recuperar acesso</h2><p>Informe o e-mail cadastrado na equipe</p></div>
+      <form id="form" class="campos" novalidate>
+        <div class="aviso erro" id="erro" hidden role="alert"></div>
+        <div class="campo">
+          <div class="campo-cab"><label for="email">E-mail corporativo</label></div>
+          <div class="entrada">
+            <input type="email" id="email" name="email" placeholder="nome@empresa.com.br" autocomplete="username" required autofocus>
+            
+          </div>
+        </div>
+        <button type="submit" class="btn-acesso" id="btn">Enviar link de recuperação</button>
+      </form>
+      <div class="aviso ok" id="ok" hidden>
+        <span class="icone"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3"><path d="M20 6L9 17l-5-5"></path></svg></span>
+        <div><strong>Link enviado</strong><span id="ok-texto"></span></div>
+      </div>
+      <div class="links-rodape">
+        <a class="voltar" href="/login">← Voltar para entrar</a>
+        <small>Sem acesso ao e-mail? Fale com o administrador</small>
+      </div>
+    </div>
+    <span class="rodape-form">© 2026 Bigteck</span>
+  </main>
+</div>
+<script src="/assets/js/acesso.js"></script>
+</body>
+</html>

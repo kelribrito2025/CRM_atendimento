@@ -11,7 +11,8 @@
     "start": "node --disable-warning=ExperimentalWarning server.js",
     "dev": "node --watch --disable-warning=ExperimentalWarning server.js",
     "usuario": "node --disable-warning=ExperimentalWarning scripts/criar-usuario.js",
-    "test": "node --test --disable-warning=ExperimentalWarning \"test/**/*.test.js\""
+    "test": "node --test --disable-warning=ExperimentalWarning \"test/**/*.test.js\"",
+    "convite": "node --disable-warning=ExperimentalWarning scripts/criar-convite.js"
   },
   "dependencies": {
     "express": "^5.1.0"

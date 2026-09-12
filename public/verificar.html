@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verificação · CRM Atendimento</title>
+<link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/css/app.css">
+<link rel="stylesheet" href="/assets/css/acesso.css">
+</head>
+<body data-pagina="verificar">
+<div class="acesso">
+  <aside class="hero">
+    <div class="hero-glow"></div>
+    <a class="marca" href="/login">
+      <span class="logo"><svg width="27" height="27" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="23" stroke="#FFFFFF" stroke-width="10" opacity=".38"></circle><path d="M55 32a23 23 0 01-36 19" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round"></path></svg></span>
+      <span><span class="nome">Bigteck</span><span class="sub">Atendimento</span></span>
+    </a>
+    <div class="hero-conteudo">
+      <span class="hero-badge" id="hero-badge">Segurança</span>
+      <h1 id="hero-titulo">Confirme que é você.</h1>
+      <p id="hero-texto">Todo acesso ao inbox passa pelo segundo fator. O painel mostra saldo e faturas de clientes.</p>
+
+    </div>
+    <span class="hero-rodape">Acesso restrito à equipe de atendimento.</span>
+  </aside>
+  <main class="formulario">
+    <div class="formulario-miolo">
+      <div class="titulo"><h2>Código de verificação</h2><p>Enviamos 6 dígitos para <strong id="email">…</strong></p></div>
+      <form id="form" novalidate>
+        <div class="aviso erro" id="erro" hidden role="alert" style="margin-bottom:18px"></div>
+        <div class="aviso sucesso" id="sucesso" hidden style="margin-bottom:18px"></div>
+        <div class="codigo" id="codigo">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" aria-label="Dígito 1">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" aria-label="Dígito 2">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" aria-label="Dígito 3">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" aria-label="Dígito 4">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" aria-label="Dígito 5">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" aria-label="Dígito 6">
+        </div>
+        <div class="linha-tempo">
+          <span>O código expira em <strong id="expira">05:00</strong></span>
+          <button type="button" id="btn-reenviar" disabled>Reenviar em 30s</button>
+        </div>
+        <button type="submit" class="btn-acesso" id="btn">Confirmar e entrar</button>
+        <div class="aviso info espaco-cima"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4C6355" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-5"></path><path d="M12 8h.01"></path></svg><span id="info-texto">Não recebeu? Confira a caixa de spam ou peça o reenvio.</span></div>
+        <a class="voltar" href="/acesso/cancelar-verificacao">← Usar outro e-mail</a>
+      </form>
+    </div>
+    <span class="rodape-form">© 2026 Bigteck</span>
+  </main>
+</div>
+<script src="/assets/js/acesso.js"></script>
+</body>
+</html>

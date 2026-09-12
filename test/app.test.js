@@ -93,7 +93,7 @@ test('proteção: páginas e API exigem login', async () => {
 
     const login = await fetch(`${s.base}/login`);
     assert.equal(login.status, 200);
-    assert.match(await login.text(), /Entrar no Atendimento/);
+    assert.match(await login.text(), /Acesse sua conta/);
   } finally {
     await s.fechar();
   }

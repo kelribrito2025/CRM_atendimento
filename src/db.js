@@ -74,6 +74,36 @@ CREATE TABLE IF NOT EXISTS mensagens (
   criada_em INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_mensagens_conversa ON mensagens(conversa_id, criada_em);
+
+CREATE TABLE IF NOT EXISTS convites (
+  token_hash TEXT PRIMARY KEY,
+  email TEXT NOT NULL COLLATE NOCASE,
+  papel TEXT NOT NULL DEFAULT 'atendente',
+  equipes TEXT,
+  criado_por INTEGER REFERENCES usuarios(id),
+  criado_em INTEGER NOT NULL,
+  expira_em INTEGER NOT NULL,
+  usado_em INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS redefinicoes (
+  token_hash TEXT PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  criado_em INTEGER NOT NULL,
+  expira_em INTEGER NOT NULL,
+  usado_em INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS verificacoes (
+  token_hash TEXT PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  codigo_hash TEXT NOT NULL,
+  lembrar INTEGER NOT NULL DEFAULT 0,
+  tentativas INTEGER NOT NULL DEFAULT 0,
+  reenviado_em INTEGER NOT NULL,
+  criado_em INTEGER NOT NULL,
+  expira_em INTEGER NOT NULL
+);
 `;
 
 function abrirBanco(caminho = ':memory:') {
