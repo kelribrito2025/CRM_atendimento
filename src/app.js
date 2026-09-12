@@ -9,7 +9,7 @@ const { LimitadorTentativas } = require('./limitador');
 const { criarEnviador } = require('./email');
 const { criarRotasApi } = require('./rotas-api');
 
-const PUBLIC = path.join(__dirname, '..', 'public');
+const RAIZ = path.join(__dirname, '..');
 const COOKIE_VERIFICACAO = 'crm_verificacao';
 const EMAIL_VALIDO = /^\S+@\S+\.\S+$/;
 
@@ -22,6 +22,12 @@ function criarApp(db, opcoes = {}) {
   const limitadorConvite = new LimitadorTentativas({ maximo: 10 });
   const baseUrl = String(opcoes.baseUrl || '').replace(/\/$/, '');
   const modoTeste = enviador.modo !== 'real';
+
+  // De onde vêm as páginas HTML e os arquivos estáticos (CSS, JS, ícones).
+  // No Vite/Manus, `servirPagina` é substituída para passar pelo Vite e
+  // `semEstaticos` evita servir os arquivos duas vezes.
+  const paginasDir = opcoes.paginasDir || path.join(RAIZ, 'client');
+  const servirPagina = opcoes.servirPagina || ((req, res, arquivo) => res.sendFile(path.join(paginasDir, arquivo)));
 
   const app = express();
   app.disable('x-powered-by');
@@ -39,7 +45,9 @@ function criarApp(db, opcoes = {}) {
   });
 
   // Arquivos estáticos (CSS, JS, ícones) — públicos
-  app.use('/assets', express.static(path.join(PUBLIC, 'assets'), { maxAge: '1h' }));
+  if (!opcoes.semEstaticos) {
+    app.use('/assets', express.static(path.join(paginasDir, 'assets'), { maxAge: '1h' }));
+  }
 
   // Identifica o usuário logado pelo cookie de sessão
   app.use((req, res, next) => {
@@ -76,9 +84,9 @@ function criarApp(db, opcoes = {}) {
     return typeof valor === 'string' && valor.startsWith('/') && !valor.startsWith('//') ? valor : '/';
   }
 
-  function enviarPagina(res, arquivo) {
+  function enviarPagina(req, res, arquivo) {
     res.set('Cache-Control', 'no-store');
-    res.sendFile(path.join(PUBLIC, arquivo));
+    return servirPagina(req, res, arquivo);
   }
 
   function urlBase(req) {
@@ -106,17 +114,17 @@ function criarApp(db, opcoes = {}) {
 
   app.get('/saude', (req, res) => res.json({ ok: true }));
 
-  app.get('/login', (req, res) => (req.usuario ? res.redirect('/') : enviarPagina(res, 'login.html')));
+  app.get('/login', (req, res) => (req.usuario ? res.redirect('/') : enviarPagina(req, res, 'login.html')));
 
   app.get('/verificar', (req, res) => {
     if (req.usuario) return res.redirect('/');
     if (!acesso.buscarVerificacao(db, tokenVerificacao(req))) return res.redirect('/login');
-    enviarPagina(res, 'verificar.html');
+    enviarPagina(req, res, 'verificar.html');
   });
 
-  app.get('/recuperar', (req, res) => (req.usuario ? res.redirect('/') : enviarPagina(res, 'recuperar.html')));
-  app.get('/nova-senha', (req, res) => enviarPagina(res, 'nova-senha.html'));
-  app.get('/convite', (req, res) => enviarPagina(res, 'convite.html'));
+  app.get('/recuperar', (req, res) => (req.usuario ? res.redirect('/') : enviarPagina(req, res, 'recuperar.html')));
+  app.get('/nova-senha', (req, res) => enviarPagina(req, res, 'nova-senha.html'));
+  app.get('/convite', (req, res) => enviarPagina(req, res, 'convite.html'));
 
   /* --------------------------------- login --------------------------------- */
 
@@ -289,7 +297,7 @@ function criarApp(db, opcoes = {}) {
 
   /* ------------------------------ área logada ------------------------------ */
 
-  app.get('/', exigirLogin, (req, res) => enviarPagina(res, 'atendimento.html'));
+  app.get('/', exigirLogin, (req, res) => enviarPagina(req, res, 'atendimento.html'));
 
   app.use('/api', exigirLogin, criarRotasApi(db));
 

@@ -24,6 +24,19 @@ npm start
 
 Depois abra <http://localhost:3100> no navegador.
 
+### No Manus (ou em qualquer lugar que use o Vite)
+
+O projeto também roda com o Vite, que é o que o Manus usa para mostrar a prévia:
+
+```bash
+pnpm install   # ou npm install
+pnpm dev       # ou npm run dev
+```
+
+Abre na porta 3000 (ou na próxima livre). O servidor do CRM (login, conversas, banco de dados) roda **dentro** do Vite, então o login de verdade funciona no Manus também. A configuração fica em `vite.config.mjs`, já com os domínios e plugins que o Manus precisa.
+
+Para gerar a versão compilada (opcional): `npm run build` cria a pasta `dist/`, e o `npm start` passa a usar essa versão automaticamente.
+
 **Primeiro acesso**
 
 | Campo  | Valor                  |
@@ -118,7 +131,9 @@ O banco de dados fica em `data/crm.sqlite`. Para começar do zero, pare o servid
 ## Estrutura do projeto
 
 ```
-server.js                 inicia o servidor
+server.js                 inicia o servidor (npm start)
+vite.config.mjs           configuração do Vite/Manus (npm run dev)
+src/sistema.js            monta o sistema (configuração, banco, e-mail, aplicação)
 src/app.js                rotas de login, sessão e páginas
 src/rotas-api.js          API de conversas, mensagens, equipes
 src/db.js                 banco de dados (SQLite) e dados de exemplo
@@ -127,13 +142,14 @@ src/acesso.js             convites, recuperação de senha e verificação em du
 src/email.js              envio de e-mails (modo de teste: mostra na janela do servidor)
 src/sessoes.js            sessões por cookie
 src/limitador.js          bloqueio de tentativas de login
-public/login.html         tela de entrar
-public/convite.html       criar conta por convite
-public/verificar.html     código de verificação (duas etapas)
-public/recuperar.html     recuperar acesso
-public/nova-senha.html    definir nova senha
-public/atendimento.html   tela de atendimento
-public/assets/            CSS, JavaScript e ícones
+client/login.html         tela de entrar
+client/convite.html       criar conta por convite
+client/verificar.html     código de verificação (duas etapas)
+client/recuperar.html     recuperar acesso
+client/nova-senha.html    definir nova senha
+client/atendimento.html   tela de atendimento
+client/assets/            CSS, JavaScript e ícones
+client/public/__manus__/  coletor de logs usado pelo Manus
 scripts/criar-usuario.js  gerenciar usuários pelo terminal
 scripts/criar-convite.js  gerar links de convite
 test/                     testes automáticos
@@ -143,8 +159,9 @@ test/                     testes automáticos
 
 | Comando           | O que faz                                                 |
 |-------------------|-----------------------------------------------------------|
-| `npm start`       | Inicia o sistema                                          |
-| `npm run dev`     | Inicia e reinicia sozinho quando um arquivo muda          |
+| `npm start`       | Inicia o sistema (uso local, porta 3100)                  |
+| `npm run dev`     | Inicia pelo Vite, como o Manus faz (porta 3000)           |
+| `npm run build`   | Gera a versão compilada em `dist/`                        |
 | `npm test`        | Roda os testes automáticos                                |
 | `npm run usuario` | Cria usuários / troca senhas                              |
 | `npm run convite` | Gera um link de convite                                   |

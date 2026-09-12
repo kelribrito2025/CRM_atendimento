@@ -8,13 +8,18 @@
     "node": ">=22.5"
   },
   "scripts": {
+    "dev": "node --disable-warning=ExperimentalWarning node_modules/vite/bin/vite.js --host",
+    "build": "node --disable-warning=ExperimentalWarning node_modules/vite/bin/vite.js build",
     "start": "node --disable-warning=ExperimentalWarning server.js",
-    "dev": "node --watch --disable-warning=ExperimentalWarning server.js",
     "usuario": "node --disable-warning=ExperimentalWarning scripts/criar-usuario.js",
-    "test": "node --test --disable-warning=ExperimentalWarning \"test/**/*.test.js\"",
-    "convite": "node --disable-warning=ExperimentalWarning scripts/criar-convite.js"
+    "convite": "node --disable-warning=ExperimentalWarning scripts/criar-convite.js",
+    "test": "node --test --disable-warning=ExperimentalWarning \"test/**/*.test.js\""
   },
   "dependencies": {
     "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "vite": "^7.1.7",
+    "vite-plugin-manus-runtime": "^0.0.59"
   }
 }

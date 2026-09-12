@@ -1,8 +1,23 @@
+# Dependências
 node_modules/
+.pnpm-store/
+
+# Versão compilada (gerada por npm run build)
+dist/
+
+# Banco de dados e senhas
 data/
 .env
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+
+# Logs
+.manus-logs/
+*.log
+
+# Sistema / editores
 .DS_Store
-npm-debug.log*
+Thumbs.db
+.vscode/
+.idea/
