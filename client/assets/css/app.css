@@ -51,12 +51,12 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .hov { transition: background .14s, border-color .14s; }
 .hov:hover { background: var(--hover); }
 
-/* ===== Layout geral ===== */
-.pagina { min-height: 100vh; padding: 20px; display: flex; justify-content: center; }
+/* ===== Layout geral (tela inteira, de ponta a ponta) ===== */
+.pagina { min-height: 100vh; padding: 0; display: flex; justify-content: center; background: var(--shell); }
 .shell {
-  width: 100%; max-width: 1720px; height: calc(100vh - 40px); min-height: 640px;
-  display: flex; gap: 20px; padding: 20px; position: relative;
-  background: var(--shell); border-radius: 24px; box-shadow: 0 18px 44px rgba(11, 31, 20, .10);
+  width: 100%; height: 100vh; min-height: 640px;
+  display: flex; gap: 20px; padding: 16px 20px; position: relative;
+  background: var(--shell);
 }
 .conteudo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .area { flex: 1; min-height: 0; display: flex; gap: 14px; align-items: stretch; position: relative; }
@@ -302,8 +302,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
   .lista { width: 290px; }
 }
 @media (max-width: 860px) {
-  .pagina { padding: 8px; }
-  .shell { padding: 10px; gap: 10px; height: auto; min-height: calc(100vh - 16px); }
+  .shell { padding: 10px; gap: 10px; height: auto; min-height: 100vh; }
   .rail { display: none; }
   .topo-titulo h1 { font-size: 20px; }
   .area { flex-direction: column; }
