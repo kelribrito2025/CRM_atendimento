@@ -39,6 +39,7 @@ import { icone, montarIcones } from './icones.js';
     enviar: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4"><path d="M21 4L3 11l6 2 2 6z"></path></svg>',
     cadeado: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
     alerta: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8E1F16" stroke-width="2.2"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.3 3.9L2 19a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"></path></svg>',
+    fechar: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18"></path><path d="M6 6l12 12"></path></svg>',
   };
 
   const NOME_CANAL = { whatsapp: 'WhatsApp', telegram: 'Telegram' };
@@ -248,6 +249,7 @@ import { icone, montarIcones } from './icones.js';
     try {
       const r = await api(`/conversas/${c.id}/mensagens`, { method: 'POST', body: { texto: texto.trim(), tipo } });
       if (campo) campo.value = '';
+      if (r.erroEnvio) toast(`Não foi possível enviar pelo WhatsApp: ${r.erroEnvio}`, 5000);
       c.mensagens.push(r.mensagem);
       Object.assign(c, { status: r.conversa.status, atendente: r.conversa.atendente, equipe: r.conversa.equipe, atualizadaEm: r.conversa.atualizadaEm });
       aplicarConversa(c);
@@ -312,6 +314,13 @@ import { icone, montarIcones } from './icones.js';
     $('#btn-usuario').textContent = r.usuario.iniciais;
     $('#menu-nome').textContent = r.usuario.nome;
     $('#menu-email').textContent = r.usuario.email;
+    const wa = (r.canais || []).find((c) => c.id === 'whatsapp');
+    const chip = $('#chip-whatsapp');
+    if (chip && wa) {
+      chip.querySelector('.ponto').classList.toggle('off', !wa.conectado);
+      const conectados = wa.canais.filter((c) => c.status === 'connected').map((c) => c.numeroFormatado || c.nome);
+      chip.title = wa.conectado ? `WhatsApp conectado: ${conectados.join(', ')}` : (wa.configurado ? 'WhatsApp não conectado. Clique para conectar.' : 'WhatsApp não configurado (UAZAPI_URL no .env).');
+    }
   }
 
   /* ================================================================
@@ -432,7 +441,7 @@ import { icone, montarIcones } from './icones.js';
       } else if (m.tipo === 'atendente') {
         nos.push(el('div', { class: 'msg saida' },
           el('div', { class: 'balao' }, m.texto),
-          el('span', { class: 'msg-meta' }, [horaCurta(m.criadaEm), m.autor?.nomeCurto, m.entrega].filter(Boolean).join(' · '))));
+          el('span', { class: 'msg-meta' }, [horaCurta(m.criadaEm), m.autor?.nomeCurto || (m.tipo === 'atendente' ? 'pelo celular' : null), m.entrega === 'falhou' ? 'não enviada ⚠' : m.entrega].filter(Boolean).join(' · '))));
       } else {
         nos.push(el('div', { class: 'msg' },
           el('div', { class: 'balao' }, m.texto),
@@ -605,6 +614,235 @@ import { icone, montarIcones } from './icones.js';
           el('button', { type: 'button', class: 'btn-branco pequeno hov', onclick: () => toast('Faturas do cliente: em breve.') }, 'Ver faturas'))));
   }
 
+
+  /* ================================================================
+   * Canais (WhatsApp via uazapi)
+   * ============================================================== */
+  let modalCanais = null;
+  let sondagem = null;
+  const conexao = { canalId: null, modo: 'qr', qrcode: null, paircode: null, telefone: '', status: null, erro: null, ocupado: false };
+
+  function pararSondagem() {
+    clearInterval(sondagem);
+    sondagem = null;
+  }
+
+  function fecharModalCanais() {
+    pararSondagem();
+    if (modalCanais) modalCanais.remove();
+    modalCanais = null;
+    conexao.canalId = null;
+    carregarResumo().catch(() => {});
+  }
+
+  async function abrirModalCanais() {
+    if (estado.resumo?.usuario?.papel !== 'admin') return toast('Peça a um administrador para conectar o WhatsApp.');
+    if (modalCanais) return;
+    modalCanais = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === modalCanais) fecharModalCanais(); } },
+      el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Canais de atendimento' },
+        el('div', { class: 'modal-corpo', id: 'modal-corpo' }, el('div', { class: 'vazio' }, 'Carregando…'))));
+    document.body.append(modalCanais);
+    await renderCanais();
+  }
+
+  function formatarPair(codigo) {
+    const c = String(codigo || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    return c.length === 8 ? `${c.slice(0, 4)}-${c.slice(4)}` : (codigo || '');
+  }
+
+  async function renderCanais() {
+    const corpo = $('#modal-corpo');
+    if (!corpo) return;
+    let dados;
+    try {
+      dados = await api('/canais');
+    } catch (e) {
+      corpo.replaceChildren(el('div', { class: 'modal-cab' }, el('div', {}, el('h2', {}, 'Canais de atendimento')), el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: fecharModalCanais }, svg(ICONE.fechar))), el('div', { class: 'aviso erro' }, e.message));
+      return;
+    }
+    const partes = [
+      el('div', { class: 'modal-cab' },
+        el('div', {}, el('h2', {}, 'Canais de atendimento'), el('p', {}, 'Conecte o WhatsApp da empresa para receber e responder as mensagens aqui no CRM.')),
+        el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: fecharModalCanais }, svg(ICONE.fechar))),
+    ];
+    if (!dados.configurado) {
+      partes.push(el('div', { class: 'aviso erro' }, 'Servidor do WhatsApp não configurado. Preencha UAZAPI_URL e UAZAPI_ADMIN_TOKEN no arquivo .env e reinicie o sistema.'));
+    }
+    const lista = el('div', { class: 'canais-lista' }, ...dados.canais.map(itemCanal));
+    if (!dados.canais.length) lista.append(el('div', { class: 'vazio' }, 'Nenhum WhatsApp conectado ainda.'));
+    partes.push(el('div', { class: 'secao' }, el('span', { class: 'rotulo' }, 'WhatsApp'), lista, dados.configurado ? formNovoCanal() : null));
+    const canalConexao = dados.canais.find((c) => c.id === conexao.canalId);
+    if (canalConexao) partes.push(painelConexao(canalConexao));
+    partes.push(el('div', { class: 'secao' }, el('span', { class: 'rotulo' }, 'Telegram'), el('div', { class: 'aviso info' }, 'Integração com Telegram: em breve.')));
+    corpo.replaceChildren(...partes);
+  }
+
+  function itemCanal(c) {
+    const rotulo = { connected: 'Conectado', connecting: 'Conectando…', disconnected: 'Desconectado' }[c.status] || c.status;
+    const sub = [rotulo, c.numeroFormatado, c.perfil].filter(Boolean).join(' · ');
+    return el('div', { class: 'canal-item' },
+      el('span', { class: `status-ponto ${c.status}` }),
+      el('div', { class: 'canal-info' }, el('span', { class: 'canal-nome' }, c.nome), el('span', { class: 'canal-sub' }, sub)),
+      el('div', { class: 'canal-acoes' },
+        c.status === 'connected'
+          ? el('button', { type: 'button', class: 'btn-suave hov', onclick: () => acaoCanal(c.id, 'desconectar') }, 'Desconectar')
+          : el('button', { type: 'button', class: 'btn-primario pequeno', style: 'height:34px', onclick: () => iniciarConexao(c.id, 'qr') }, 'Conectar'),
+        el('button', { type: 'button', class: 'btn-suave hov', title: 'Reenviar a configuração do webhook ao servidor do WhatsApp', onclick: () => acaoCanal(c.id, 'webhook') }, 'Reconfigurar'),
+        el('button', { type: 'button', class: 'btn-suave hov', onclick: () => verEventos(c) }, 'Eventos'),
+        el('button', { type: 'button', class: 'btn-suave hov', onclick: () => excluirCanal(c) }, 'Excluir')),
+      c.ultimoErro ? el('div', { class: 'canal-aviso' }, `Último erro: ${c.ultimoErro}`) : null,
+      c.webhookAviso ? el('div', { class: 'canal-aviso' }, c.webhookAviso) : null,
+      el('div', { class: 'canal-nota' }, `Endereço que recebe as mensagens: ${c.webhookUrl}`));
+  }
+
+  function formNovoCanal() {
+    const input = el('input', { type: 'text', placeholder: 'Nome do canal (ex.: WhatsApp principal)', maxlength: '60' });
+    const botao = el('button', { type: 'button', class: 'btn-primario pequeno', style: 'height:40px', onclick: async () => {
+      botao.disabled = true;
+      try {
+        const { canal } = await api('/canais', { method: 'POST', body: { nome: input.value.trim() || 'WhatsApp' } });
+        toast('Canal criado. Agora conecte o WhatsApp.');
+        await iniciarConexao(canal.id, 'qr');
+      } catch (e) {
+        toast(e.message, 5000);
+        botao.disabled = false;
+      }
+    } }, 'Adicionar WhatsApp');
+    return el('div', { class: 'novo-canal' }, input, botao);
+  }
+
+  async function acaoCanal(id, acao) {
+    try {
+      await api(`/canais/${id}/${acao}`, { method: 'POST', body: {} });
+      toast(acao === 'desconectar' ? 'WhatsApp desconectado.' : 'Webhook reconfigurado.');
+      if (acao === 'desconectar') { pararSondagem(); conexao.canalId = null; }
+      await renderCanais();
+    } catch (e) {
+      toast(e.message, 5000);
+    }
+  }
+
+  async function excluirCanal(c) {
+    if (!window.confirm(`Excluir o canal "${c.nome}"? As conversas ficam guardadas, mas o WhatsApp é desconectado.`)) return;
+    try {
+      await api(`/canais/${c.id}`, { method: 'DELETE' });
+      if (conexao.canalId === c.id) { pararSondagem(); conexao.canalId = null; }
+      toast('Canal excluído.');
+      await renderCanais();
+    } catch (e) {
+      toast(e.message, 5000);
+    }
+  }
+
+  async function verEventos(c) {
+    try {
+      const { eventos } = await api(`/canais/${c.id}/eventos`);
+      const corpo = $('#modal-corpo');
+      const lista = el('div', { class: 'eventos-lista' }, ...eventos.map((e) => el('div', { class: 'evento-item' },
+        el('span', { class: 'm' }, `${new Date(e.recebidoEm).toLocaleString('pt-BR')} · ${e.tipo || 'sem tipo'}`),
+        typeof e.corpo === 'string' ? e.corpo : JSON.stringify(e.corpo, null, 1).slice(0, 1500))));
+      if (!eventos.length) lista.append(el('div', { class: 'vazio' }, 'Nenhum evento recebido ainda. Quando alguém mandar mensagem para este WhatsApp, o evento aparece aqui.'));
+      corpo.replaceChildren(
+        el('div', { class: 'modal-cab' }, el('div', {}, el('h2', {}, `Eventos recebidos · ${c.nome}`), el('p', {}, 'Últimos 50 avisos que o servidor do WhatsApp enviou ao CRM. Útil para diagnosticar problemas.')),
+          el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: fecharModalCanais }, svg(ICONE.fechar))),
+        lista,
+        el('div', {}, el('button', { type: 'button', class: 'btn-suave hov', onclick: renderCanais }, '← Voltar')));
+    } catch (e) {
+      toast(e.message, 5000);
+    }
+  }
+
+  async function iniciarConexao(canalId, modo, telefone = '') {
+    pararSondagem();
+    Object.assign(conexao, { canalId, modo, telefone, qrcode: null, paircode: null, status: 'connecting', erro: null, ocupado: true });
+    await renderCanais();
+    try {
+      const r = await api(`/canais/${canalId}/conectar`, { method: 'POST', body: telefone ? { telefone } : {} });
+      Object.assign(conexao, { qrcode: r.qrcode, paircode: r.paircode, status: r.status, ocupado: false });
+    } catch (e) {
+      Object.assign(conexao, { erro: e.message, ocupado: false });
+    }
+    await renderCanais();
+    if (!conexao.erro) sondagem = setInterval(sondarStatus, 3000);
+  }
+
+  async function sondarStatus() {
+    if (!conexao.canalId || !modalCanais) return pararSondagem();
+    try {
+      const r = await api(`/canais/${conexao.canalId}/status`);
+      const mudouCodigo = (r.qrcode && r.qrcode !== conexao.qrcode) || (r.paircode && r.paircode !== conexao.paircode);
+      const mudouStatus = r.status !== conexao.status;
+      if (r.qrcode) conexao.qrcode = r.qrcode;
+      if (r.paircode) conexao.paircode = r.paircode;
+      conexao.status = r.status;
+      if (r.status === 'connected') {
+        pararSondagem();
+        toast('WhatsApp conectado!');
+        conexao.canalId = null;
+        await renderCanais();
+        carregarResumo().catch(() => {});
+        return;
+      }
+      if (mudouCodigo || mudouStatus) {
+        const painel = $('#painel-conexao');
+        if (painel) painel.replaceWith(painelConexao(r.canal));
+      }
+    } catch (e) {
+      conexao.erro = e.message;
+      const painel = $('#painel-conexao');
+      if (painel) painel.replaceWith(painelConexao({ id: conexao.canalId, nome: '' }));
+    }
+  }
+
+  function painelConexao(c) {
+    const modoQr = conexao.modo === 'qr';
+    const inputTel = el('input', { type: 'tel', placeholder: '55 31 99999-0000', value: conexao.telefone, 'aria-label': 'Número do WhatsApp com DDD' });
+    const status = conexao.status === 'connected'
+      ? el('div', { class: 'conexao-status ok' }, el('span', { class: 'status-ponto' }), 'Conectado!')
+      : el('div', { class: 'conexao-status' }, el('span', { class: 'status-ponto' }), conexao.ocupado ? 'Gerando…' : (modoQr ? 'Aguardando a leitura do QR code…' : (conexao.paircode ? 'Aguardando você digitar o código no celular…' : 'Informe o número e gere o código.')));
+
+    let conteudo;
+    if (modoQr) {
+      const qr = conexao.qrcode;
+      conteudo = el('div', { class: 'conexao-corpo' },
+        el('div', { class: 'qr-caixa' }, qr
+          ? el('img', { src: qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`, alt: 'QR code para conectar o WhatsApp' })
+          : el('span', { class: 'aguarde' }, conexao.ocupado ? 'Gerando o QR code…' : 'QR code ainda não disponível. Clique em "Gerar novo QR code".')),
+        el('div', { class: 'conexao-passos' },
+          el('strong', {}, 'No celular com o WhatsApp da empresa:'),
+          el('ol', {},
+            el('li', {}, 'Abra o WhatsApp e toque em Configurações (ou nos três pontos).'),
+            el('li', {}, 'Toque em "Aparelhos conectados" › "Conectar um aparelho".'),
+            el('li', {}, 'Aponte a câmera para o QR code ao lado.')),
+          el('div', { style: 'margin-top:10px' }, el('button', { type: 'button', class: 'btn-suave hov', onclick: () => iniciarConexao(c.id, 'qr') }, 'Gerar novo QR code'))));
+    } else {
+      conteudo = el('div', { class: 'conexao-corpo' },
+        el('div', { class: 'conexao-passos' },
+          el('div', { class: 'telefone-linha' }, inputTel,
+            el('button', { type: 'button', class: 'btn-primario pequeno', style: 'height:40px', onclick: () => {
+              const tel = inputTel.value.trim();
+              if (tel.replace(/\D/g, '').length < 10) return toast('Digite o número com o código do país e o DDD. Exemplo: 55 31 99999-0000.');
+              iniciarConexao(c.id, 'numero', tel);
+            } }, conexao.paircode ? 'Gerar outro código' : 'Gerar código')),
+          conexao.paircode ? el('div', { class: 'paircode', style: 'margin-top:12px' }, formatarPair(conexao.paircode)) : null,
+          el('strong', { style: 'display:block;margin-top:12px' }, 'No celular com o WhatsApp da empresa:'),
+          el('ol', {},
+            el('li', {}, 'Abra o WhatsApp › Configurações › "Aparelhos conectados" › "Conectar um aparelho".'),
+            el('li', {}, 'Toque em "Conectar com número de telefone".'),
+            el('li', {}, 'Digite o código mostrado acima.'))));
+    }
+
+    return el('div', { class: 'conexao', id: 'painel-conexao' },
+      el('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' },
+        el('strong', { style: 'flex:1' }, `Conectar ${c.nome || 'WhatsApp'}`),
+        el('div', { class: 'abas' },
+          el('button', { type: 'button', class: `aba${modoQr ? ' ativa' : ''}`, onclick: () => iniciarConexao(c.id, 'qr') }, 'Ler QR code'),
+          el('button', { type: 'button', class: `aba${!modoQr ? ' ativa' : ''}`, onclick: () => { pararSondagem(); Object.assign(conexao, { modo: 'numero', paircode: null, status: null, erro: null }); renderCanais(); } }, 'Digitar número'))),
+      conexao.erro ? el('div', { class: 'aviso erro' }, conexao.erro) : null,
+      conteudo,
+      status);
+  }
+
   /* ================================================================
    * Eventos globais
    * ============================================================== */
@@ -618,7 +856,8 @@ import { icone, montarIcones } from './icones.js';
       }, 250);
     });
 
-    $('#btn-conectar').addEventListener('click', () => toast('Conexão de canais (WhatsApp/Telegram): em breve.'));
+    $('#btn-conectar').addEventListener('click', abrirModalCanais);
+    $('#chip-whatsapp').addEventListener('click', abrirModalCanais);
     $('#btn-filtros').addEventListener('click', () => toast('Filtros avançados: em breve.'));
 
     document.querySelectorAll('.rail-btn[data-modulo]').forEach((b) => {
@@ -635,7 +874,7 @@ import { icone, montarIcones } from './icones.js';
       if (!e.target.closest('.menu-flutuante')) fecharMenus();
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { menuUsuario.hidden = true; fecharMenus(); $('#painel').classList.remove('aberto'); }
+      if (e.key === 'Escape') { menuUsuario.hidden = true; fecharMenus(); $('#painel').classList.remove('aberto'); if (modalCanais) fecharModalCanais(); }
     });
   }
 
@@ -649,7 +888,7 @@ import { icone, montarIcones } from './icones.js';
       toast(e.message);
       $('#chat').replaceChildren(el('div', { class: 'chat-vazio' }, el('strong', {}, 'Não foi possível carregar'), el('span', {}, e.message)));
     }
-    setInterval(atualizarSilencioso, 15000);
+    setInterval(atualizarSilencioso, 8000);
   }
 
   iniciar();

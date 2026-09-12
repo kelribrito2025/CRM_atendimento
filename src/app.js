@@ -9,6 +9,7 @@ const acesso = require('./acesso');
 const { LimitadorTentativas } = require('./limitador');
 const { criarEnviador } = require('./email');
 const { criarRotasApi } = require('./rotas-api');
+const canais = require('./canais');
 
 const RAIZ = path.join(__dirname, '..');
 const COOKIE_VERIFICACAO = 'crm_verificacao';
@@ -35,7 +36,9 @@ function criarApp(db, opcoes = {}) {
   app.disable('x-powered-by');
   if (opcoes.trustProxy) app.set('trust proxy', opcoes.trustProxy);
 
-  app.use(express.json({ limit: '200kb' }));
+  // O webhook do WhatsApp usa um leitor de JSON próprio (mensagens maiores)
+  const jsonPadrao = express.json({ limit: '200kb' });
+  app.use((req, res, next) => (req.path.startsWith('/webhook/') ? next() : jsonPadrao(req, res, next)));
   app.use(express.urlencoded({ extended: false }));
 
   // Cabeçalhos básicos de segurança
@@ -310,14 +313,33 @@ function criarApp(db, opcoes = {}) {
     res.status(201).json({ ok: true, redirect: '/' });
   });
 
+  /* ------------------------ webhook do WhatsApp (uazapi) ------------------------ */
+  // Público, protegido pelo segredo na URL. Sempre responde 200 para o uazapi não reenviar.
+  app.post('/webhook/uazapi/:segredo', express.json({ limit: '5mb', type: () => true }), (req, res) => {
+    const segredo = String(req.params.segredo || '');
+    const canal = /^[a-f0-9]{32}$/.test(segredo) ? db.prepare('SELECT * FROM canais WHERE webhook_segredo = ?').get(segredo) : null;
+    if (!canal) return res.status(404).json({ erro: 'Canal não encontrado.' });
+    const corpo = req.body && typeof req.body === 'object' ? req.body : {};
+    const { tipo } = canais.extrairEvento(corpo);
+    let resultado;
+    try {
+      canais.registrarEvento(db, canal.id, tipo, corpo);
+      resultado = canais.processarEvento(db, canal, corpo);
+    } catch (erro) {
+      console.error('Erro ao processar webhook do WhatsApp:', erro);
+      resultado = { resultado: 'erro', motivo: erro.message };
+    }
+    res.json({ ok: true, ...resultado });
+  });
+
   /* ------------------------------ área logada ------------------------------ */
 
   app.get('/', exigirLogin, (req, res) => enviarPagina(req, res, 'atendimento.html'));
 
-  app.use('/api', exigirLogin, criarRotasApi(db));
+  app.use('/api', exigirLogin, criarRotasApi(db, { uazapi: opcoes.uazapi || null, urlBase }));
 
   app.use((req, res) => {
-    if (req.originalUrl.startsWith('/api/') || req.originalUrl.startsWith('/acesso/')) {
+    if (req.originalUrl.startsWith('/api/') || req.originalUrl.startsWith('/acesso/') || req.originalUrl.startsWith('/webhook/')) {
       return res.status(404).json({ erro: 'Rota não encontrada.' });
     }
     res.status(404).type('text').send('Página não encontrada.');

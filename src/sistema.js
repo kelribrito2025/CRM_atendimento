@@ -11,6 +11,7 @@ const { criarApp } = require('./app');
 const { criarEnviador } = require('./email');
 const { limparSessoesExpiradas } = require('./sessoes');
 const { limparAcessosExpirados } = require('./acesso');
+const { criarUazapi } = require('./uazapi');
 
 const RAIZ = path.join(__dirname, '..');
 
@@ -27,6 +28,8 @@ function lerConfig() {
     baseUrl: process.env.BASE_URL || '',
     cookieSeguro: process.env.COOKIE_SEGURO === 'true',
     trustProxy: process.env.TRUST_PROXY === 'true' ? 1 : false,
+    uazapiUrl: process.env.UAZAPI_URL || '',
+    uazapiAdminToken: process.env.UAZAPI_ADMIN_TOKEN || '',
   };
 }
 
@@ -53,7 +56,9 @@ function montarSistema(extras = {}) {
     comDadosExemplo: config.dadosExemplo,
   });
   const enviador = criarEnviador();
+  const uazapi = criarUazapi({ url: config.uazapiUrl, adminToken: config.uazapiAdminToken });
   const app = criarApp(db, {
+    uazapi,
     cookieSeguro: config.cookieSeguro,
     trustProxy: config.trustProxy,
     doisFatores: config.doisFatores,
@@ -70,7 +75,7 @@ function montarSistema(extras = {}) {
     limparAcessosExpirados(db);
   }, 60 * 60 * 1000).unref();
 
-  return { app, db, config, resultado, enviador };
+  return { app, db, config, resultado, enviador, uazapi };
 }
 
 function mostrarBoasVindas({ config, resultado }, endereco) {
@@ -85,6 +90,10 @@ function mostrarBoasVindas({ config, resultado }, endereco) {
   }
   console.log(`🔐 Verificação em duas etapas: ${config.doisFatores ? 'ativada' : 'desativada'} (DOIS_FATORES no .env)`);
   console.log('📧 E-mails (código de verificação, recuperação de senha) aparecem aqui nesta janela até um serviço de e-mail ser configurado.');
+  console.log(config.uazapiUrl && config.uazapiAdminToken
+    ? `📱 WhatsApp (uazapi): configurado em ${config.uazapiUrl}`
+    : '📱 WhatsApp (uazapi): não configurado. Preencha UAZAPI_URL e UAZAPI_ADMIN_TOKEN no .env para conectar.');
+  if (!config.baseUrl) console.log('🌐 BASE_URL não definida: o WhatsApp só consegue entregar mensagens quando o CRM tiver um endereço público.');
   console.log('');
 }
 

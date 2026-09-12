@@ -75,6 +75,28 @@ npm run convite -- --listar
 
 O comando mostra um link. Envie o link para a pessoa: ela abre, escolhe nome e senha e já entra no sistema com o papel e as equipes definidos no convite.
 
+## Conectar o WhatsApp (uazapi)
+
+O CRM recebe e responde mensagens de WhatsApp pela API não oficial **uazapi**.
+
+1. No painel do uazapi, pegue o **endereço do servidor** e o **token de administrador**.
+2. Coloque os dois no arquivo `.env` (nunca no GitHub):
+   ```
+   UAZAPI_URL=https://seu-servidor.uazapi.com
+   UAZAPI_ADMIN_TOKEN=cole-aqui-o-token
+   BASE_URL=https://endereco-publico-do-crm
+   ```
+3. Reinicie o sistema, entre como administrador e clique em **Conectar canal** (ou no chip WhatsApp no topo).
+4. Clique em **Adicionar WhatsApp** e conecte de um dos dois jeitos:
+   - **Ler QR code**: no celular, WhatsApp › Aparelhos conectados › Conectar um aparelho › aponte para o QR code.
+   - **Digitar número**: informe o número com DDD, gere o código e digite no celular em Aparelhos conectados › Conectar um aparelho › Conectar com número de telefone.
+
+Quando conectar, a bolinha do chip WhatsApp fica verde. As mensagens dos clientes aparecem na lista de conversas, e as respostas enviadas pelo chat vão para o WhatsApp do cliente.
+
+**Importante: o `BASE_URL` precisa ser um endereço público na internet.** O servidor do uazapi entrega as mensagens chamando `BASE_URL/webhook/uazapi/...`. Em `http://localhost` isso não funciona: dá para conectar e enviar, mas as mensagens recebidas não chegam. Para testar em casa, use um túnel (por exemplo, Cloudflare Tunnel ou ngrok) e coloque o endereço do túnel em `BASE_URL`; no Manus, use o endereço público da prévia.
+
+Na janela de canais, o botão **Eventos** mostra os últimos avisos que o uazapi enviou ao CRM, o que ajuda a diagnosticar problemas. Mensagens de grupos são ignoradas. Fotos, áudios e documentos aparecem por enquanto como texto (por exemplo, "[Imagem]").
+
 ## Ícones (Iconly)
 
 Os ícones da interface vêm do **Iconly**. Coloque os arquivos exportados na pasta `client/public/icones/`:
@@ -105,6 +127,7 @@ npm run usuario -- --listar
 - Bloqueio temporário após 8 tentativas erradas seguidas.
 - Sessão por cookie seguro (12 h, ou 30 dias com "Manter conectado").
 - Convite por link, recuperação de senha e verificação em duas etapas (opcional).
+- WhatsApp conectado via uazapi: QR code ou código pelo número, recebimento e envio de mensagens.
 - Tela de atendimento com o visual aprovado:
   - caixas **Todas / Minhas / Sem resposta** e filtro por **equipe**;
   - lista de conversas com busca por nome, empresa, CNPJ ou protocolo;
@@ -118,7 +141,7 @@ npm run usuario -- --listar
 
 Botões que mostram um aviso e ainda não fazem nada: **Entrar com Google Workspace**, **Conectar canal**, **Anexo**, **Respostas rápidas**, **Estornar**, **Ver faturas**, **Abrir conta**, **Nova equipe**, **Adicionar à equipe**, **Filtros** e os outros módulos do menu lateral.
 
-As mensagens hoje ficam só dentro do sistema. A **integração real com WhatsApp e Telegram** é o próximo passo.
+O Telegram ainda não está integrado. No WhatsApp, mídias (fotos, áudios, documentos) ainda não são exibidas, só indicadas como texto.
 
 ## Configurações (opcional)
 
@@ -132,7 +155,9 @@ Copie `.env.example` para `.env` e ajuste:
 | `ADMIN_NOME`    | Nome do administrador                                     |
 | `DADOS_EXEMPLO` | `false` para começar sem conversas de exemplo             |
 | `DOIS_FATORES`  | `true` para pedir um código por e-mail a cada login       |
-| `BASE_URL`      | Endereço público do sistema, usado nos links de convite e nova senha |
+| `BASE_URL`      | Endereço público do sistema, usado nos links de convite, nova senha e no webhook do WhatsApp |
+| `UAZAPI_URL`    | Endereço do servidor uazapi (WhatsApp)                    |
+| `UAZAPI_ADMIN_TOKEN` | Token de administrador do uazapi                     |
 | `COOKIE_SEGURO` | `true` quando o sistema estiver publicado com HTTPS       |
 
 O banco de dados fica em `data/crm.sqlite`. Para começar do zero, pare o servidor e apague essa pasta.
@@ -144,7 +169,9 @@ server.js                 inicia o servidor (npm start)
 vite.config.mjs           configuração do Vite/Manus (npm run dev)
 src/sistema.js            monta o sistema (configuração, banco, e-mail, aplicação)
 src/app.js                rotas de login, sessão e páginas
-src/rotas-api.js          API de conversas, mensagens, equipes
+src/rotas-api.js          API de conversas, mensagens, equipes e canais
+src/uazapi.js             cliente da API do uazapi (WhatsApp)
+src/canais.js             traduz os eventos do WhatsApp em conversas e mensagens
 src/db.js                 banco de dados (SQLite) e dados de exemplo
 src/senha.js              hash e verificação de senha
 src/acesso.js             convites, recuperação de senha e verificação em duas etapas

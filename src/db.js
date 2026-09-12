@@ -94,6 +94,30 @@ CREATE TABLE IF NOT EXISTS redefinicoes (
   usado_em INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS canais (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo TEXT NOT NULL DEFAULT 'whatsapp',
+  nome TEXT NOT NULL,
+  instancia_id TEXT,
+  instancia_token TEXT,
+  webhook_segredo TEXT NOT NULL UNIQUE,
+  numero TEXT,
+  perfil_nome TEXT,
+  status TEXT NOT NULL DEFAULT 'disconnected',
+  equipe_padrao_id INTEGER REFERENCES equipes(id),
+  ultimo_erro TEXT,
+  criado_em INTEGER NOT NULL,
+  atualizado_em INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS canal_eventos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  canal_id INTEGER REFERENCES canais(id) ON DELETE CASCADE,
+  tipo TEXT,
+  corpo TEXT,
+  recebido_em INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS verificacoes (
   token_hash TEXT PRIMARY KEY,
   usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
@@ -106,6 +130,22 @@ CREATE TABLE IF NOT EXISTS verificacoes (
 );
 `;
 
+// Acrescenta colunas criadas em versões mais novas sem perder os dados existentes.
+function garantirColuna(db, tabela, coluna, definicao) {
+  const existentes = db.prepare(`PRAGMA table_info(${tabela})`).all().map((c) => c.name);
+  if (!existentes.includes(coluna)) db.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${definicao}`);
+}
+
+function migrar(db) {
+  garantirColuna(db, 'conversas', 'canal_id', 'INTEGER REFERENCES canais(id)');
+  garantirColuna(db, 'conversas', 'wa_chatid', 'TEXT');
+  garantirColuna(db, 'mensagens', 'externo_id', 'TEXT');
+  garantirColuna(db, 'contatos', 'wa_id', 'TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_mensagens_externo ON mensagens(externo_id);');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_contatos_wa ON contatos(wa_id);');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_conversas_canal ON conversas(canal_id, status);');
+}
+
 function abrirBanco(caminho = ':memory:') {
   const emMemoria = caminho === ':memory:';
   if (!emMemoria) fs.mkdirSync(path.dirname(caminho), { recursive: true });
@@ -113,6 +153,7 @@ function abrirBanco(caminho = ':memory:') {
   db.exec('PRAGMA foreign_keys = ON;');
   if (!emMemoria) db.exec('PRAGMA journal_mode = WAL;');
   db.exec(SCHEMA);
+  migrar(db);
   return db;
 }
 
