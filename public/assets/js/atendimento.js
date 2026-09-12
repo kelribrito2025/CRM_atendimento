@@ -1,0 +1,653 @@
+(() => {
+  'use strict';
+
+  /* ================================================================
+   * Estado da tela
+   * ============================================================== */
+  const estado = {
+    resumo: null,
+    caixa: 'todas',          // todas | minhas | sem_resposta
+    equipeId: null,
+    busca: '',
+    conversas: [],
+    conversaId: null,
+    conversa: null,
+    modo: 'resposta',        // resposta | nota
+    enviando: false,
+  };
+
+  const $ = (sel, raiz = document) => raiz.querySelector(sel);
+
+  /* ================================================================
+   * Ícones (SVG estáticos)
+   * ============================================================== */
+  const ICONE = {
+    whatsapp: (t, cor, e = 2.2) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="${e}"><path d="M21 11.5a8.4 8.4 0 01-9 8.4 8.9 8.9 0 01-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0121 11.5z"></path></svg>`,
+    telegram: (t, cor, e = 2.2) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="${e}"><path d="M21 4L3 11l6 2 2 6z"></path><path d="M21 4l-10 9"></path></svg>`,
+    seta: '<svg class="seta" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"></path></svg>',
+    mais: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',
+    inbox: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4C6355" stroke-width="2"><path d="M4 4h16v16H4z"></path><path d="M4 13h5l2 3h2l2-3h5"></path></svg>',
+    pessoa: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4C6355" stroke-width="2"><circle cx="12" cy="8" r="4"></circle><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"></path></svg>',
+    relogio: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8E1F16" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>',
+    pontos: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>',
+    info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg>',
+    lapis: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A6A16" stroke-width="2.2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"></path></svg>',
+    clipe: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.5l-8.6 8.6a5 5 0 01-7-7l9-9a3.3 3.3 0 014.7 4.7l-9 9a1.7 1.7 0 01-2.4-2.4l8.3-8.2"></path></svg>',
+    raio: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4C6355" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9z"></path></svg>',
+    enviar: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4"><path d="M21 4L3 11l6 2 2 6z"></path></svg>',
+    cadeado: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
+    alerta: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8E1F16" stroke-width="2.2"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.3 3.9L2 19a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"></path></svg>',
+  };
+
+  const NOME_CANAL = { whatsapp: 'WhatsApp', telegram: 'Telegram' };
+
+  /* ================================================================
+   * Utilidades
+   * ============================================================== */
+  function el(tag, attrs = {}, ...filhos) {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === 'class') n.className = v;
+      else if (k === 'html') n.innerHTML = v;
+      else if (k === 'text') n.textContent = v;
+      else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? '' : v);
+    }
+    for (const f of filhos.flat()) {
+      if (f == null || f === false) continue;
+      n.append(f instanceof Node ? f : document.createTextNode(String(f)));
+    }
+    return n;
+  }
+
+  function svg(html) {
+    const t = document.createElement('template');
+    t.innerHTML = html.trim();
+    return t.content.firstChild;
+  }
+
+  let toastTimer = null;
+  function toast(msg, ms = 2600) {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.classList.add('visivel');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('visivel'), ms);
+  }
+
+  function iniciais(nome) {
+    const p = String(nome || '').trim().split(/\s+/).filter(Boolean);
+    if (!p.length) return '?';
+    if (p.length === 1) return p[0].slice(0, 2).toUpperCase();
+    return (p[0][0] + p[1][0]).toUpperCase();
+  }
+
+  function mesmoDia(a, b) {
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+  function horaCurta(ms) {
+    return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+  function horaLista(ms) {
+    if (!ms) return '';
+    const d = new Date(ms);
+    const hoje = new Date();
+    const ontem = new Date();
+    ontem.setDate(hoje.getDate() - 1);
+    if (mesmoDia(d, hoje)) return horaCurta(ms);
+    if (mesmoDia(d, ontem)) return 'ontem';
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  }
+  function rotuloData(ms) {
+    const d = new Date(ms);
+    const hoje = new Date();
+    const ontem = new Date();
+    ontem.setDate(hoje.getDate() - 1);
+    const longa = d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
+    if (mesmoDia(d, hoje)) return `Hoje · ${longa}`;
+    if (mesmoDia(d, ontem)) return `Ontem · ${longa}`;
+    return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+  function minutosTexto(min) {
+    if (min < 1) return 'agora';
+    if (min < 60) return `${min}min`;
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    if (h < 24) return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+    return `${Math.floor(h / 24)}d`;
+  }
+  function textoAberto(ms, status) {
+    if (status === 'resolvida') return 'resolvida';
+    const t = minutosTexto(Math.max(0, Math.round((Date.now() - ms) / 60000)));
+    return t === 'agora' ? 'aberta agora' : `aberta há ${t}`;
+  }
+  function mascararTelefone(tel) {
+    const m = /^(\+\d{2} \d{2} )(\d)(\d+)-(\d{4})$/.exec(tel || '');
+    return m ? `${m[1]}${m[2]}•••-${m[4]}` : (tel || '');
+  }
+
+  async function api(caminho, { method = 'GET', body } = {}) {
+    const resposta = await fetch(`/api${caminho}`, {
+      method,
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (resposta.status === 401) {
+      location.href = `/login?next=${encodeURIComponent(location.pathname)}`;
+      throw new Error('Sessão expirada.');
+    }
+    const dados = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) throw new Error(dados.erro || `Erro ${resposta.status}`);
+    return dados;
+  }
+
+  /* ================================================================
+   * Carregamento de dados
+   * ============================================================== */
+  async function carregarResumo() {
+    estado.resumo = await api('/resumo');
+    renderTopo();
+    renderSidebar();
+  }
+
+  function paramsLista() {
+    const p = new URLSearchParams({ caixa: estado.caixa });
+    if (estado.equipeId) p.set('equipe', estado.equipeId);
+    if (estado.busca) p.set('q', estado.busca);
+    return p.toString();
+  }
+
+  async function carregarConversas({ selecionarPrimeira = false } = {}) {
+    const { conversas } = await api(`/conversas?${paramsLista()}`);
+    estado.conversas = conversas;
+    renderLista();
+    const aindaExiste = conversas.some((c) => c.id === estado.conversaId);
+    if (selecionarPrimeira && !aindaExiste) {
+      if (conversas.length) await abrirConversa(conversas[0].id);
+      else {
+        estado.conversaId = null;
+        estado.conversa = null;
+        renderChat();
+        renderPainel();
+      }
+    }
+  }
+
+  async function abrirConversa(id) {
+    estado.conversaId = id;
+    renderLista();
+    const { conversa } = await api(`/conversas/${id}`);
+    if (estado.conversaId !== id) return; // usuário já clicou em outra
+    estado.conversa = conversa;
+    const item = estado.conversas.find((c) => c.id === id);
+    if (item) item.naoLidas = 0;
+    renderLista();
+    renderChat();
+    renderPainel();
+  }
+
+  // Atualização periódica sem atrapalhar quem está digitando
+  async function atualizarSilencioso() {
+    if (document.hidden || estado.enviando) return;
+    try {
+      await carregarResumo();
+      const { conversas } = await api(`/conversas?${paramsLista()}`);
+      estado.conversas = conversas;
+      renderLista();
+      if (!estado.conversaId) return;
+      const { conversa } = await api(`/conversas/${estado.conversaId}`);
+      const atual = estado.conversa;
+      const mudou = !atual
+        || conversa.mensagens.length !== atual.mensagens.length
+        || conversa.status !== atual.status
+        || conversa.atendente?.id !== atual.atendente?.id
+        || conversa.equipe?.id !== atual.equipe?.id
+        || conversa.contato.pinValidadoEm !== atual.contato.pinValidadoEm;
+      if (mudou) aplicarConversa(conversa);
+    } catch {
+      /* silencioso: tenta de novo no próximo ciclo */
+    }
+  }
+
+  // Substitui a conversa aberta preservando o texto que está sendo digitado
+  function aplicarConversa(conversa) {
+    const textoMsg = $('#texto-msg')?.value;
+    const textoNota = $('#texto-nota')?.value;
+    estado.conversa = conversa;
+    renderChat();
+    renderPainel();
+    if (textoMsg) $('#texto-msg').value = textoMsg;
+    if (textoNota) $('#texto-nota').value = textoNota;
+  }
+
+  /* ================================================================
+   * Ações
+   * ============================================================== */
+  async function selecionarCaixa(caixa) {
+    estado.caixa = caixa;
+    estado.equipeId = null;
+    renderSidebar();
+    await carregarConversas({ selecionarPrimeira: true });
+  }
+
+  async function selecionarEquipe(id) {
+    estado.equipeId = id;
+    estado.caixa = 'todas';
+    renderSidebar();
+    await carregarConversas({ selecionarPrimeira: true });
+  }
+
+  async function enviarMensagem(texto, tipo, campo) {
+    const c = estado.conversa;
+    if (!c || !texto.trim() || estado.enviando) return;
+    estado.enviando = true;
+    try {
+      const r = await api(`/conversas/${c.id}/mensagens`, { method: 'POST', body: { texto: texto.trim(), tipo } });
+      if (campo) campo.value = '';
+      c.mensagens.push(r.mensagem);
+      Object.assign(c, { status: r.conversa.status, atendente: r.conversa.atendente, equipe: r.conversa.equipe, atualizadaEm: r.conversa.atualizadaEm });
+      aplicarConversa(c);
+      $('#texto-msg')?.focus();
+      await Promise.all([carregarResumo(), carregarConversas()]);
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      estado.enviando = false;
+    }
+  }
+
+  async function atualizarConversa(corpo) {
+    const c = estado.conversa;
+    if (!c) return;
+    try {
+      const r = await api(`/conversas/${c.id}`, { method: 'PATCH', body: corpo });
+      Object.assign(c, { atendente: r.conversa.atendente, equipe: r.conversa.equipe });
+      aplicarConversa(c);
+      await Promise.all([carregarResumo(), carregarConversas()]);
+    } catch (e) {
+      toast(e.message);
+      renderChat();
+    }
+  }
+
+  async function mudarStatus(status) {
+    const c = estado.conversa;
+    if (!c) return;
+    try {
+      const r = await api(`/conversas/${c.id}/status`, { method: 'POST', body: { status } });
+      Object.assign(c, { status: r.conversa.status });
+      aplicarConversa(c);
+      toast(status === 'resolvida' ? 'Conversa marcada como resolvida.' : 'Conversa reaberta.');
+      await Promise.all([carregarResumo(), carregarConversas()]);
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  async function acaoPin(acao) {
+    const c = estado.conversa;
+    if (!c) return;
+    try {
+      const r = await api(`/conversas/${c.id}/pin`, { method: 'POST', body: { acao } });
+      c.contato = r.conversa.contato;
+      renderPainel();
+      toast(acao === 'novo' ? 'Novo PIN gerado. Peça ao cliente para confirmar.' : 'PIN validado.');
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  /* ================================================================
+   * Render: topo e menu do usuário
+   * ============================================================== */
+  function renderTopo() {
+    const r = estado.resumo;
+    $('#topo-sub').textContent = `${r.caixas.todas} conversa${r.caixas.todas === 1 ? '' : 's'} aberta${r.caixas.todas === 1 ? '' : 's'} · 1ª resposta em ${r.primeiraResposta}`;
+    $('#rail-badge').textContent = r.caixas.todas;
+    $('#rail-badge').hidden = r.caixas.todas === 0;
+    $('#btn-usuario').textContent = r.usuario.iniciais;
+    $('#menu-nome').textContent = r.usuario.nome;
+    $('#menu-email').textContent = r.usuario.email;
+  }
+
+  /* ================================================================
+   * Render: sidebar (caixas, equipes, membros)
+   * ============================================================== */
+  function navItem({ icone, cor, nome, cont, ativo, alerta, onclick }) {
+    return el('button', { type: 'button', class: `nav-item${ativo ? ' ativo' : ''}`, onclick },
+      cor ? el('span', { class: 'cor-equipe', style: `background:${cor}` }) : svg(icone),
+      el('span', { class: 'nome' }, nome),
+      el('span', { class: `cont${alerta && !ativo && cont > 0 ? ' alerta' : ''}` }, String(cont)));
+  }
+
+  function renderSidebar() {
+    const r = estado.resumo;
+    if (!r) return;
+    const equipeSel = r.equipes.find((e) => e.id === estado.equipeId) || null;
+    const semEquipe = !estado.equipeId;
+    const membros = equipeSel ? equipeSel.membros : r.atendentes;
+
+    $('#sidebar').replaceChildren(
+      el('span', { class: 'rotulo' }, 'Caixas de entrada'),
+      el('div', { class: 'lista-nav' },
+        navItem({ icone: ICONE.inbox, nome: 'Todas', cont: r.caixas.todas, ativo: semEquipe && estado.caixa === 'todas', onclick: () => selecionarCaixa('todas') }),
+        navItem({ icone: ICONE.pessoa, nome: 'Minhas', cont: r.caixas.minhas, ativo: semEquipe && estado.caixa === 'minhas', onclick: () => selecionarCaixa('minhas') }),
+        navItem({ icone: ICONE.relogio, nome: 'Sem resposta', cont: r.caixas.semResposta, alerta: true, ativo: semEquipe && estado.caixa === 'sem_resposta', onclick: () => selecionarCaixa('sem_resposta') })),
+      el('span', { class: 'separador' }),
+      el('div', { class: 'linha-rotulo' },
+        el('span', { class: 'rotulo' }, 'Equipes'),
+        el('button', { type: 'button', class: 'btn-mini hov', title: 'Nova equipe', onclick: () => toast('Cadastro de equipes: em breve.') }, svg(ICONE.mais))),
+      el('div', { class: 'lista-nav' },
+        ...r.equipes.map((e) => navItem({ cor: e.cor, nome: e.nome, cont: e.abertas, ativo: estado.equipeId === e.id, onclick: () => selecionarEquipe(e.id) }))),
+      el('span', { class: 'separador' }),
+      el('span', { class: 'rotulo' }, equipeSel ? `Equipe de ${equipeSel.nome}` : 'Atendentes'),
+      el('div', { class: 'membros' },
+        ...membros.map((m) => el('div', { class: 'membro hov', title: m.email || '' },
+          el('span', { class: 'avatar p' }, m.iniciais),
+          el('div', { class: 'membro-info' },
+            el('span', { class: 'membro-nome' }, m.nomeCurto),
+            el('span', { class: `membro-status${m.presenca === 'online' ? ' online' : ''}` }, `${m.presenca} · ${m.ativas} ativa${m.ativas === 1 ? '' : 's'}`)))),
+        membros.length ? null : el('div', { class: 'vazio' }, 'Nenhum atendente nesta equipe.')),
+      el('button', { type: 'button', class: 'btn-tracejado hov', onclick: () => toast('Gestão de membros: em breve.') }, svg(ICONE.mais), 'Adicionar à equipe'),
+    );
+  }
+
+  /* ================================================================
+   * Render: lista de conversas
+   * ============================================================== */
+  function tituloLista() {
+    const equipeSel = estado.resumo?.equipes.find((e) => e.id === estado.equipeId);
+    if (equipeSel) return equipeSel.nome;
+    return { todas: 'Todas as conversas', minhas: 'Minhas conversas', sem_resposta: 'Sem resposta' }[estado.caixa];
+  }
+
+  function itemConversa(c) {
+    const ativa = c.id === estado.conversaId;
+    const corAvatar = ativa ? 'verde' : (c.canal === 'telegram' ? 'azul' : 'cinza');
+    const corCanal = c.canal === 'telegram' ? '#4FA3DA' : '#12B85C';
+
+    let tag = null;
+    if (c.status === 'resolvida') tag = ['Resolvida', ''];
+    else if (c.semResposta) tag = [`Sem resposta ${minutosTexto(c.semRespostaMin)}`, 'vermelho'];
+    else if (c.contato.empresa && c.contato.empresa !== c.contato.nome) tag = [c.contato.empresa, 'verde'];
+    else if (c.atendente) tag = [c.atendente.nomeCurto, ''];
+
+    const previa = c.ultimaTipo === 'atendente' && c.ultimaAutor
+      ? `${c.ultimaAutor.split(' ')[0]}: ${c.ultimaTexto}`
+      : (c.ultimaTexto || 'Sem mensagens');
+
+    return el('button', { type: 'button', class: `conversa${ativa ? ' ativa' : ''}`, onclick: () => abrirConversa(c.id) },
+      el('span', { class: 'avatar-wrap' },
+        el('span', { class: `avatar m ${corAvatar}` }, c.contato.iniciais),
+        el('span', { class: 'canal-badge', html: ICONE[c.canal]?.(10, corCanal, 2.6) || '' })),
+      el('div', { class: 'conversa-corpo' },
+        el('div', { class: 'conversa-linha' },
+          el('span', { class: 'conversa-nome' }, c.contato.nome),
+          el('span', { class: 'conversa-hora' }, horaLista(c.ultimaEm || c.atualizadaEm))),
+        el('span', { class: 'conversa-previa' }, previa),
+        tag ? el('span', { class: `tag ${tag[1]}`.trim() }, tag[0]) : null),
+      c.naoLidas > 0 && !ativa ? el('span', { class: 'nao-lidas' }, String(c.naoLidas)) : null);
+  }
+
+  function renderLista() {
+    const abertas = estado.conversas.filter((c) => c.status === 'aberta').length;
+    const sem = estado.conversas.filter((c) => c.semResposta).length;
+    $('#lista-titulo').textContent = tituloLista();
+    $('#lista-sub').textContent = `${abertas} conversa${abertas === 1 ? '' : 's'} · ${sem} sem resposta`;
+    const cont = $('#conversas');
+    if (!estado.conversas.length) {
+      cont.replaceChildren(el('div', { class: 'vazio' }, estado.busca ? 'Nenhuma conversa encontrada para essa busca.' : 'Nenhuma conversa por aqui.'));
+      return;
+    }
+    cont.replaceChildren(...estado.conversas.map(itemConversa));
+  }
+
+  /* ================================================================
+   * Render: chat
+   * ============================================================== */
+  function selectPill({ classe, icone, valor, opcoes, onchange, title }) {
+    const select = el('select', { title, onchange: (e) => onchange(e.target.value) },
+      ...opcoes.map((o) => el('option', { value: o.valor, selected: o.valor === valor ? true : null }, o.nome)));
+    return el('div', { class: `select-pill ${classe}` }, icone, select, svg(ICONE.seta));
+  }
+
+  function construirMensagens(c) {
+    const nos = [];
+    let ultimoDia = null;
+    for (const m of c.mensagens) {
+      const dia = new Date(m.criadaEm).toDateString();
+      if (dia !== ultimoDia) {
+        nos.push(el('span', { class: 'data-sep' }, rotuloData(m.criadaEm)));
+        ultimoDia = dia;
+      }
+      if (m.tipo === 'nota') {
+        nos.push(el('div', { class: 'nota' }, svg(ICONE.lapis),
+          el('div', { class: 'nota-corpo' },
+            el('span', { class: 'nota-texto' }, el('strong', {}, 'Nota interna'), ' — ', m.texto),
+            el('span', { class: 'nota-meta' }, `${m.autor?.nomeCurto || 'Equipe'} · ${horaCurta(m.criadaEm)} · visível só para a equipe`))));
+      } else if (m.tipo === 'atendente') {
+        nos.push(el('div', { class: 'msg saida' },
+          el('div', { class: 'balao' }, m.texto),
+          el('span', { class: 'msg-meta' }, [horaCurta(m.criadaEm), m.autor?.nomeCurto, m.entrega].filter(Boolean).join(' · '))));
+      } else {
+        nos.push(el('div', { class: 'msg' },
+          el('div', { class: 'balao' }, m.texto),
+          el('span', { class: 'msg-meta' }, `${horaCurta(m.criadaEm)} · ${NOME_CANAL[c.canal] || c.canal}`)));
+      }
+    }
+    if (!nos.length) nos.push(el('div', { class: 'vazio' }, 'Ainda não há mensagens nesta conversa.'));
+    return nos;
+  }
+
+  function fecharMenus() {
+    document.querySelectorAll('.menu-flutuante').forEach((m) => m.remove());
+  }
+
+  function abrirMenuAcoes(botao) {
+    if ($('.menu-flutuante')) return fecharMenus();
+    const c = estado.conversa;
+    const menu = el('div', { class: 'menu-flutuante' },
+      el('button', { type: 'button', onclick: () => { fecharMenus(); mudarStatus(c.status === 'resolvida' ? 'aberta' : 'resolvida'); } },
+        c.status === 'resolvida' ? 'Reabrir conversa' : 'Marcar como resolvida'),
+      el('button', { type: 'button', onclick: () => { fecharMenus(); atualizarConversa({ atendenteId: estado.resumo.usuario.id }); } }, 'Assumir esta conversa'),
+      el('button', { type: 'button', onclick: () => { fecharMenus(); toast('Transferência entre canais: em breve.'); } }, 'Transferir canal'));
+    botao.parentElement.append(menu);
+  }
+
+  function renderChat() {
+    const chat = $('#chat');
+    const c = estado.conversa;
+    if (!c) {
+      chat.replaceChildren(el('div', { class: 'chat-vazio' },
+        el('strong', {}, 'Nenhuma conversa selecionada'),
+        el('span', {}, 'Escolha uma conversa na lista ao lado para começar o atendimento.')));
+      return;
+    }
+    const r = estado.resumo;
+    const canalNome = NOME_CANAL[c.canal] || c.canal;
+    const corCanal = c.canal === 'telegram' ? '#1D6FA5' : '#0A7A42';
+    const primeiroNome = c.contato.nome.split(' ')[0];
+    const modoNota = estado.modo === 'nota';
+
+    const cabecalho = el('div', { class: 'chat-topo' },
+      el('div', { class: 'chat-cab' },
+        el('span', { class: 'avatar g verde' }, c.contato.iniciais),
+        el('div', { class: 'chat-info' },
+          el('span', { class: 'chat-nome' }, c.contato.nome),
+          el('span', { class: 'chat-sub' }, [c.contato.empresa, `protocolo #${c.protocolo}`, textoAberto(c.criadaEm, c.status)].filter(Boolean).join(' · '))),
+        el('span', { class: `pill-canal ${c.canal}`, html: ICONE[c.canal]?.(11, corCanal, 2.6) || '' }, c.contato.telefone ? mascararTelefone(c.contato.telefone) : canalNome),
+        el('button', { type: 'button', class: 'btn-icone btn-info hov', title: 'Dados do cliente', onclick: () => $('#painel').classList.toggle('aberto') }, svg(ICONE.info)),
+        el('button', { type: 'button', class: 'btn-icone hov', title: 'Mais ações', onclick: (e) => { e.stopPropagation(); abrirMenuAcoes(e.currentTarget); } }, svg(ICONE.pontos))),
+      el('div', { class: 'chat-atrib' },
+        selectPill({
+          classe: 'equipe', title: 'Equipe responsável',
+          icone: el('span', { class: 'cor-equipe', style: `background:${c.equipe?.cor || '#4C6355'}` }),
+          valor: c.equipe ? String(c.equipe.id) : '',
+          opcoes: [{ valor: '', nome: 'Sem equipe' }, ...r.equipes.map((e) => ({ valor: String(e.id), nome: `Equipe ${e.nome}` }))],
+          onchange: (v) => atualizarConversa({ equipeId: v || null }),
+        }),
+        selectPill({
+          classe: 'atendente', title: 'Atendente responsável',
+          icone: c.atendente ? el('span', { class: 'avatar pp' }, c.atendente.iniciais) : svg(ICONE.pessoa),
+          valor: c.atendente ? String(c.atendente.id) : '',
+          opcoes: [{ valor: '', nome: 'Sem atendente' }, ...r.atendentes.map((a) => ({ valor: String(a.id), nome: a.nomeCurto }))],
+          onchange: (v) => atualizarConversa({ atendenteId: v || null }),
+        })));
+
+    const mensagens = el('div', { class: 'rolagem mensagens', id: 'mensagens' }, ...construirMensagens(c));
+
+    const textarea = el('textarea', {
+      id: 'texto-msg', rows: '2', maxlength: '4000',
+      placeholder: modoNota ? 'Escreva uma nota interna para a equipe…' : `Escreva para ${primeiroNome} pelo ${canalNome}…`,
+      onkeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } },
+    });
+    const enviar = () => enviarMensagem(textarea.value, modoNota ? 'nota' : 'resposta', textarea);
+
+    const compositor = el('div', { class: 'compositor' },
+      el('div', { class: 'abas' },
+        el('button', { type: 'button', class: `aba${!modoNota ? ' ativa' : ''}`, onclick: () => mudarModo('resposta') }, 'Responder'),
+        el('button', { type: 'button', class: `aba${modoNota ? ' ativa' : ''}`, onclick: () => mudarModo('nota') }, 'Nota interna')),
+      el('div', { class: `caixa-texto${modoNota ? ' modo-nota' : ''}` },
+        textarea,
+        el('div', { class: 'compositor-acoes' },
+          el('button', { type: 'button', class: 'btn-icone hov', title: 'Anexo', onclick: () => toast('Envio de anexos: em breve.') }, svg(ICONE.clipe)),
+          el('button', { type: 'button', class: 'btn-suave hov', onclick: () => toast('Respostas rápidas: em breve.') }, svg(ICONE.raio), 'Respostas rápidas'),
+          modoNota ? null : el('span', { class: 'btn-suave', title: 'Canal desta conversa', html: ICONE[c.canal]?.(14, c.canal === 'telegram' ? '#4FA3DA' : '#12B85C') || '' }, canalNome),
+          el('span', { class: 'empurrar' }),
+          el('button', { type: 'button', class: 'btn-primario', id: 'btn-enviar', onclick: enviar }, modoNota ? 'Salvar nota' : 'Enviar', modoNota ? null : svg(ICONE.enviar)))));
+
+    chat.replaceChildren(cabecalho, mensagens, compositor);
+    mensagens.scrollTop = mensagens.scrollHeight;
+  }
+
+  function mudarModo(modo) {
+    const texto = $('#texto-msg')?.value || '';
+    estado.modo = modo;
+    renderChat();
+    const ta = $('#texto-msg');
+    if (ta) { ta.value = texto; ta.focus(); }
+  }
+
+  /* ================================================================
+   * Render: painel do cliente
+   * ============================================================== */
+  function secao(titulo, ...filhos) {
+    return el('div', { class: 'secao' }, el('span', { class: 'rotulo' }, titulo), ...filhos);
+  }
+
+  function blocoPin(c) {
+    const ct = c.contato;
+    const validado = Boolean(ct.pin && ct.pinValidadoEm);
+    const cab = (selo, pendente) => el('div', { class: 'cab' },
+      svg(ICONE.cadeado.replace('currentColor', pendente ? '#4C6355' : '#0A7A42')),
+      el('span', { class: 'rotulo' }, 'PIN do cliente'),
+      el('span', { class: `selo${pendente ? ' pendente' : ''}` }, selo));
+
+    if (!ct.pin) {
+      return el('div', { class: 'bloco-pin pendente' }, cab('Sem PIN', true),
+        el('div', { class: 'linha-pin' },
+          el('span', { class: 'pin-info' }, 'Nenhum PIN gerado para este cliente.'),
+          el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => acaoPin('novo') }, 'Gerar PIN')));
+    }
+    return el('div', { class: `bloco-pin${validado ? '' : ' pendente'}` },
+      cab(validado ? 'Validado' : 'Pendente', !validado),
+      el('div', { class: 'pin-digitos' }, ...ct.pin.split('').map((d) => el('span', { class: 'pin-digito' }, d))),
+      el('div', { class: 'linha-pin' },
+        el('span', { class: 'pin-info' }, validado
+          ? `Conferido às ${horaCurta(ct.pinValidadoEm)} por ${ct.pinValidadoPor || 'equipe'}`
+          : 'Aguardando o cliente confirmar o PIN.'),
+        validado ? null : el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => acaoPin('validar') }, 'Validar PIN'),
+        el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => acaoPin('novo') }, 'Pedir novo PIN')));
+  }
+
+  function renderPainel() {
+    const painel = $('#painel');
+    const c = estado.conversa;
+    if (!c) {
+      painel.replaceChildren(el('div', { class: 'vazio' }, 'Selecione uma conversa para ver os dados do cliente.'));
+      return;
+    }
+    const ct = c.contato;
+    const notas = c.mensagens.filter((m) => m.tipo === 'nota').slice().reverse();
+
+    const textareaNota = el('textarea', { id: 'texto-nota', rows: '2', maxlength: '4000', placeholder: 'Escreva uma nota para a equipe…', 'aria-label': 'Nova nota interna' });
+    const salvarNota = () => enviarMensagem(textareaNota.value, 'nota', textareaNota);
+
+    painel.replaceChildren(
+      el('div', { class: 'painel-topo' },
+        el('span', { class: 'avatar-quadrado' }, iniciais(ct.empresa || ct.nome)),
+        el('div', { class: 'membro-info' },
+          el('span', { class: 'painel-nome' }, ct.empresa || ct.nome),
+          el('span', { class: 'painel-sub' }, ct.cnpj || ct.telefone || '')),
+        el('button', { type: 'button', class: 'link-btn', onclick: () => toast('Abrir conta do cliente: em breve.') }, 'Abrir conta')),
+      el('div', { class: 'rolagem painel-corpo' },
+        blocoPin(c),
+        ct.dados?.length ? secao('Conta do cliente',
+          el('div', {}, ...ct.dados.map(([k, v, cor]) => el('div', { class: 'linha-dado' },
+            el('span', { class: 'k' }, k), el('span', { class: `v${cor ? ` ${cor}` : ''}` }, v))))) : null,
+        c.alerta ? el('div', { class: 'alerta' }, svg(ICONE.alerta),
+          el('span', {}, el('strong', {}, `${c.alerta.titulo} `), c.alerta.texto)) : null,
+        secao('Notas internas',
+          el('div', { class: 'caixa-nota' }, textareaNota,
+            el('div', { class: 'rodape' },
+              el('span', { class: 'dica' }, 'Só a equipe vê.'),
+              el('button', { type: 'button', class: 'btn-escuro', onclick: salvarNota }, 'Salvar nota'))),
+          ...notas.map((n) => el('div', { class: 'nota-item' },
+            el('span', { class: 't' }, n.texto),
+            el('span', { class: 'm' }, `${n.autor?.nomeCurto || 'Equipe'} · ${horaLista(n.criadaEm) === horaCurta(n.criadaEm) ? horaCurta(n.criadaEm) : `${horaLista(n.criadaEm)} ${horaCurta(n.criadaEm)}`}`))),
+          notas.length ? null : el('span', { class: 'dica', style: 'font-size:12px;color:#4C6355' }, 'Nenhuma nota ainda.')),
+        el('div', { class: 'acoes-grid' },
+          el('button', { type: 'button', class: 'btn-primario pequeno', onclick: () => toast('Estorno pelo CRM: em breve.') }, 'Estornar'),
+          el('button', { type: 'button', class: 'btn-branco pequeno hov', onclick: () => toast('Faturas do cliente: em breve.') }, 'Ver faturas'))));
+  }
+
+  /* ================================================================
+   * Eventos globais
+   * ============================================================== */
+  function ligarEventos() {
+    let timer = null;
+    $('#busca').addEventListener('input', (e) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        estado.busca = e.target.value.trim();
+        carregarConversas({ selecionarPrimeira: true }).catch((err) => toast(err.message));
+      }, 250);
+    });
+
+    $('#btn-conectar').addEventListener('click', () => toast('Conexão de canais (WhatsApp/Telegram): em breve.'));
+    $('#btn-filtros').addEventListener('click', () => toast('Filtros avançados: em breve.'));
+
+    document.querySelectorAll('.rail-btn[data-modulo]').forEach((b) => {
+      b.addEventListener('click', () => toast(`Módulo ${b.dataset.modulo}: em breve.`));
+    });
+
+    const menuUsuario = $('#menu-usuario');
+    $('#btn-usuario').addEventListener('click', (e) => {
+      e.stopPropagation();
+      menuUsuario.hidden = !menuUsuario.hidden;
+    });
+    document.addEventListener('click', (e) => {
+      if (!menuUsuario.hidden && !menuUsuario.contains(e.target)) menuUsuario.hidden = true;
+      if (!e.target.closest('.menu-flutuante')) fecharMenus();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { menuUsuario.hidden = true; fecharMenus(); $('#painel').classList.remove('aberto'); }
+    });
+  }
+
+  async function iniciar() {
+    ligarEventos();
+    try {
+      await carregarResumo();
+      await carregarConversas({ selecionarPrimeira: true });
+    } catch (e) {
+      toast(e.message);
+      $('#chat').replaceChildren(el('div', { class: 'chat-vazio' }, el('strong', {}, 'Não foi possível carregar'), el('span', {}, e.message)));
+    }
+    setInterval(atualizarSilencioso, 15000);
+  }
+
+  iniciar();
+})();

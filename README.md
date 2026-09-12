@@ -1,0 +1,110 @@
+# CRM de Atendimento · Bigteck
+
+Sistema de atendimento ao cliente (estilo WhatsApp/Telegram) com **tela de login com senha** e a **tela de atendimento** com conversas, equipes, notas internas e dados do cliente.
+
+## Como rodar no seu computador
+
+### Jeito fácil (sem digitar comandos)
+
+1. Instale o **Node.js** (versão LTS) em <https://nodejs.org>. É um instalador comum: avançar, avançar, concluir.
+2. Na pasta do projeto, dê **dois cliques** em:
+   - **Windows:** `iniciar.bat`
+   - **Mac:** `iniciar.command` (na primeira vez, clique com o botão direito › Abrir)
+3. Uma janela preta vai abrir, instalar o necessário (só na primeira vez) e o navegador abre sozinho em <http://localhost:3100>.
+4. Para parar o sistema, feche essa janela preta.
+
+### Pelo terminal
+
+Abra o terminal na pasta do projeto e rode:
+
+```bash
+npm install
+npm start
+```
+
+Depois abra <http://localhost:3100> no navegador.
+
+**Primeiro acesso**
+
+| Campo  | Valor                  |
+|--------|------------------------|
+| E-mail | `admin@bigteck.com.br` |
+| Senha  | `admin123`             |
+
+Troque essa senha logo depois (veja abaixo). Os usuários de exemplo `marina@bigteck.com.br` e `rafael@bigteck.com.br` usam a mesma senha inicial.
+
+## Criar usuários e trocar senhas
+
+```bash
+# criar um atendente
+npm run usuario -- --email joao@empresa.com.br --senha 123456 --nome "João Silva"
+
+# redefinir a senha de alguém (derruba as sessões abertas dessa pessoa)
+npm run usuario -- --email admin@bigteck.com.br --senha NovaSenhaForte
+
+# tornar administrador / bloquear acesso / listar
+npm run usuario -- --email joao@empresa.com.br --papel admin
+npm run usuario -- --email joao@empresa.com.br --desativar
+npm run usuario -- --listar
+```
+
+## O que já funciona
+
+- Login com e-mail e senha (senhas guardadas com hash, nunca em texto puro).
+- Bloqueio temporário após 8 tentativas erradas seguidas.
+- Sessão por cookie seguro (12 h, ou 30 dias com "Manter conectado").
+- Tela de atendimento com o visual aprovado:
+  - caixas **Todas / Minhas / Sem resposta** e filtro por **equipe**;
+  - lista de conversas com busca por nome, empresa, CNPJ ou protocolo;
+  - chat com histórico, envio de resposta, nota interna e troca de equipe/atendente;
+  - marcar conversa como resolvida ou reabrir;
+  - painel do cliente com PIN, dados da conta, alertas e notas.
+- Dados de exemplo criados automaticamente para testar a tela.
+- Testes automáticos (`npm test`).
+
+## O que ainda é só visual ("em breve")
+
+Botões que mostram um aviso e ainda não fazem nada: **Conectar canal**, **Anexo**, **Respostas rápidas**, **Estornar**, **Ver faturas**, **Abrir conta**, **Nova equipe**, **Adicionar à equipe**, **Filtros** e os outros módulos do menu lateral.
+
+As mensagens hoje ficam só dentro do sistema. A **integração real com WhatsApp e Telegram** é o próximo passo.
+
+## Configurações (opcional)
+
+Copie `.env.example` para `.env` e ajuste:
+
+| Variável        | Para que serve                                            |
+|-----------------|-----------------------------------------------------------|
+| `PORT`          | Porta do servidor (padrão 3100)                           |
+| `ADMIN_EMAIL`   | E-mail do administrador criado no primeiro acesso         |
+| `ADMIN_SENHA`   | Senha inicial do administrador                            |
+| `ADMIN_NOME`    | Nome do administrador                                     |
+| `DADOS_EXEMPLO` | `false` para começar sem conversas de exemplo             |
+| `COOKIE_SEGURO` | `true` quando o sistema estiver publicado com HTTPS       |
+
+O banco de dados fica em `data/crm.sqlite`. Para começar do zero, pare o servidor e apague essa pasta.
+
+## Estrutura do projeto
+
+```
+server.js                 inicia o servidor
+src/app.js                rotas de login, sessão e páginas
+src/rotas-api.js          API de conversas, mensagens, equipes
+src/db.js                 banco de dados (SQLite) e dados de exemplo
+src/senha.js              hash e verificação de senha
+src/sessoes.js            sessões por cookie
+src/limitador.js          bloqueio de tentativas de login
+public/login.html         tela de login
+public/atendimento.html   tela de atendimento
+public/assets/            CSS, JavaScript e ícones
+scripts/criar-usuario.js  gerenciar usuários pelo terminal
+test/                     testes automáticos
+```
+
+## Comandos úteis
+
+| Comando           | O que faz                                                 |
+|-------------------|-----------------------------------------------------------|
+| `npm start`       | Inicia o sistema                                          |
+| `npm run dev`     | Inicia e reinicia sozinho quando um arquivo muda          |
+| `npm test`        | Roda os testes automáticos                                |
+| `npm run usuario` | Cria usuários / troca senhas                              |
