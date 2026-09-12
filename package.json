@@ -16,7 +16,8 @@
     "test": "node --test --disable-warning=ExperimentalWarning \"test/**/*.test.js\""
   },
   "dependencies": {
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "lottie-web": "^5.13.0"
   },
   "devDependencies": {
     "vite": "^7.1.7",

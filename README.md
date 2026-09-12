@@ -75,6 +75,15 @@ npm run convite -- --listar
 
 O comando mostra um link. Envie o link para a pessoa: ela abre, escolhe nome e senha e já entra no sistema com o papel e as equipes definidos no convite.
 
+## Ícones (Iconly)
+
+Os ícones da interface vêm do **Iconly**. Coloque os arquivos exportados na pasta `client/public/icones/`:
+
+- `nome.svg` para a versão estática (usada em toda a tela);
+- `nome.json` (Lottie) para a versão animada, usada no menu lateral e no botão Enviar. A animação toca quando o mouse passa por cima.
+
+A lista completa de nomes esperados está em `client/public/icones/LEIA-ME.md`. Enquanto um arquivo não existir, o sistema usa o ícone padrão desenhado no código, então nada quebra durante a troca. Não é preciso alterar código: basta colocar os arquivos na pasta e recarregar a página.
+
 ## Criar usuários e trocar senhas
 
 ```bash
@@ -150,6 +159,9 @@ client/nova-senha.html    definir nova senha
 client/atendimento.html   tela de atendimento
 client/assets/            CSS, JavaScript e ícones
 client/public/__manus__/  coletor de logs usado pelo Manus
+client/public/icones/     ícones do Iconly (SVG estático e Lottie animado)
+client/public/vendor/     biblioteca que reproduz as animações Lottie
+client/assets/js/icones.js carrega os ícones do Iconly com reserva no código
 scripts/criar-usuario.js  gerenciar usuários pelo terminal
 scripts/criar-convite.js  gerar links de convite
 test/                     testes automáticos

@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const { verificarSenha, HASH_FALSO } = require('./senha');
@@ -27,6 +28,7 @@ function criarApp(db, opcoes = {}) {
   // No Vite/Manus, `servirPagina` é substituída para passar pelo Vite e
   // `semEstaticos` evita servir os arquivos duas vezes.
   const paginasDir = opcoes.paginasDir || path.join(RAIZ, 'client');
+  const publicoDir = opcoes.publicoDir || path.join(RAIZ, 'client', 'public');
   const servirPagina = opcoes.servirPagina || ((req, res, arquivo) => res.sendFile(path.join(paginasDir, arquivo)));
 
   const app = express();
@@ -44,9 +46,22 @@ function criarApp(db, opcoes = {}) {
     next();
   });
 
-  // Arquivos estáticos (CSS, JS, ícones) — públicos
+  // Lista dos ícones do Iconly disponíveis na pasta (o navegador só pede os que existem)
+  app.get('/icones/manifesto', (req, res) => {
+    let arquivos = [];
+    try { arquivos = fs.readdirSync(path.join(publicoDir, 'icones')); } catch { /* pasta ainda não existe */ }
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      svg: arquivos.filter((a) => a.endsWith('.svg')).map((a) => a.slice(0, -4)),
+      json: arquivos.filter((a) => a.endsWith('.json')).map((a) => a.slice(0, -5)),
+    });
+  });
+
+  // Arquivos estáticos (CSS, JS, ícones, bibliotecas) — públicos
   if (!opcoes.semEstaticos) {
     app.use('/assets', express.static(path.join(paginasDir, 'assets'), { maxAge: '1h' }));
+    app.use('/icones', express.static(path.join(publicoDir, 'icones'), { maxAge: '1h' }));
+    app.use('/vendor', express.static(path.join(publicoDir, 'vendor'), { maxAge: '1d' }));
   }
 
   // Identifica o usuário logado pelo cookie de sessão

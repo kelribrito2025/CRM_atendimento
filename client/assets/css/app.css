@@ -310,3 +310,25 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
   .chat { min-height: 480px; }
   .painel.aberto { width: 100%; }
 }
+
+/* ===== Ícones (Iconly com reserva desenhada no código) ===== */
+.ic { display: inline-flex; align-items: center; justify-content: center; width: var(--ic, 18px); height: var(--ic, 18px); flex-shrink: 0; color: inherit; line-height: 0; }
+.ic svg { width: 100%; height: 100%; display: block; }
+.ic-anim { display: block; width: 100%; height: 100%; }
+.ic-anim svg [stroke]:not([stroke="none"]) { stroke: currentColor; }
+.ic-anim svg [fill]:not([fill="none"]) { fill: currentColor; }
+.ic.verde { color: var(--verde-texto); }
+.ic.suave { color: var(--texto-suave); }
+.ic.vermelho { color: var(--vermelho); }
+.ic.branco { color: #fff; }
+.rail-btn .ic { --ic: 18px; }
+.nav-item .ic { color: var(--texto-suave); }
+.nav-item.ativo .ic { color: var(--verde-texto); }
+.nav-item .ic.vermelho { color: var(--vermelho); }
+.busca .ic { color: var(--texto-suave); }
+.nota .ic { color: var(--nota-suave); margin-top: 1px; }
+.alerta .ic { color: var(--vermelho); margin-top: 1px; }
+.entrada .ic { color: var(--texto-suave); }
+.aviso .ic { margin-top: 1px; }
+.aviso.ok .icone .ic { color: #fff; }
+.select-pill .ic.seta { position: absolute; right: 9px; }

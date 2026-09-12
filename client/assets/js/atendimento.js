@@ -1,3 +1,5 @@
+import { icone, montarIcones } from './icones.js';
+
 (() => {
   'use strict';
 
@@ -24,7 +26,7 @@
   const ICONE = {
     whatsapp: (t, cor, e = 2.2) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="${e}"><path d="M21 11.5a8.4 8.4 0 01-9 8.4 8.9 8.9 0 01-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0121 11.5z"></path></svg>`,
     telegram: (t, cor, e = 2.2) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="${e}"><path d="M21 4L3 11l6 2 2 6z"></path><path d="M21 4l-10 9"></path></svg>`,
-    seta: '<svg class="seta" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"></path></svg>',
+    seta: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"></path></svg>',
     mais: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',
     inbox: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4C6355" stroke-width="2"><path d="M4 4h16v16H4z"></path><path d="M4 13h5l2 3h2l2-3h5"></path></svg>',
     pessoa: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4C6355" stroke-width="2"><circle cx="12" cy="8" r="4"></circle><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"></path></svg>',
@@ -315,9 +317,9 @@
   /* ================================================================
    * Render: sidebar (caixas, equipes, membros)
    * ============================================================== */
-  function navItem({ icone, cor, nome, cont, ativo, alerta, onclick }) {
+  function navItem({ icone: ic, cor, nome, cont, ativo, alerta, onclick }) {
     return el('button', { type: 'button', class: `nav-item${ativo ? ' ativo' : ''}`, onclick },
-      cor ? el('span', { class: 'cor-equipe', style: `background:${cor}` }) : svg(icone),
+      cor ? el('span', { class: 'cor-equipe', style: `background:${cor}` }) : ic,
       el('span', { class: 'nome' }, nome),
       el('span', { class: `cont${alerta && !ativo && cont > 0 ? ' alerta' : ''}` }, String(cont)));
   }
@@ -332,13 +334,13 @@
     $('#sidebar').replaceChildren(
       el('span', { class: 'rotulo' }, 'Caixas de entrada'),
       el('div', { class: 'lista-nav' },
-        navItem({ icone: ICONE.inbox, nome: 'Todas', cont: r.caixas.todas, ativo: semEquipe && estado.caixa === 'todas', onclick: () => selecionarCaixa('todas') }),
-        navItem({ icone: ICONE.pessoa, nome: 'Minhas', cont: r.caixas.minhas, ativo: semEquipe && estado.caixa === 'minhas', onclick: () => selecionarCaixa('minhas') }),
-        navItem({ icone: ICONE.relogio, nome: 'Sem resposta', cont: r.caixas.semResposta, alerta: true, ativo: semEquipe && estado.caixa === 'sem_resposta', onclick: () => selecionarCaixa('sem_resposta') })),
+        navItem({ icone: icone('todas', ICONE.inbox), nome: 'Todas', cont: r.caixas.todas, ativo: semEquipe && estado.caixa === 'todas', onclick: () => selecionarCaixa('todas') }),
+        navItem({ icone: icone('minhas', ICONE.pessoa), nome: 'Minhas', cont: r.caixas.minhas, ativo: semEquipe && estado.caixa === 'minhas', onclick: () => selecionarCaixa('minhas') }),
+        navItem({ icone: icone('sem-resposta', ICONE.relogio, { classe: 'vermelho' }), nome: 'Sem resposta', cont: r.caixas.semResposta, alerta: true, ativo: semEquipe && estado.caixa === 'sem_resposta', onclick: () => selecionarCaixa('sem_resposta') })),
       el('span', { class: 'separador' }),
       el('div', { class: 'linha-rotulo' },
         el('span', { class: 'rotulo' }, 'Equipes'),
-        el('button', { type: 'button', class: 'btn-mini hov', title: 'Nova equipe', onclick: () => toast('Cadastro de equipes: em breve.') }, svg(ICONE.mais))),
+        el('button', { type: 'button', class: 'btn-mini hov', title: 'Nova equipe', onclick: () => toast('Cadastro de equipes: em breve.') }, icone('mais', ICONE.mais))),
       el('div', { class: 'lista-nav' },
         ...r.equipes.map((e) => navItem({ cor: e.cor, nome: e.nome, cont: e.abertas, ativo: estado.equipeId === e.id, onclick: () => selecionarEquipe(e.id) }))),
       el('span', { class: 'separador' }),
@@ -350,7 +352,7 @@
             el('span', { class: 'membro-nome' }, m.nomeCurto),
             el('span', { class: `membro-status${m.presenca === 'online' ? ' online' : ''}` }, `${m.presenca} · ${m.ativas} ativa${m.ativas === 1 ? '' : 's'}`)))),
         membros.length ? null : el('div', { class: 'vazio' }, 'Nenhum atendente nesta equipe.')),
-      el('button', { type: 'button', class: 'btn-tracejado hov', onclick: () => toast('Gestão de membros: em breve.') }, svg(ICONE.mais), 'Adicionar à equipe'),
+      el('button', { type: 'button', class: 'btn-tracejado hov', onclick: () => toast('Gestão de membros: em breve.') }, icone('mais', ICONE.mais), 'Adicionar à equipe'),
     );
   }
 
@@ -407,10 +409,10 @@
   /* ================================================================
    * Render: chat
    * ============================================================== */
-  function selectPill({ classe, icone, valor, opcoes, onchange, title }) {
+  function selectPill({ classe, icone: ic, valor, opcoes, onchange, title }) {
     const select = el('select', { title, onchange: (e) => onchange(e.target.value) },
       ...opcoes.map((o) => el('option', { value: o.valor, selected: o.valor === valor ? true : null }, o.nome)));
-    return el('div', { class: `select-pill ${classe}` }, icone, select, svg(ICONE.seta));
+    return el('div', { class: `select-pill ${classe}` }, ic, select, icone('seta-baixo', ICONE.seta, { classe: 'seta' }));
   }
 
   function construirMensagens(c) {
@@ -423,7 +425,7 @@
         ultimoDia = dia;
       }
       if (m.tipo === 'nota') {
-        nos.push(el('div', { class: 'nota' }, svg(ICONE.lapis),
+        nos.push(el('div', { class: 'nota' }, icone('nota', ICONE.lapis),
           el('div', { class: 'nota-corpo' },
             el('span', { class: 'nota-texto' }, el('strong', {}, 'Nota interna'), ' — ', m.texto),
             el('span', { class: 'nota-meta' }, `${m.autor?.nomeCurto || 'Equipe'} · ${horaCurta(m.criadaEm)} · visível só para a equipe`))));
@@ -478,8 +480,8 @@
           el('span', { class: 'chat-nome' }, c.contato.nome),
           el('span', { class: 'chat-sub' }, [c.contato.empresa, `protocolo #${c.protocolo}`, textoAberto(c.criadaEm, c.status)].filter(Boolean).join(' · '))),
         el('span', { class: `pill-canal ${c.canal}`, html: ICONE[c.canal]?.(11, corCanal, 2.6) || '' }, c.contato.telefone ? mascararTelefone(c.contato.telefone) : canalNome),
-        el('button', { type: 'button', class: 'btn-icone btn-info hov', title: 'Dados do cliente', onclick: () => $('#painel').classList.toggle('aberto') }, svg(ICONE.info)),
-        el('button', { type: 'button', class: 'btn-icone hov', title: 'Mais ações', onclick: (e) => { e.stopPropagation(); abrirMenuAcoes(e.currentTarget); } }, svg(ICONE.pontos))),
+        el('button', { type: 'button', class: 'btn-icone btn-info hov', title: 'Dados do cliente', onclick: () => $('#painel').classList.toggle('aberto') }, icone('info', ICONE.info)),
+        el('button', { type: 'button', class: 'btn-icone hov', title: 'Mais ações', onclick: (e) => { e.stopPropagation(); abrirMenuAcoes(e.currentTarget); } }, icone('acoes', ICONE.pontos))),
       el('div', { class: 'chat-atrib' },
         selectPill({
           classe: 'equipe', title: 'Equipe responsável',
@@ -490,7 +492,7 @@
         }),
         selectPill({
           classe: 'atendente', title: 'Atendente responsável',
-          icone: c.atendente ? el('span', { class: 'avatar pp' }, c.atendente.iniciais) : svg(ICONE.pessoa),
+          icone: c.atendente ? el('span', { class: 'avatar pp' }, c.atendente.iniciais) : icone('minhas', ICONE.pessoa),
           valor: c.atendente ? String(c.atendente.id) : '',
           opcoes: [{ valor: '', nome: 'Sem atendente' }, ...r.atendentes.map((a) => ({ valor: String(a.id), nome: a.nomeCurto }))],
           onchange: (v) => atualizarConversa({ atendenteId: v || null }),
@@ -512,11 +514,11 @@
       el('div', { class: `caixa-texto${modoNota ? ' modo-nota' : ''}` },
         textarea,
         el('div', { class: 'compositor-acoes' },
-          el('button', { type: 'button', class: 'btn-icone hov', title: 'Anexo', onclick: () => toast('Envio de anexos: em breve.') }, svg(ICONE.clipe)),
-          el('button', { type: 'button', class: 'btn-suave hov', onclick: () => toast('Respostas rápidas: em breve.') }, svg(ICONE.raio), 'Respostas rápidas'),
+          el('button', { type: 'button', class: 'btn-icone hov', title: 'Anexo', onclick: () => toast('Envio de anexos: em breve.') }, icone('anexo', ICONE.clipe)),
+          el('button', { type: 'button', class: 'btn-suave hov', onclick: () => toast('Respostas rápidas: em breve.') }, icone('rapidas', ICONE.raio), 'Respostas rápidas'),
           modoNota ? null : el('span', { class: 'btn-suave', title: 'Canal desta conversa', html: ICONE[c.canal]?.(14, c.canal === 'telegram' ? '#4FA3DA' : '#12B85C') || '' }, canalNome),
           el('span', { class: 'empurrar' }),
-          el('button', { type: 'button', class: 'btn-primario', id: 'btn-enviar', onclick: enviar }, modoNota ? 'Salvar nota' : 'Enviar', modoNota ? null : svg(ICONE.enviar)))));
+          el('button', { type: 'button', class: 'btn-primario', id: 'btn-enviar', onclick: enviar }, modoNota ? 'Salvar nota' : 'Enviar', modoNota ? null : icone('enviar', ICONE.enviar, { animado: true, classe: 'branco' })))));
 
     chat.replaceChildren(cabecalho, mensagens, compositor);
     mensagens.scrollTop = mensagens.scrollHeight;
@@ -541,7 +543,7 @@
     const ct = c.contato;
     const validado = Boolean(ct.pin && ct.pinValidadoEm);
     const cab = (selo, pendente) => el('div', { class: 'cab' },
-      svg(ICONE.cadeado.replace('currentColor', pendente ? '#4C6355' : '#0A7A42')),
+      icone('pin', ICONE.cadeado, { classe: pendente ? 'suave' : 'verde' }),
       el('span', { class: 'rotulo' }, 'PIN do cliente'),
       el('span', { class: `selo${pendente ? ' pendente' : ''}` }, selo));
 
@@ -587,7 +589,7 @@
         ct.dados?.length ? secao('Conta do cliente',
           el('div', {}, ...ct.dados.map(([k, v, cor]) => el('div', { class: 'linha-dado' },
             el('span', { class: 'k' }, k), el('span', { class: `v${cor ? ` ${cor}` : ''}` }, v))))) : null,
-        c.alerta ? el('div', { class: 'alerta' }, svg(ICONE.alerta),
+        c.alerta ? el('div', { class: 'alerta' }, icone('alerta', ICONE.alerta),
           el('span', {}, el('strong', {}, `${c.alerta.titulo} `), c.alerta.texto)) : null,
         secao('Notas internas',
           el('div', { class: 'caixa-nota' }, textareaNota,
@@ -638,6 +640,7 @@
   }
 
   async function iniciar() {
+    montarIcones();
     ligarEventos();
     try {
       await carregarResumo();

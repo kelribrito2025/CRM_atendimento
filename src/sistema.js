@@ -36,6 +36,13 @@ function pastaPaginas() {
   return fs.existsSync(path.join(compilada, 'login.html')) ? compilada : path.join(RAIZ, 'client');
 }
 
+// Arquivos públicos (ícones do Iconly, bibliotecas): na versão compilada ficam
+// na raiz de dist/public; no modo simples ficam em client/public.
+function pastaPublica() {
+  const paginas = pastaPaginas();
+  return paginas.endsWith('client') ? path.join(paginas, 'public') : paginas;
+}
+
 function montarSistema(extras = {}) {
   const config = lerConfig();
   const db = abrirBanco(config.caminhoBanco);
@@ -53,6 +60,7 @@ function montarSistema(extras = {}) {
     baseUrl: config.baseUrl,
     enviador,
     paginasDir: pastaPaginas(),
+    publicoDir: pastaPublica(),
     ...extras,
   });
 
@@ -80,4 +88,4 @@ function mostrarBoasVindas({ config, resultado }, endereco) {
   console.log('');
 }
 
-module.exports = { RAIZ, lerConfig, pastaPaginas, montarSistema, mostrarBoasVindas };
+module.exports = { RAIZ, lerConfig, pastaPaginas, pastaPublica, montarSistema, mostrarBoasVindas };

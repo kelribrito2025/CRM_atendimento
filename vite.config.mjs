@@ -21,7 +21,8 @@ function pluginCrm() {
     configureServer(server) {
       const { montarSistema, mostrarBoasVindas } = require('./src/sistema.js');
       const sistema = montarSistema({
-        semEstaticos: true, // o Vite serve /assets no modo dev
+        semEstaticos: true, // o Vite serve /assets, /icones e /vendor no modo dev
+        publicoDir: path.resolve(CLIENT, 'public'),
         servirPagina: async (req, res, arquivo) => {
           try {
             const bruto = fs.readFileSync(path.join(CLIENT, arquivo), 'utf8');

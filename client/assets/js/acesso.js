@@ -1,3 +1,5 @@
+import { montarIcones } from './icones.js';
+
 (() => {
   'use strict';
 
@@ -375,6 +377,7 @@
     },
   };
 
+  montarIcones();
   ligarOlhos();
   if (paginas[pagina]) paginas[pagina]();
 })();
