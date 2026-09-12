@@ -1,0 +1,20 @@
+{
+  "build_command": "pnpm run build",
+  "capabilities": [
+    "server",
+    "db",
+    "user"
+  ],
+  "dev_command": "pnpm run dev",
+  "env_vars": {
+    "MANUS_WEBDEV_PROJECT_ID": "QFoVVE5Fcig3Q3qVnTTwXY"
+  },
+  "experiments": [
+    "no_db_push"
+  ],
+  "name": "crm-atendimento-login",
+  "path": "/home/ubuntu/crm-atendimento-login",
+  "port": 3000,
+  "template_id": "web-db-user",
+  "test_command": "pnpm test"
+}
