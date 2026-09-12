@@ -143,6 +143,24 @@
   }
 }
 
+.support-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #c9d7ce transparent;
+}
+
+.support-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.support-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.support-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #c9d7ce;
+}
+
 @layer components {
   .container {
     width: 100%;

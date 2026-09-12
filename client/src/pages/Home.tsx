@@ -14,6 +14,7 @@ import {
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useLocation } from "wouter";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -71,6 +72,7 @@ function BrandMark({ inverted = false }: { inverted?: boolean }) {
 }
 
 function LoginForm() {
+  const [, setLocation] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -94,7 +96,8 @@ function LoginForm() {
     setIsLoading(true);
     window.setTimeout(() => {
       setIsLoading(false);
-      toast.success("Acesso demonstrativo validado. A autenticação real será conectada na próxima etapa.");
+      toast.success("Acesso demonstrativo validado.");
+      setLocation("/atendimento");
     }, 850);
   };
 
