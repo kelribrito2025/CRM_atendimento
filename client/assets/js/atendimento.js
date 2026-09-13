@@ -36,7 +36,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     // Marcas do WhatsApp e do Telegram desenhadas cheias, como os logos de verdade.
     whatsapp: (t, cor) => `<svg width="${t}" height="${t}" viewBox="0 0 32 32" fill="${cor}" aria-hidden="true"><path d="M16.03 3.2c-7.02 0-12.72 5.7-12.72 12.72 0 2.24.59 4.43 1.71 6.36L3.2 28.8l6.69-1.75a12.67 12.67 0 006.14 1.56h.01c7.01 0 12.72-5.7 12.72-12.72 0-3.4-1.33-6.6-3.73-9a12.63 12.63 0 00-9-3.73zm0 23.26h-.01a10.56 10.56 0 01-5.38-1.47l-.39-.23-4 1.05 1.07-3.9-.25-.4a10.53 10.53 0 01-1.62-5.62c0-5.83 4.75-10.57 10.58-10.57 2.82 0 5.48 1.1 7.47 3.1a10.5 10.5 0 013.1 7.48c0 5.83-4.75 10.56-10.57 10.56zm5.8-7.92c-.32-.16-1.88-.93-2.17-1.03-.29-.11-.5-.16-.71.16-.21.31-.82 1.02-1 1.23-.19.21-.37.24-.68.08-.32-.16-1.34-.5-2.56-1.58-.94-.84-1.58-1.88-1.77-2.2-.18-.31-.02-.48.14-.64.15-.14.32-.37.48-.56.16-.19.21-.32.32-.53.1-.21.05-.4-.03-.56-.08-.16-.71-1.72-.98-2.35-.25-.62-.51-.53-.7-.54l-.6-.01c-.21 0-.55.08-.83.4-.29.31-1.09 1.07-1.09 2.6s1.12 3.02 1.27 3.23c.16.21 2.2 3.36 5.33 4.71.74.32 1.32.51 1.78.66.75.24 1.43.2 1.97.12.6-.09 1.85-.76 2.11-1.49.26-.73.26-1.35.18-1.48-.08-.13-.29-.21-.6-.37z"></path></svg>`,
     telegram: (t, cor) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="${cor}" aria-hidden="true"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"></path></svg>`,
-    widget: (t, cor, e = 2.2) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="${e}" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M3 8h18"></path><path d="M9 21h6"></path><path d="M12 17v4"></path></svg>`,
+    widget: (t, cor) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="${cor}" aria-hidden="true"><path d="M12 3.4c-5.1 0-9.25 3.42-9.25 7.65 0 2.3 1.23 4.37 3.18 5.77v3.24c0 .5.55.8.97.53l3.2-2.08c.62.1 1.26.16 1.9.16 5.1 0 9.25-3.43 9.25-7.62S17.1 3.4 12 3.4z"></path></svg>`,
     seta: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"></path></svg>',
     mais: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',
     inbox: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4C6355" stroke-width="2"><path d="M4 4h16v16H4z"></path><path d="M4 13h5l2 3h2l2-3h5"></path></svg>',
@@ -717,11 +717,15 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   /* ================================================================
    * Render: sidebar (caixas, equipes, membros)
    * ============================================================== */
-  function navItem({ icone: ic, cor, nome, cont, ativo, alerta, onclick }) {
+  function navItem({ icone: ic, cor, nome, cont, ativo, alerta, sempreVerde, onclick }) {
+    const classes = ['cont'];
+    if (alerta && !ativo && cont > 0) classes.push('urgente');
+    // Caixas por canal: o selo verde fica aparecendo mesmo sem estar selecionada.
+    if (sempreVerde && !ativo && cont > 0) classes.push('verde');
     return el('button', { type: 'button', class: `nav-item${ativo ? ' ativo' : ''}`, onclick },
       cor ? el('span', { class: 'cor-equipe', style: `background:${cor}` }) : ic,
       el('span', { class: 'nome' }, nome),
-      el('span', { class: `cont${alerta && !ativo && cont > 0 ? ' urgente' : ''}` }, String(cont)));
+      el('span', { class: classes.join(' ') }, String(cont)));
   }
 
   function renderSidebar() {
@@ -749,6 +753,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
           icone: el('span', { class: 'selo-canal', style: `background:${COR_CANAL[canal]}`, html: ICONE[canal]?.(11, '#FFFFFF') || '' }),
           nome: NOME_CANAL[canal],
           cont: r.porCanal?.[canal] ?? 0,
+          sempreVerde: true,
           ativo: estado.canal === canal,
           onclick: () => selecionarCanal(canal),
         }))),

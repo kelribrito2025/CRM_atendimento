@@ -142,6 +142,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .nav-item .cont { font-size: 11px; font-weight: 700; color: var(--texto-suave); }
 .nav-item.ativo .cont { background: var(--verde); color: #fff; padding: 2px 7px; border-radius: 6px; }
 .nav-item .cont.urgente { background: var(--vermelho-claro); color: var(--vermelho); padding: 2px 7px; border-radius: 6px; }
+.nav-item .cont.verde { background: var(--verde); color: #fff; padding: 2px 7px; border-radius: 6px; }
 .cor-equipe { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
 .separador { height: 1px; background: var(--borda); margin: 2px 4px; flex-shrink: 0; }
 .linha-rotulo { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
@@ -204,7 +205,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .conversa-encerrar:hover { background: var(--verde); border-color: var(--verde); color: #fff; }
 .conversa.ativa { background-color: var(--verde-fundo); border-color: var(--verde); }
 .avatar-wrap { position: relative; flex-shrink: 0; align-self: flex-start; }
-.selo-canal { width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.selo-canal { width: 18px; height: 18px; border-radius: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .canal-badge { position: absolute; right: -3px; bottom: -3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; }
 .conversa-corpo { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 3px; }
 .conversa-linha { display: flex; align-items: baseline; gap: 8px; }
