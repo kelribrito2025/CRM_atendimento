@@ -11,12 +11,15 @@ const { criarEnviador } = require('./email');
 const { criarRotasApi } = require('./rotas-api');
 const canais = require('./canais');
 const { nomeDoCabecalho } = require('./util');
+const { criarAvisos } = require('./eventos');
 
 const RAIZ = path.join(__dirname, '..');
 const COOKIE_VERIFICACAO = 'crm_verificacao';
 const EMAIL_VALIDO = /^\S+@\S+\.\S+$/;
 
 function criarApp(db, opcoes = {}) {
+  // Quem avisa as telas abertas que chegou mensagem (ver src/eventos.js).
+  const avisos = opcoes.avisos || criarAvisos();
   const cookieSeguro = Boolean(opcoes.cookieSeguro);
   const doisFatores = Boolean(opcoes.doisFatores);
   const enviador = opcoes.enviador || criarEnviador();
@@ -323,6 +326,9 @@ function criarApp(db, opcoes = {}) {
   const widget = opcoes.widget || null;
 
   if (widget) {
+    // Garante que o chat do site avisa e é avisado, mesmo que quem montou o
+    // sistema não tenha passado o avisador para ele.
+    widget.usarAvisos?.(avisos);
     const limitadorWidget = new LimitadorTentativas({ maximo: 40, janelaMs: 5 * 60 * 1000 });
 
     // O arquivo que o site do cliente inclui numa linha.
@@ -404,6 +410,28 @@ function criarApp(db, opcoes = {}) {
       }
     });
 
+    // Fluxo aberto com o chat do cliente: o servidor avisa na hora que o
+    // atendente respondeu. Só avisa desta conversa — o aviso é filtrado pelo
+    // cliente da sessão, e nunca leva o conteúdo da mensagem junto.
+    app.get('/widget/eventos', comSessaoWidget, (req, res) => {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders?.();
+      res.write('retry: 3000\n\n');
+
+      const meuContato = Number(req.sessaoWidget.contato_id);
+      const parar = widget.assinarAvisos?.((evento) => {
+        // Nota interna e mensagem do próprio cliente não interessam ao chat.
+        if (evento.origem !== 'atendente' || Number(evento.contatoId) !== meuContato) return;
+        try { res.write('data: {"novidade":1}\n\n'); } catch { /* conexão caiu */ }
+      });
+      const batida = setInterval(() => { try { res.write(': batida\n\n'); } catch { /* idem */ } }, 25_000);
+      const encerrar = () => { clearInterval(batida); parar?.(); };
+      req.on('close', encerrar);
+      res.on('close', encerrar);
+    });
+
     // O arquivo volta para o cliente pelo nosso servidor: o endereço do S3 nunca
     // chega ao navegador, e só quem tem a chave daquela conversa consegue abrir.
     app.get('/widget/midia/:id', comSessaoWidget, async (req, res) => {
@@ -433,6 +461,10 @@ function criarApp(db, opcoes = {}) {
     try {
       await canais.registrarEvento(db, canal.id, tipo, corpo);
       resultado = await canais.processarEvento(db, canal, corpo, { arquivos: opcoes.arquivos || null });
+      // Mensagem nova do cliente: a tela do atendente atualiza na hora.
+      if (resultado?.resultado === 'mensagem' && resultado.conversaId) {
+        avisos.avisar({ origem: 'canal', conversaId: resultado.conversaId, contatoId: resultado.contatoId ?? null });
+      }
     } catch (erro) {
       console.error('Erro ao processar webhook do WhatsApp:', erro);
       resultado = { resultado: 'erro', motivo: erro.message };
@@ -444,7 +476,7 @@ function criarApp(db, opcoes = {}) {
 
   app.get('/', exigirLogin, (req, res) => enviarPagina(req, res, 'atendimento.html'));
 
-  app.use('/api', exigirLogin, criarRotasApi(db, { uazapi: opcoes.uazapi || null, telegram: opcoes.telegram || null, saldo: opcoes.saldo || null, arquivos: opcoes.arquivos || null, urlBase, enviador, abrirConta: opcoes.abrirConta || null }));
+  app.use('/api', exigirLogin, criarRotasApi(db, { uazapi: opcoes.uazapi || null, telegram: opcoes.telegram || null, saldo: opcoes.saldo || null, arquivos: opcoes.arquivos || null, urlBase, enviador, abrirConta: opcoes.abrirConta || null, avisos }));
 
   app.use((req, res) => {
     if (req.originalUrl.startsWith('/api/') || req.originalUrl.startsWith('/acesso/') || req.originalUrl.startsWith('/webhook/')) {

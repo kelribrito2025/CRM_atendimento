@@ -2474,6 +2474,27 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       $('#chat').replaceChildren(el('div', { class: 'chat-vazio' }, el('strong', {}, 'Não foi possível carregar'), el('span', {}, e.message)));
     }
     setInterval(atualizarSilencioso, 8000);
+    ouvirAvisos();
+    // Voltou para a aba: mostra o que chegou enquanto ela estava escondida.
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) atualizarSilencioso(); });
+  }
+
+  // Fluxo aberto com o servidor: a mensagem do cliente aparece na hora, sem
+  // esperar os 8 segundos. O aviso não traz conteúdo — ele só diz "olha de
+  // novo", e a busca é a de sempre. Se este caminho cair, o navegador reconecta
+  // sozinho e a checagem de 8 em 8 segundos continua valendo como rede de
+  // segurança.
+  function ouvirAvisos() {
+    if (!window.EventSource) return;
+    let pendente = null;
+    const fluxo = new EventSource('/api/eventos');
+    fluxo.onmessage = () => {
+      // Várias mensagens seguidas viram uma única atualização.
+      clearTimeout(pendente);
+      pendente = setTimeout(atualizarSilencioso, 120);
+    };
+    // O EventSource reconecta sozinho; só registra para não passar em silêncio.
+    fluxo.onerror = () => { /* reconecta sozinho */ };
   }
 
   iniciar();

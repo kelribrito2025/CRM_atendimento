@@ -5,7 +5,7 @@
 const $ = (s) => document.querySelector(s);
 const CHAVE_TOKEN = 'chat_atendimento_token';
 
-const estado = { token: null, ultimaId: 0, sondagem: null, enviando: false, naoLidas: 0 };
+const estado = { token: null, ultimaId: 0, sondagem: null, enviando: false, naoLidas: 0, ouvindo: null };
 
 function guardarToken(token) {
   estado.token = token;
@@ -167,11 +167,51 @@ async function buscarMensagens(primeira = false) {
 function iniciarSondagem() {
   pararSondagem();
   estado.sondagem = setInterval(() => { if (!document.hidden) buscarMensagens(); }, 5000);
+  ouvirAvisos();
 }
 
 function pararSondagem() {
   if (estado.sondagem) clearInterval(estado.sondagem);
   estado.sondagem = null;
+  estado.ouvindo?.abort();
+  estado.ouvindo = null;
+}
+
+// Fluxo aberto com o servidor: a resposta do atendente aparece na hora, sem
+// esperar os 5 segundos. Se a conexão cair (rede, servidor reiniciando), volta a
+// tentar sozinho — e a pergunta de 5 em 5 segundos continua valendo como rede de
+// segurança, então nada se perde se este caminho falhar.
+async function ouvirAvisos() {
+  if (estado.ouvindo) return;
+  const parada = new AbortController();
+  estado.ouvindo = parada;
+  while (!parada.signal.aborted && estado.token) {
+    try {
+      const resposta = await fetch('/widget/eventos', {
+        headers: { 'x-widget-token': estado.token },
+        signal: parada.signal,
+      });
+      // Chave vencida: não adianta insistir de 3 em 3 segundos.
+      if (resposta.status === 401) return;
+      if (!resposta.ok || !resposta.body) throw new Error('sem fluxo');
+      const leitor = resposta.body.getReader();
+      const decodificador = new TextDecoder();
+      let sobra = '';
+      for (;;) {
+        const { value, done } = await leitor.read();
+        if (done) break;
+        sobra += decodificador.decode(value, { stream: true });
+        const blocos = sobra.split('\n\n');
+        sobra = blocos.pop() || '';
+        // Qualquer aviso quer dizer "olha de novo": o conteúdo vem pelo caminho normal.
+        if (blocos.some((b) => b.startsWith('data:'))) buscarMensagens();
+      }
+    } catch {
+      /* conexão caiu: espera um pouco e tenta de novo */
+    }
+    if (parada.signal.aborted) return;
+    await new Promise((pronto) => setTimeout(pronto, 3000));
+  }
 }
 
 async function enviar() {

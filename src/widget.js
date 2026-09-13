@@ -41,7 +41,10 @@ function limpar(valor, tamanho = 191) {
   return String(valor ?? '').trim().slice(0, tamanho);
 }
 
-function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null } = {}) {
+function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null, avisos = null } = {}) {
+  // Quem avisa o chat aberto que chegou resposta. Pode vir montado aqui ou ser
+  // ligado pelo app depois — assim ninguém monta o sistema sem ele por engano.
+  let canal = avisos;
   // Encontra (ou cria) o cliente e a conversa dele, e devolve uma chave de acesso.
   async function abrirSessao({ id, nome, email, empresa, pin }) {
     const externo = limpar(id, 120);
@@ -160,6 +163,7 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null 
       .run(agora, conversaId);
 
     const id = Number(info.lastInsertRowid);
+    canal?.avisar({ origem: 'cliente', conversaId, contatoId: Number(sessao.contato_id) });
     return {
       id, de: 'voce', texto, criadaEm: agora, autor: null,
       midia: { tipo, nome, mime, url: `/widget/midia/${id}` },
@@ -183,6 +187,7 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null 
       .run(conversaId, 'cliente', conteudo, agora);
     await db.prepare("UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + 1, status = 'aberta' WHERE id = ?")
       .run(agora, conversaId);
+    canal?.avisar({ origem: 'cliente', conversaId, contatoId: Number(sessao.contato_id) });
     return { id: Number(info.lastInsertRowid), de: 'voce', texto: conteudo, criadaEm: agora, autor: null };
   }
 
@@ -199,6 +204,8 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null 
     enviarMensagem,
     enviarArquivo,
     arquivoDaSessao,
+    usarAvisos: (novo) => { canal = canal || novo; },
+    assinarAvisos: (ouvinte) => canal?.assinar(ouvinte),
     anexosAtivos: Boolean(arquivos?.configurado),
     limparSessoesExpiradas,
   };

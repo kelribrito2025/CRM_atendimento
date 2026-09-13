@@ -357,7 +357,7 @@ async function atualizarFotoTelegram(db, telegram, canal, chatid) {
 }
 
 // Começa a receber as mensagens de um bot do Telegram e guarda tudo no banco.
-async function ligarTelegram(db, telegram, canal, arquivos = null) {
+async function ligarTelegram(db, telegram, canal, arquivos = null, avisos = null) {
   if (!telegram?.sondagem) return false;
   telegram.sondagem.iniciar(canal, {
     aoReceber: async (update) => {
@@ -367,6 +367,10 @@ async function ligarTelegram(db, telegram, canal, arquivos = null) {
       if (r.resultado === 'mensagem' && chatid) await atualizarFotoTelegram(db, telegram, canal, chatid);
       if (r.resultado === 'mensagem' && r.midia && r.mensagemId) {
         await guardarArquivoNoS3(db, { telegram, arquivos }, canal, r.mensagemId, r.midia);
+      }
+      // Avisa a tela do atendente na hora, sem esperar a próxima checagem.
+      if (r.resultado === 'mensagem' && r.conversaId) {
+        avisos?.avisar({ origem: 'canal', conversaId: r.conversaId, contatoId: r.contatoId ?? null });
       }
       return r;
     },
@@ -383,10 +387,10 @@ async function ligarTelegram(db, telegram, canal, arquivos = null) {
 }
 
 // Ao iniciar o sistema: religa todos os bots do Telegram que estavam conectados.
-async function ligarTelegramTodos(db, telegram, arquivos = null) {
+async function ligarTelegramTodos(db, telegram, arquivos = null, avisos = null) {
   const lista = await db.prepare("SELECT * FROM canais WHERE tipo = 'telegram' AND status = 'connected'").all();
   let n = 0;
-  for (const canal of lista) if (await ligarTelegram(db, telegram, canal, arquivos)) n += 1;
+  for (const canal of lista) if (await ligarTelegram(db, telegram, canal, arquivos, avisos)) n += 1;
   return n;
 }
 

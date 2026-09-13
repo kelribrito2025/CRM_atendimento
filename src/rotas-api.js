@@ -84,6 +84,7 @@ function criarRotasApi(db, opcoes = {}) {
   const urlBase = typeof opcoes.urlBase === 'function' ? opcoes.urlBase : () => '';
   const enviador = opcoes.enviador || { modo: 'silencioso', async enviar() {} };
   const abrirConta = opcoes.abrirConta || null;
+  const avisos = opcoes.avisos || null;
   const r = express.Router();
 
   r.use((req, res, next) => {
@@ -533,6 +534,8 @@ function criarRotasApi(db, opcoes = {}) {
     }
 
     const mensagem = formatarMensagem(await sql.mensagemPorId.get(Number(info.lastInsertRowid)));
+    // A nota interna não vai para o cliente: o chat do site ignora esse aviso.
+    avisos?.avisar({ origem: tipo === 'nota' ? 'nota' : 'atendente', conversaId: c.id, contatoId: c.contato.id });
     res.status(201).json({ mensagem, conversa: await buscarConversa(c.id), erroEnvio });
   });
 
@@ -604,6 +607,7 @@ function criarRotasApi(db, opcoes = {}) {
     }
 
     const mensagem = formatarMensagem(await sql.mensagemPorId.get(mensagemId));
+    avisos?.avisar({ origem: 'atendente', conversaId: c.id, contatoId: c.contato.id });
     res.status(201).json({ mensagem, conversa: await buscarConversa(c.id), erroEnvio });
   });
 
@@ -722,6 +726,28 @@ function criarRotasApi(db, opcoes = {}) {
 
   const EXTENSAO_MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
     mp4: 'video/mp4', mov: 'video/quicktime', ogg: 'audio/ogg', oga: 'audio/ogg', mp3: 'audio/mpeg', m4a: 'audio/mp4', pdf: 'application/pdf' };
+
+  // Fluxo aberto com a tela do atendente: o servidor avisa na hora que chegou
+  // mensagem, em vez de a tela ficar perguntando. O aviso não leva conteúdo —
+  // a tela busca pelo caminho de sempre, que confere permissão.
+  r.get('/eventos', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Accel-Buffering', 'no'); // proxy não pode segurar o fluxo
+    res.flushHeaders?.();
+    res.write('retry: 3000\n\n');
+
+    const parar = avisos?.assinar((evento) => {
+      try {
+        res.write(`data: ${JSON.stringify({ origem: evento.origem, conversaId: evento.conversaId })}\n\n`);
+      } catch { /* conexão caiu; o fechamento abaixo limpa */ }
+    });
+    // Batida de tempos em tempos para o proxy não considerar a conexão parada.
+    const batida = setInterval(() => { try { res.write(': batida\n\n'); } catch { /* idem */ } }, 25_000);
+    const encerrar = () => { clearInterval(batida); parar?.(); };
+    req.on('close', encerrar);
+    res.on('close', encerrar);
+  });
 
   // O navegador nunca recebe o token do bot: o CRM baixa o arquivo e repassa.
   r.get('/midia/:id', async (req, res) => {

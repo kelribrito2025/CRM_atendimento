@@ -16,6 +16,7 @@ const { criarTelegram } = require('./telegram');
 const { criarSaldo, URL_PADRAO: SALDO_URL_PADRAO } = require('./saldo');
 const { criarS3 } = require('./s3');
 const { criarWidget } = require('./widget');
+const { criarAvisos } = require('./eventos');
 const { criarAbrirConta, URL_PADRAO: ABRIR_CONTA_PADRAO } = require('./abrir-conta');
 const canais = require('./canais');
 
@@ -83,7 +84,10 @@ async function montarSistema(extras = {}) {
     accessKeyId: config.s3Chave,
     secretAccessKey: config.s3Segredo,
   });
-  const widget = criarWidget(db, { segredo: config.widgetSegredo, equipePadraoId: config.widgetEquipeId, arquivos });
+  // Um avisador só para o sistema inteiro: é ele que faz a mensagem aparecer na
+  // hora, tanto no chat do cliente quanto na tela do atendente.
+  const avisos = criarAvisos();
+  const widget = criarWidget(db, { segredo: config.widgetSegredo, equipePadraoId: config.widgetEquipeId, arquivos, avisos });
   const abrirConta = criarAbrirConta({ url: config.abrirContaUrl, token: config.abrirContaToken });
   const app = criarApp(db, {
     uazapi,
@@ -92,6 +96,7 @@ async function montarSistema(extras = {}) {
     arquivos,
     widget,
     abrirConta,
+    avisos,
     cookieSeguro: config.cookieSeguro,
     trustProxy: config.trustProxy,
     doisFatores: config.doisFatores,
@@ -109,7 +114,7 @@ async function montarSistema(extras = {}) {
   }, 60 * 60 * 1000).unref();
 
   // Religa os bots do Telegram que já estavam conectados.
-  resultado.botsTelegram = await canais.ligarTelegramTodos(db, telegram, arquivos);
+  resultado.botsTelegram = await canais.ligarTelegramTodos(db, telegram, arquivos, avisos);
 
   return { app, db, config, resultado, enviador, uazapi, telegram, saldo, arquivos, widget };
 }
