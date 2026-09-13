@@ -195,7 +195,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .data-sep { align-self: center; font-size: 11px; font-weight: 700; color: var(--texto-suave); background: var(--cinza); padding: 5px 12px; border-radius: 999px; }
 .msg { display: flex; flex-direction: column; min-width: 0; gap: 5px; max-width: 78%; }
 .msg.saida { align-self: flex-end; align-items: flex-end; }
-.balao { background: #fff; border: 1px solid var(--borda); border-radius: 16px 16px 16px 6px; padding: 12px 14px; font-size: 13.5px; line-height: 1.55; color: var(--texto); white-space: pre-wrap; word-break: break-word; }
+.balao { background: var(--verde-texto); border: 1px solid var(--verde-texto); border-radius: 16px 16px 16px 6px; padding: 12px 14px; font-size: 13.5px; line-height: 1.55; color: #fff; white-space: pre-wrap; word-break: break-word; }
 .msg.saida .balao { background: var(--rail); color: #fff; border: 0; border-radius: 16px 16px 6px 16px; }
 .msg-meta { font-size: 11px; color: var(--texto-suave); padding: 0 4px; }
 .nota { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--nota-fundo); border: 1px dashed var(--nota-borda); }
