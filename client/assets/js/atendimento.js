@@ -923,14 +923,14 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     if (estado.caixa === 'minhas') return { titulo: 'Caixa vazia', texto: 'Nenhuma conversa atribuída a você no momento.', ...verTodas };
     if (estado.caixa === 'sem_resposta') return { titulo: 'Tudo respondido', texto: 'Nenhum cliente aguardando resposta.', ...verTodas };
     if (estado.caixa === 'encerradas') return { titulo: 'Nada encerrado', texto: 'Nenhuma conversa foi encerrada nos últimos dias.', ...verTodas };
-    return { titulo: 'Caixa vazia', texto: 'Nenhuma conversa aberta. Assim que um cliente escrever, ela aparece aqui.', acao: null };
+    return { titulo: 'Nenhuma conversa aberta', texto: '', acao: null };
   }
 
   function listaVazia() {
     const d = descricaoVazia();
     return el('div', { class: 'lista-vazia' },
       el('span', { class: 'lista-vazia-icone' }, icone('buscar', ICONE.busca)),
-      el('div', { class: 'lista-vazia-texto' }, el('strong', {}, d.titulo), el('span', {}, d.texto)),
+      el('div', { class: 'lista-vazia-texto' }, el('strong', {}, d.titulo), d.texto ? el('span', {}, d.texto) : null),
       d.acao ? el('button', { type: 'button', class: 'btn-branco hov', onclick: d.aoClicar }, d.acao) : null);
   }
 
