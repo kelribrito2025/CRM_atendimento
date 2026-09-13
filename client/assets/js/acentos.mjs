@@ -33,6 +33,7 @@ const REGRAS = [
 // Palavras do dia a dia do atendimento que não seguem regra.
 const PALAVRAS = new Map(Object.entries({
   nao: 'não', voce: 'você', voces: 'vocês', entao: 'então', tambem: 'também',
+  ola: 'olá', agua: 'água', aguas: 'águas', cafe: 'café', cafes: 'cafés',
   ate: 'até', apos: 'após', atras: 'atrás', atraves: 'através', alem: 'além',
   so: 'só', tres: 'três', mes: 'mês', pes: 'pés', ja: 'já', la: 'lá', ca: 'cá',
   agencia: 'agência', numero: 'número', numeros: 'números', codigo: 'código', codigos: 'códigos',
