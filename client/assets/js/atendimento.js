@@ -830,32 +830,52 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   // Segurar o dedo (ou o botão do mouse) no card vai preenchendo ele da esquerda
   // para a direita; quando enche, a conversa é encerrada.
   const TEMPO_SEGURAR_MS = 900;
+  const DISTANCIA_MAXIMA = 10; // arrastar o dedo/ponteiro cancela o gesto
+
+  // Só existe um gesto por vez, guardado aqui fora. Assim, se a lista for
+  // redesenhada no meio (o que acontece a cada clique e na atualização
+  // automática), o relógio do card antigo é cancelado junto e a conversa não
+  // acaba sendo encerrada sozinha depois.
+  const segurando = { relogio: null, card: null, x: 0, y: 0 };
+
+  function cancelarPressao() {
+    clearTimeout(segurando.relogio);
+    segurando.relogio = null;
+    segurando.card?.classList.remove('segurando', 'cheio');
+    segurando.card = null;
+  }
+
+  window.addEventListener('pointerup', cancelarPressao, true);
+  window.addEventListener('pointercancel', cancelarPressao, true);
+  window.addEventListener('blur', cancelarPressao);
+  window.addEventListener('pointermove', (e) => {
+    if (!segurando.card) return;
+    if (Math.hypot(e.clientX - segurando.x, e.clientY - segurando.y) > DISTANCIA_MAXIMA) cancelarPressao();
+  }, true);
 
   function segurarParaEncerrar(card, c, pressao) {
-    let relogio = null;
-
-    const soltar = () => {
-      clearTimeout(relogio);
-      relogio = null;
-      card.classList.remove('segurando', 'cheio');
-    };
-
     card.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.target.closest('button')) return;
+      cancelarPressao();
       pressao.encerrou = false;
+      Object.assign(segurando, { card, x: e.clientX, y: e.clientY });
       card.classList.add('segurando');
-      requestAnimationFrame(() => card.classList.add('cheio'));
-      relogio = setTimeout(() => {
+      requestAnimationFrame(() => { if (segurando.card === card) card.classList.add('cheio'); });
+      segurando.relogio = setTimeout(() => {
+        // Vale só se o dedo continua neste mesmo card, e ele ainda está na tela.
+        const vale = segurando.card === card && card.isConnected;
+        cancelarPressao();
+        if (!vale) return;
         pressao.encerrou = true;
-        soltar();
         encerrarPeloCard(c.id);
       }, TEMPO_SEGURAR_MS);
     });
 
-    for (const evento of ['pointerup', 'pointerleave', 'pointercancel']) card.addEventListener(evento, soltar);
+    card.addEventListener('pointerleave', cancelarPressao);
   }
 
   function renderLista() {
+    cancelarPressao(); // a lista vai ser trocada: nenhum gesto sobrevive a isso
     const abertas = estado.conversas.filter((c) => c.status === 'aberta').length;
     const sem = estado.conversas.filter((c) => c.semResposta).length;
     $('#lista-titulo').textContent = tituloLista();
