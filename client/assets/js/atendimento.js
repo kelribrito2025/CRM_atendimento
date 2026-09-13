@@ -53,6 +53,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     alerta: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8E1F16" stroke-width="2.2"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.3 3.9L2 19a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"></path></svg>',
     fechar: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18"></path><path d="M6 6l12 12"></path></svg>',
     cadeado: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10" width="16" height="10" rx="2.4"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
+    checkCaixa: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4C6355" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M8.2 12.3l2.6 2.6 5-5.2"></path></svg>',
     check: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>',
     lapisPequeno: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"></path></svg>',
     lixeira: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 13h10l1-13"></path><path d="M9 7V4h6v3"></path></svg>',
@@ -701,7 +702,8 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       el('div', { class: 'lista-nav' },
         navItem({ icone: icone('todas', ICONE.inbox), nome: 'Todas', cont: r.caixas.todas, ativo: semEquipe && estado.caixa === 'todas', onclick: () => selecionarCaixa('todas') }),
         navItem({ icone: icone('minhas', ICONE.pessoa), nome: 'Minhas', cont: r.caixas.minhas, ativo: semEquipe && estado.caixa === 'minhas', onclick: () => selecionarCaixa('minhas') }),
-        navItem({ icone: icone('sem-resposta', ICONE.relogio, { classe: 'vermelho' }), nome: 'Sem resposta', cont: r.caixas.semResposta, alerta: true, ativo: semEquipe && estado.caixa === 'sem_resposta', onclick: () => selecionarCaixa('sem_resposta') })),
+        navItem({ icone: icone('sem-resposta', ICONE.relogio, { classe: 'vermelho' }), nome: 'Sem resposta', cont: r.caixas.semResposta, alerta: true, ativo: semEquipe && estado.caixa === 'sem_resposta', onclick: () => selecionarCaixa('sem_resposta') }),
+        navItem({ icone: icone('encerradas', ICONE.checkCaixa), nome: 'Encerradas', cont: r.caixas.encerradas, ativo: semEquipe && estado.caixa === 'encerradas', onclick: () => selecionarCaixa('encerradas') })),
       el('span', { class: 'separador' }),
       el('div', { class: 'linha-rotulo' },
         el('span', { class: 'rotulo' }, 'Equipes'),
@@ -760,9 +762,10 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       : null;
 
     // Cartão clicável (div, e não button, porque tem um botão dentro).
-    return el('div', {
+    const pressao = { encerrou: false };
+    const card = el('div', {
       class: `conversa${ativa ? ' ativa' : ''}`, role: 'button', tabindex: '0',
-      onclick: () => abrirConversa(c.id),
+      onclick: () => { if (!pressao.encerrou) abrirConversa(c.id); },
       onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirConversa(c.id); } },
     },
       el('span', { class: 'avatar-wrap' },
@@ -777,6 +780,36 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         tag ? el('span', { class: `tag ${tag[1]}`.trim() }, tag[0]) : null),
       c.naoLidas > 0 && !ativa ? el('span', { class: 'nao-lidas' }, String(c.naoLidas)) : null,
       encerrar);
+    if (c.status === 'aberta') segurarParaEncerrar(card, c, pressao);
+    return card;
+  }
+
+  // Segurar o dedo (ou o botão do mouse) no card vai preenchendo ele da esquerda
+  // para a direita; quando enche, a conversa é encerrada.
+  const TEMPO_SEGURAR_MS = 900;
+
+  function segurarParaEncerrar(card, c, pressao) {
+    let relogio = null;
+
+    const soltar = () => {
+      clearTimeout(relogio);
+      relogio = null;
+      card.classList.remove('segurando', 'cheio');
+    };
+
+    card.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.target.closest('button')) return;
+      pressao.encerrou = false;
+      card.classList.add('segurando');
+      requestAnimationFrame(() => card.classList.add('cheio'));
+      relogio = setTimeout(() => {
+        pressao.encerrou = true;
+        soltar();
+        encerrarPeloCard(c.id);
+      }, TEMPO_SEGURAR_MS);
+    });
+
+    for (const evento of ['pointerup', 'pointerleave', 'pointercancel']) card.addEventListener(evento, soltar);
   }
 
   function renderLista() {
@@ -795,7 +828,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   function nomeCaixa() {
     const equipeSel = estado.resumo?.equipes.find((e) => e.id === estado.equipeId);
     if (equipeSel) return equipeSel.nome;
-    return { todas: 'Todas', minhas: 'Minhas', sem_resposta: 'Sem resposta' }[estado.caixa] || 'Todas';
+    return { todas: 'Todas', minhas: 'Minhas', sem_resposta: 'Sem resposta', encerradas: 'Encerradas' }[estado.caixa] || 'Todas';
   }
 
   function limparBusca() {
@@ -811,6 +844,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     if (estado.equipeId) return { titulo: 'Caixa vazia', texto: `Nenhuma conversa aberta na equipe ${nomeCaixa()}.`, ...verTodas };
     if (estado.caixa === 'minhas') return { titulo: 'Caixa vazia', texto: 'Nenhuma conversa atribuída a você no momento.', ...verTodas };
     if (estado.caixa === 'sem_resposta') return { titulo: 'Tudo respondido', texto: 'Nenhum cliente aguardando resposta.', ...verTodas };
+    if (estado.caixa === 'encerradas') return { titulo: 'Nada encerrado', texto: 'Nenhuma conversa foi encerrada nos últimos dias.', ...verTodas };
     return { titulo: 'Caixa vazia', texto: 'Nenhuma conversa aberta. Assim que um cliente escrever, ela aparece aqui.', acao: null };
   }
 
@@ -833,10 +867,13 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       texto = el('span', {}, 'Nenhuma conversa corresponde à busca. Tente outro nome, CNPJ ou protocolo.');
     } else if (!estado.conversas.length) {
       titulo = 'Tudo limpo por aqui';
-      const fim = ' Assim que um cliente escrever pelo WhatsApp ou Telegram, a conversa aparece na lista ao lado e a equipe é avisada.';
       texto = estado.equipeId
-        ? el('span', {}, 'A equipe ', el('strong', {}, nomeCaixa()), ' não tem nenhuma conversa aberta.', fim)
-        : el('span', {}, { minhas: 'Você não tem nenhuma conversa em atendimento.', sem_resposta: 'Nenhum cliente está aguardando resposta.' }[estado.caixa] || 'Nenhuma conversa aberta no momento.', fim);
+        ? el('span', {}, 'A equipe ', el('strong', {}, nomeCaixa()), ' não tem nenhuma conversa aberta.')
+        : el('span', {}, {
+          minhas: 'Você não tem nenhuma conversa em atendimento.',
+          sem_resposta: 'Nenhuma pérola está aguardando resposta.',
+          encerradas: 'Nenhuma conversa encerrada por aqui.',
+        }[estado.caixa] || 'Nenhuma conversa aberta no momento.');
     } else {
       titulo = 'Nenhuma conversa selecionada';
       texto = el('span', {}, 'Escolha uma conversa na lista ao lado para começar o atendimento.');

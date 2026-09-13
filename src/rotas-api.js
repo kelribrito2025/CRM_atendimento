@@ -9,7 +9,9 @@ const { normalizarPin } = require('./saldo');
 const { LimitadorTentativas } = require('./limitador');
 const { interpretarStatus } = require('./uazapi');
 
-const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta']);
+const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta', 'encerradas']);
+// Conversas encerradas continuam à mão por uma semana, na caixa "Encerradas".
+const DIAS_ENCERRADAS = 7;
 const STATUS = new Set(['aberta', 'resolvida']);
 const TAMANHO_MAXIMO_MENSAGEM = 4000;
 // A conversa abre com as últimas mensagens; as antigas chegam conforme a pessoa
@@ -297,6 +299,8 @@ function criarRotasApi(db, opcoes = {}) {
         todas: abertas.length,
         minhas: abertas.filter((c) => c.atendente?.id === req.usuario.id).length,
         semResposta: abertas.filter((c) => c.semResposta).length,
+        encerradas: todas.filter((c) => c.status === 'resolvida'
+          && c.atualizadaEm >= Date.now() - DIAS_ENCERRADAS * 24 * 60 * 60 * 1000).length,
       },
       equipes,
       atendentes,
@@ -311,14 +315,16 @@ function criarRotasApi(db, opcoes = {}) {
     const caixa = CAIXAS.has(req.query.caixa) ? req.query.caixa : 'todas';
     const equipeId = req.query.equipe ? Number(req.query.equipe) : null;
     const busca = String(req.query.q || '').trim().toLowerCase();
-    const limiteResolvidas = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const limiteResolvidas = Date.now() - DIAS_ENCERRADAS * 24 * 60 * 60 * 1000;
 
     let lista = (await todasConversas()).filter((c) => c.status === 'aberta' || c.atualizadaEm >= limiteResolvidas);
     if (equipeId) lista = lista.filter((c) => c.equipe?.id === equipeId);
-    // "Minhas" mostra o que ainda está em aberto comigo: ao encerrar, o cliente
-    // sai da lista (continua em "Todas" e na busca por sete dias).
-    if (caixa === 'minhas') lista = lista.filter((c) => c.atendente?.id === req.usuario.id && c.status === 'aberta');
+    // "Minhas" e "Sem resposta" mostram só o que está em aberto: ao encerrar, a
+    // conversa sai delas e passa para a caixa "Encerradas".
+    if (caixa === 'minhas') lista = lista.filter((c) => c.atendente?.id === req.usuario.id);
     if (caixa === 'sem_resposta') lista = lista.filter((c) => c.semResposta);
+    if (caixa === 'encerradas') lista = lista.filter((c) => c.status === 'resolvida');
+    else if (caixa !== 'todas') lista = lista.filter((c) => c.status === 'aberta');
     if (busca) {
       lista = lista.filter((c) => [
         c.contato.nome, c.contato.empresa, c.contato.cnpj, c.contato.telefone, c.protocolo, c.ultimaTexto,

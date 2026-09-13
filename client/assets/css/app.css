@@ -184,8 +184,15 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
   display: flex; gap: 11px; padding: 12px; border-radius: 14px; border: 1.5px solid transparent; cursor: pointer;
   background: none; text-align: left; width: 100%; color: inherit;
 }
-.conversa:hover { background: var(--hover); }
+.conversa:hover { background-color: var(--hover); }
 .conversa { position: relative; }
+/* Segurar no card vai preenchendo de verde, da esquerda para a direita. */
+.conversa.segurando {
+  background-image: linear-gradient(to right, rgba(18, 184, 92, .26) 0 100%);
+  background-repeat: no-repeat; background-position: left center; background-size: 0 100%;
+  border-color: var(--verde-borda); user-select: none;
+}
+.conversa.segurando.cheio { background-size: 100% 100%; transition: background-size .9s linear; }
 .conversa-encerrar {
   position: absolute; right: 10px; bottom: 10px;
   width: 28px; height: 28px; border-radius: 9px;
@@ -195,7 +202,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 }
 .conversa:hover .conversa-encerrar, .conversa.ativa .conversa-encerrar, .conversa-encerrar:focus-visible { opacity: 1; }
 .conversa-encerrar:hover { background: var(--verde); border-color: var(--verde); color: #fff; }
-.conversa.ativa { background: var(--verde-fundo); border-color: var(--verde); }
+.conversa.ativa { background-color: var(--verde-fundo); border-color: var(--verde); }
 .avatar-wrap { position: relative; flex-shrink: 0; align-self: flex-start; }
 .canal-badge { position: absolute; right: -3px; bottom: -3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; }
 .conversa-corpo { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 3px; }

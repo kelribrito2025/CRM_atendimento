@@ -362,3 +362,28 @@ test('encerrar pelo card: a conversa sai de Minhas e volta com o histórico', as
     assert.deepEqual(detalhe.dados.conversa.mensagens.map((m) => m.texto), ['Oi, preciso de ajuda', 'Resolvido!', 'Voltei!']);
   } finally { await s.fechar(); }
 });
+
+test('caixa Encerradas: guarda o que foi encerrado e tira das outras caixas', async () => {
+  const s = await subirServidor();
+  try {
+    const { conversa } = await conversaDeWhatsapp(s);
+    await s.chamar(`/api/conversas/${conversa.id}/mensagens`, 'POST', { texto: 'Pronto!' });
+
+    // enquanto está aberta, não aparece em Encerradas
+    assert.deepEqual((await s.chamar('/api/conversas?caixa=encerradas')).dados.conversas, []);
+    assert.equal((await s.chamar('/api/resumo')).dados.caixas.encerradas, 0);
+
+    await s.chamar(`/api/conversas/${conversa.id}/status`, 'POST', { status: 'resolvida' });
+
+    const encerradas = await s.chamar('/api/conversas?caixa=encerradas');
+    assert.deepEqual(encerradas.dados.conversas.map((c) => c.id), [conversa.id]);
+    assert.equal((await s.chamar('/api/resumo')).dados.caixas.encerradas, 1);
+    assert.deepEqual((await s.chamar('/api/conversas?caixa=minhas')).dados.conversas, []);
+    assert.deepEqual((await s.chamar('/api/conversas?caixa=sem_resposta')).dados.conversas, []);
+
+    // reabrir tira de Encerradas
+    await s.chamar(`/api/conversas/${conversa.id}/status`, 'POST', { status: 'aberta' });
+    assert.deepEqual((await s.chamar('/api/conversas?caixa=encerradas')).dados.conversas, []);
+    assert.equal((await s.chamar('/api/conversas?caixa=minhas')).dados.conversas.length, 1);
+  } finally { await s.fechar(); }
+});
