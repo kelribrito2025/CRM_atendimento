@@ -1,6 +1,7 @@
 import { icone, montarIcones } from './icones.js';
 import { detectarNovasMensagens } from './alerta-mensagem.mjs';
 import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
+import { capturarCompositor, restaurarCompositor } from './foco-compositor.mjs';
 
 (() => {
   'use strict';
@@ -303,15 +304,16 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 
   // Substitui a conversa aberta preservando o texto que está sendo digitado
   function aplicarConversa(conversa) {
-    const textoMsg = $('#texto-msg')?.value;
-    const textoNota = $('#texto-nota')?.value;
+    const compositor = capturarCompositor();
     // O saldo consultado vale só para a conversa em que foi pedido.
     if (conversa?.id !== saldo.conversaId) limparSaldo(conversa?.id ?? null);
     estado.conversa = conversa;
     renderChat();
     renderPainel();
-    if (textoMsg) $('#texto-msg').value = textoMsg;
-    if (textoNota) $('#texto-nota').value = textoNota;
+    // A resposta do servidor pode chegar quando a pessoa já começou a próxima
+    // mensagem. Como renderChat troca o textarea, devolvemos o foco e o cursor
+    // ao campo novo para nenhuma tecla seguinte se perder.
+    restaurarCompositor(compositor, { ajustarAltura });
   }
 
   /* ================================================================
