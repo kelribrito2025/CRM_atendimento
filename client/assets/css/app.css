@@ -194,7 +194,18 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 }
 .menu-flutuante button { border: 0; background: none; text-align: left; padding: 9px 11px; border-radius: 8px; font-size: 13px; color: var(--texto); }
 .menu-flutuante button:hover { background: var(--hover); }
-.mensagens { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 14px; background: var(--fundo-suave); }
+.mensagens {
+  flex: 1;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background-color: #F5FAF6;
+  background-image: url('../imagens/chat-fundo.svg');
+  background-repeat: repeat;
+  background-size: 400px 400px;
+  background-position: left top;
+}
 .data-sep { align-self: center; font-size: 11px; font-weight: 700; color: var(--texto-suave); background: var(--cinza); padding: 5px 12px; border-radius: 999px; }
 .msg { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; gap: 5px; max-width: 78%; }
 .msg.saida { align-self: flex-end; align-items: flex-end; }
