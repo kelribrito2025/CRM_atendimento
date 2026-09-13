@@ -36,7 +36,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     // Marcas do WhatsApp e do Telegram desenhadas cheias, como os logos de verdade.
     whatsapp: (t, cor) => `<svg width="${t}" height="${t}" viewBox="0 0 32 32" fill="${cor}" aria-hidden="true"><path d="M16.03 3.2c-7.02 0-12.72 5.7-12.72 12.72 0 2.24.59 4.43 1.71 6.36L3.2 28.8l6.69-1.75a12.67 12.67 0 006.14 1.56h.01c7.01 0 12.72-5.7 12.72-12.72 0-3.4-1.33-6.6-3.73-9a12.63 12.63 0 00-9-3.73zm0 23.26h-.01a10.56 10.56 0 01-5.38-1.47l-.39-.23-4 1.05 1.07-3.9-.25-.4a10.53 10.53 0 01-1.62-5.62c0-5.83 4.75-10.57 10.58-10.57 2.82 0 5.48 1.1 7.47 3.1a10.5 10.5 0 013.1 7.48c0 5.83-4.75 10.56-10.57 10.56zm5.8-7.92c-.32-.16-1.88-.93-2.17-1.03-.29-.11-.5-.16-.71.16-.21.31-.82 1.02-1 1.23-.19.21-.37.24-.68.08-.32-.16-1.34-.5-2.56-1.58-.94-.84-1.58-1.88-1.77-2.2-.18-.31-.02-.48.14-.64.15-.14.32-.37.48-.56.16-.19.21-.32.32-.53.1-.21.05-.4-.03-.56-.08-.16-.71-1.72-.98-2.35-.25-.62-.51-.53-.7-.54l-.6-.01c-.21 0-.55.08-.83.4-.29.31-1.09 1.07-1.09 2.6s1.12 3.02 1.27 3.23c.16.21 2.2 3.36 5.33 4.71.74.32 1.32.51 1.78.66.75.24 1.43.2 1.97.12.6-.09 1.85-.76 2.11-1.49.26-.73.26-1.35.18-1.48-.08-.13-.29-.21-.6-.37z"></path></svg>`,
     telegram: (t, cor) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="${cor}" aria-hidden="true"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"></path></svg>`,
-    widget: (t, cor) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="${cor}" aria-hidden="true"><path d="M12 3.4c-5.1 0-9.25 3.42-9.25 7.65 0 2.3 1.23 4.37 3.18 5.77v3.24c0 .5.55.8.97.53l3.2-2.08c.62.1 1.26.16 1.9.16 5.1 0 9.25-3.43 9.25-7.62S17.1 3.4 12 3.4z"></path></svg>`,
+    widget: (t, cor) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="${cor}" aria-hidden="true"><path d="M3.6 4.3h16.8c.77 0 1.4.63 1.4 1.4v9.5c0 .77-.63 1.4-1.4 1.4h-6.5v1.6h2.4c.5 0 .9.4.9.9s-.4.9-.9.9H7.7c-.5 0-.9-.4-.9-.9s.4-.9.9-.9h2.4v-1.6H3.6c-.77 0-1.4-.63-1.4-1.4V5.7c0-.77.63-1.4 1.4-1.4z"></path></svg>`,
     seta: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"></path></svg>',
     mais: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',
     inbox: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4C6355" stroke-width="2"><path d="M4 4h16v16H4z"></path><path d="M4 13h5l2 3h2l2-3h5"></path></svg>',
@@ -48,6 +48,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     clipe: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.5l-8.6 8.6a5 5 0 01-7-7l9-9a3.3 3.3 0 014.7 4.7l-9 9a1.7 1.7 0 01-2.4-2.4l8.3-8.2"></path></svg>',
     raio: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9z"></path></svg>',
     enviar: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4"><path d="M21 4L3 11l6 2 2 6z"></path></svg>',
+    perola: '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10.9" r="3.2"></circle><path d="M2.8 14.6h18.4c0 3.3-4.12 5.9-9.2 5.9s-9.2-2.6-9.2-5.9z"></path><path d="M12 14.6v5.9"></path><path d="M7.3 14.6c.16 2.1.72 3.9 1.64 5.2"></path><path d="M16.7 14.6c-.16 2.1-.72 3.9-1.64 5.2"></path></svg>',
     balao: '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 11.5a8.4 8.4 0 01-9 8.4 8.9 8.9 0 01-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0121 11.5z"></path></svg>',
     busca: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.3-4.3"></path></svg>',
     cadeadoGrande: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
@@ -62,7 +63,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 
   const NOME_CANAL = { whatsapp: 'WhatsApp', telegram: 'Telegram', widget: 'Chat do site' };
   // Cores das marcas, usadas no selo do canal ao lado do avatar do cliente.
-  const COR_CANAL = { whatsapp: '#25D366', telegram: '#229ED9', widget: '#1D6FA5' };
+  const COR_CANAL = { whatsapp: '#25D366', telegram: '#229ED9', widget: '#0B1F14' };
 
   /* ================================================================
    * Utilidades
@@ -955,9 +956,20 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       titulo = 'Nenhuma conversa selecionada';
       texto = el('span', {}, 'Escolha uma conversa na lista ao lado para começar o atendimento.');
     }
+    const semNada = !estado.conversas.length && !estado.busca && !estado.equipeId && !estado.canal
+      && ['todas', 'minhas', 'sem_resposta'].includes(estado.caixa);
     return el('div', { class: 'chat-vazio' },
-      el('span', { class: 'chat-vazio-icone' }, icone('atendimento', ICONE.balao)),
+      el('span', { class: 'chat-vazio-icone' }, semNada ? imagemPerola() : icone('atendimento', ICONE.balao)),
       el('div', { class: 'chat-vazio-texto' }, el('strong', {}, titulo), texto));
+  }
+
+  // A pérola das caixas vazias. Se existir o arquivo /icones/perola.png, ele é
+  // usado; senão fica o desenho, para a tela nunca aparecer quebrada.
+  function imagemPerola() {
+    const desenho = el('span', { class: 'ic', style: '--ic:52px', html: ICONE.perola });
+    const foto = el('img', { src: '/icones/perola.png', alt: '', class: 'perola-img' });
+    foto.addEventListener('error', () => foto.replaceWith(desenho));
+    return foto;
   }
 
   /* ---------------- respostas rápidas ---------------- */
