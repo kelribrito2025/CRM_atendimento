@@ -35,7 +35,7 @@ import { icone, montarIcones } from './icones.js';
     info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg>',
     lapis: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A6A16" stroke-width="2.2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"></path></svg>',
     clipe: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.5l-8.6 8.6a5 5 0 01-7-7l9-9a3.3 3.3 0 014.7 4.7l-9 9a1.7 1.7 0 01-2.4-2.4l8.3-8.2"></path></svg>',
-    raio: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4C6355" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9z"></path></svg>',
+    raio: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9z"></path></svg>',
     enviar: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4"><path d="M21 4L3 11l6 2 2 6z"></path></svg>',
     cadeado: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
     alerta: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8E1F16" stroke-width="2.2"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.3 3.9L2 19a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"></path></svg>',
@@ -503,7 +503,7 @@ import { icone, montarIcones } from './icones.js';
         textarea,
         el('div', { class: 'compositor-acoes' },
           el('button', { type: 'button', class: 'btn-icone hov', title: 'Anexo', onclick: () => toast('Envio de anexos: em breve.') }, icone('anexo', ICONE.clipe)),
-          el('button', { type: 'button', class: 'btn-suave hov', onclick: () => toast('Respostas rápidas: em breve.') }, icone('rapidas', ICONE.raio), 'Respostas rápidas'),
+          el('button', { type: 'button', class: 'btn-icone hov', title: 'Respostas rápidas', onclick: () => toast('Respostas rápidas: em breve.') }, icone('raio', ICONE.raio)),
           modoNota ? null : el('span', { class: 'btn-suave', title: 'Canal desta conversa', html: ICONE[c.canal]?.(14, c.canal === 'telegram' ? '#4FA3DA' : '#12B85C') || '' }, canalNome),
           el('span', { class: 'empurrar' }),
           el('button', { type: 'button', class: 'btn-primario', id: 'btn-enviar', onclick: enviar }, modoNota ? 'Salvar nota' : 'Enviar', modoNota ? null : icone('enviar', ICONE.enviar, { animado: true, classe: 'branco' })))));
