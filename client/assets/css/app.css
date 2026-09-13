@@ -128,7 +128,9 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .btn-mini { width: 22px; height: 22px; border-radius: 7px; display: flex; align-items: center; justify-content: center; border: 0; background: none; color: var(--texto-suave); }
 .membros { display: flex; flex-direction: column; gap: 6px; }
 .membro { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 10px; }
-.avatar { border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; background: var(--verde-claro); color: var(--verde-texto); }
+.avatar { position: relative; overflow: hidden; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; background: var(--verde-claro); color: var(--verde-texto); }
+.avatar-foto { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.avatar-quadrado { position: relative; overflow: hidden; }
 .avatar.p { width: 26px; height: 26px; font-size: 10.5px; }
 .avatar.pp { width: 22px; height: 22px; font-size: 9.5px; }
 .avatar.m { width: 38px; height: 38px; font-size: 13px; }

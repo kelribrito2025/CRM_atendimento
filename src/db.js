@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS contatos (
   wa_id VARCHAR(64),
   tg_id VARCHAR(64),
   tg_usuario VARCHAR(191),
+  tg_foto_id VARCHAR(255),
+  tg_foto_em BIGINT,
   FOREIGN KEY (pin_validado_por) REFERENCES usuarios(id)
 );
 
@@ -206,6 +208,8 @@ async function migrar(db) {
   await garantirColuna(db, 'contatos', 'wa_id', 'VARCHAR(64)');
   await garantirColuna(db, 'contatos', 'tg_id', 'VARCHAR(64)');
   await garantirColuna(db, 'contatos', 'tg_usuario', 'VARCHAR(191)');
+  await garantirColuna(db, 'contatos', 'tg_foto_id', 'VARCHAR(255)');
+  await garantirColuna(db, 'contatos', 'tg_foto_em', 'BIGINT');
   for (const [nome, tabela, colunas] of INDICES) await db.criarIndice(nome, tabela, colunas);
   await renomearEquipe(db, 'Cobrança', 'Admin');
   // Equipes padrão antigas que deixaram de existir (removidas uma única vez).

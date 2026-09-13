@@ -46,7 +46,7 @@ function formatarPrimeiraResposta(ms) {
 const SQL_CONVERSAS = `
   SELECT c.id, c.protocolo, c.canal, c.status, c.alerta, c.nao_lidas, c.criada_em, c.atualizada_em,
          c.equipe_id, c.atendente_id, c.canal_id, c.wa_chatid,
-         ct.id AS contato_id, ct.nome AS contato_nome, ct.empresa, ct.cnpj, ct.telefone, ct.tg_usuario, ct.tg_id,
+         ct.id AS contato_id, ct.nome AS contato_nome, ct.empresa, ct.cnpj, ct.telefone, ct.tg_usuario, ct.tg_id, ct.tg_foto_id,
          u.nome AS atendente_nome,
          e.nome AS equipe_nome, e.cor AS equipe_cor,
          um.tipo AS ultima_tipo, um.texto AS ultima_texto, um.criada_em AS ultima_em,
@@ -137,6 +137,7 @@ function criarRotasApi(db, opcoes = {}) {
         telefone: row.telefone,
         telegramUsuario: row.tg_usuario || null,
         telegramId: row.tg_id || null,
+        foto: row.tg_foto_id ? `/api/contatos/${row.contato_id}/foto` : null,
         iniciais: iniciais(row.contato_nome),
       },
       equipe: row.equipe_id ? { id: row.equipe_id, nome: row.equipe_nome, cor: row.equipe_cor } : null,
@@ -400,6 +401,23 @@ function criarRotasApi(db, opcoes = {}) {
         const nome = (m.midia_nome || `arquivo-${m.id}.${extensao || 'bin'}`).replace(/[\r\n"]/g, '');
         res.setHeader('Content-Disposition', `attachment; filename="${nome}"`);
       }
+      res.send(bytes);
+    } catch (erro) {
+      res.status(502).json({ erro: erro.message });
+    }
+  });
+
+  // Foto de perfil do cliente no Telegram, buscada no momento em que a tela pede.
+  r.get('/contatos/:id/foto', async (req, res) => {
+    const id = idDaRota(req);
+    const ct = id ? await db.prepare('SELECT id, tg_foto_id FROM contatos WHERE id = ?').get(id) : null;
+    if (!ct || !ct.tg_foto_id) return res.status(404).json({ erro: 'Este cliente não tem foto.' });
+    const canal = await db.prepare("SELECT * FROM canais WHERE tipo = 'telegram' ORDER BY id LIMIT 1").get();
+    if (!canal || !telegram) return res.status(400).json({ erro: 'Telegram não está conectado.' });
+    try {
+      const { bytes, tipo } = await telegram.baixarArquivo(canal.instancia_token, ct.tg_foto_id);
+      res.setHeader('Content-Type', tipo || 'image/jpeg');
+      res.setHeader('Cache-Control', 'private, max-age=86400');
       res.send(bytes);
     } catch (erro) {
       res.status(502).json({ erro: erro.message });

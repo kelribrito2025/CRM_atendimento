@@ -688,7 +688,18 @@ import { detectarNovasMensagens } from './alerta-mensagem.mjs';
   function avatarCliente(c, classe = 'avatar') {
     const ini = String(c.contato.iniciais || '');
     const soLetras = ini && !/[^A-Za-zÀ-ÿ0-9]/.test(ini);
-    return el('span', { class: classe }, soLetras ? ini : iconeCanal(c.canal, classe.includes('g') ? 20 : 15));
+    const dentro = soLetras ? ini : iconeCanal(c.canal, classe.includes('g') ? 20 : 15);
+    const avatar = el('span', { class: classe }, dentro);
+    // Foto do perfil do cliente; se não carregar, ficam as iniciais.
+    if (c.contato.foto) {
+      const foto = el('img', {
+        class: 'avatar-foto', src: c.contato.foto, alt: '', loading: 'lazy',
+        onload: () => avatar.classList.add('com-foto'),
+        onerror: () => foto.remove(),
+      });
+      avatar.append(foto);
+    }
+    return avatar;
   }
 
   function iconeCanal(canal, tamanho = 15) {

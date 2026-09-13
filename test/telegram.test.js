@@ -24,8 +24,13 @@ function telegramFalso() {
       return { id: '123456789', usuario: 'bigteck_bot', nome: 'Bigteck Atendimento' };
     },
     async removerWebhook(token) { chamadas.push(['deleteWebhook', token]); return true; },
+    async obterFotoPerfil(token, usuarioId) {
+      chamadas.push(['getUserProfilePhotos', token, usuarioId]);
+      return Number(usuarioId) === 555 ? 'foto-perfil-555' : null;
+    },
     async baixarArquivo(token, fileId) {
       chamadas.push(['baixarArquivo', token, fileId]);
+      if (fileId === 'foto-perfil-555') return { bytes: Buffer.from('foto-do-perfil'), tipo: 'image/jpeg', caminho: 'photos/perfil.jpg' };
       if (fileId !== 'foto-123') { const e = new Error('O arquivo não está mais disponível no Telegram.'); e.status = 404; throw e; }
       return { bytes: Buffer.from('imagem-falsa'), tipo: 'image/jpeg', caminho: 'photos/file_1.jpg' };
     },
@@ -111,6 +116,36 @@ test('telegram: a consulta contínua entrega as mensagens e para quando pedido',
   tg.sondagem.parar(9);
   await item.promessa;
   assert.equal(tg.sondagem.ativo(9), false);
+});
+
+test('telegram: foto do perfil do cliente aparece no avatar', async () => {
+  const s = await subirServidor();
+  try {
+    const criado = await s.chamar('/api/canais/telegram', 'POST', { token: TOKEN });
+    const canal = await s.db.prepare('SELECT * FROM canais WHERE id = ?').get(criado.dados.canal.id);
+    await canais.processarUpdateTelegram(s.db, canal, update(1, 'oi'));
+    await canais.atualizarFotoTelegram(s.db, s.telegram, canal, 555);
+
+    const conversa = (await s.chamar('/api/conversas')).dados.conversas.find((c) => c.contato.nome === 'João Silva');
+    assert.equal(conversa.contato.foto, `/api/contatos/${conversa.contato.id}/foto`);
+    const foto = await fetch(`${s.base}${conversa.contato.foto}`, { headers: { Cookie: s.cookie } });
+    assert.equal(foto.status, 200);
+    assert.equal(foto.headers.get('content-type'), 'image/jpeg');
+    assert.equal(await foto.text(), 'foto-do-perfil');
+    assert.equal((await fetch(`${s.base}${conversa.contato.foto}`)).status, 401, 'a foto só aparece para quem está logado');
+
+    // sem foto no Telegram, o CRM não fica pedindo toda hora
+    await canais.processarUpdateTelegram(s.db, canal, { update_id: 9, message: { message_id: 9, date: 1_700_000_500, from: { id: 777, first_name: 'Ana' }, chat: { id: 777, type: 'private' }, text: 'oi' } });
+    await canais.atualizarFotoTelegram(s.db, s.telegram, canal, 777);
+    const semFoto = await s.db.prepare("SELECT tg_foto_id, tg_foto_em FROM contatos WHERE tg_id = '777'").get();
+    assert.equal(semFoto.tg_foto_id, null);
+    assert.ok(semFoto.tg_foto_em, 'guarda quando tentou, para não repetir a consulta');
+    const antes = s.telegram.chamadas.filter((c) => c[0] === 'getUserProfilePhotos').length;
+    await canais.atualizarFotoTelegram(s.db, s.telegram, canal, 777);
+    assert.equal(s.telegram.chamadas.filter((c) => c[0] === 'getUserProfilePhotos').length, antes, 'não consulta de novo no mesmo dia');
+  } finally {
+    await s.fechar();
+  }
 });
 
 test('telegram: PIN que chega na conversa preenche o card do cliente', async () => {

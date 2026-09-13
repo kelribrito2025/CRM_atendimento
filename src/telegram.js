@@ -124,6 +124,15 @@ function criarTelegram({ fetchImpl = globalThis.fetch, base = 'https://api.teleg
     return { bytes, tipo: resposta.headers.get('content-type') || null, caminho };
   }
 
+  // Foto de perfil do cliente (a menor versão serve para o avatar).
+  async function obterFotoPerfil(token, usuarioId) {
+    const r = await chamar(token, 'getUserProfilePhotos', { user_id: Number(usuarioId), limit: 1 });
+    const foto = Array.isArray(r?.photos) ? r.photos[0] : null;
+    if (!foto || !foto.length) return null;
+    const escolhida = foto.find((f) => Number(f.width) >= 160) || foto[foto.length - 1];
+    return escolhida?.file_id ? String(escolhida.file_id) : null;
+  }
+
   function obterUpdates(token, offset, { signal } = {}) {
     return chamar(token, 'getUpdates', { offset, timeout: esperaSondagemS, allowed_updates: ['message'] },
       { timeout: (esperaSondagemS + 15) * 1000, signal });
@@ -190,7 +199,7 @@ function criarTelegram({ fetchImpl = globalThis.fetch, base = 'https://api.teleg
     },
   };
 
-  return { base, validarToken, removerWebhook, enviarTexto, obterArquivo, baixarArquivo, obterUpdates, sondagem };
+  return { base, validarToken, removerWebhook, enviarTexto, obterArquivo, baixarArquivo, obterFotoPerfil, obterUpdates, sondagem };
 }
 
 module.exports = { criarTelegram, tokenValido, traduzirErro, ErroTelegram };

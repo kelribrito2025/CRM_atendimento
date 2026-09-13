@@ -301,13 +301,33 @@ async function processarUpdateTelegram(db, canal, update) {
   return await guardarMensagem(db, canal, contato, m, 'telegram');
 }
 
+const VALIDADE_FOTO_MS = 24 * 60 * 60 * 1000; // confere a foto do perfil uma vez por dia
+
+// Guarda a foto de perfil do cliente (o arquivo fica no Telegram; aqui só o código dele).
+async function atualizarFotoTelegram(db, telegram, canal, chatid) {
+  if (!telegram?.obterFotoPerfil) return;
+  const contato = await db.prepare('SELECT id, tg_foto_id, tg_foto_em FROM contatos WHERE tg_id = ?').get(String(chatid));
+  if (!contato) return;
+  if (contato.tg_foto_em && Date.now() - Number(contato.tg_foto_em) < VALIDADE_FOTO_MS) return;
+  try {
+    const fotoId = await telegram.obterFotoPerfil(canal.instancia_token, chatid);
+    await db.prepare('UPDATE contatos SET tg_foto_id = ?, tg_foto_em = ? WHERE id = ?').run(fotoId, Date.now(), contato.id);
+  } catch {
+    // sem foto agora: tenta de novo no próximo dia
+    await db.prepare('UPDATE contatos SET tg_foto_em = ? WHERE id = ?').run(Date.now(), contato.id);
+  }
+}
+
 // Começa a receber as mensagens de um bot do Telegram e guarda tudo no banco.
 async function ligarTelegram(db, telegram, canal) {
   if (!telegram?.sondagem) return false;
   telegram.sondagem.iniciar(canal, {
     aoReceber: async (update) => {
       await registrarEvento(db, canal.id, 'telegram', update);
-      return processarUpdateTelegram(db, canal, update);
+      const r = await processarUpdateTelegram(db, canal, update);
+      const chatid = update?.message?.chat?.id;
+      if (r.resultado === 'mensagem' && chatid) await atualizarFotoTelegram(db, telegram, canal, chatid);
+      return r;
     },
     aoEstado: async (estado) => {
       if (estado.ok) {
@@ -356,6 +376,7 @@ module.exports = {
   extrairArquivoTelegram,
   processarUpdateTelegram,
   ligarTelegram,
+  atualizarFotoTelegram,
   ligarTelegramTodos,
   registrarEvento,
 };
