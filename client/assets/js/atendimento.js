@@ -523,6 +523,187 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       el('div', { class: 'chat-vazio-texto' }, el('strong', {}, titulo), texto));
   }
 
+  /* ---------------- respostas rápidas ---------------- */
+  const rapidas = { aberto: false, lista: null, busca: '', form: null, erro: null, carregando: false, origem: 'botao' };
+
+  function fecharRapidas() {
+    rapidas.aberto = false;
+    rapidas.form = null;
+    rapidas.erro = null;
+    const painel = $('#painel-rapidas');
+    if (painel) painel.remove();
+    $('#texto-msg')?.focus();
+  }
+
+  async function abrirRapidas({ busca = '', origem = 'botao' } = {}) {
+    Object.assign(rapidas, { aberto: true, busca, form: null, erro: null, origem });
+    desenharRapidas();
+    if (!rapidas.lista) {
+      rapidas.carregando = true;
+      try {
+        rapidas.lista = (await api('/respostas')).respostas;
+      } catch (e) {
+        rapidas.erro = e.message;
+      } finally {
+        rapidas.carregando = false;
+        desenharRapidas();
+      }
+    }
+  }
+
+  async function recarregarRapidas(lista) {
+    rapidas.lista = lista;
+    desenharRapidas();
+  }
+
+  // Coloca o texto da resposta no campo de mensagem e fecha o painel.
+  async function usarResposta(r) {
+    const campo = $('#texto-msg');
+    if (campo) {
+      // Se a pessoa digitou "/algo", troca isso pela resposta inteira.
+      const semAtalho = campo.value.replace(/(^|\s)\/[^\s]*$/, '$1');
+      campo.value = semAtalho ? `${semAtalho.replace(/\s+$/, '')} ${r.texto}` : r.texto;
+      campo.focus();
+      campo.setSelectionRange(campo.value.length, campo.value.length);
+      ajustarAltura(campo);
+    }
+    fecharRapidas();
+    api(`/respostas/${r.id}/uso`, { method: 'POST', body: {} }).catch(() => {});
+  }
+
+  function filtrarRapidas() {
+    const busca = rapidas.busca.trim().toLowerCase();
+    const lista = rapidas.lista || [];
+    if (!busca) return lista;
+    return lista.filter((r) => [r.atalho, r.titulo, r.texto].some((v) => String(v).toLowerCase().includes(busca)));
+  }
+
+  function itemResposta(r) {
+    return el('div', { class: 'rapida-item hov', onclick: () => usarResposta(r) },
+      el('div', { class: 'rapida-linha' },
+        el('span', { class: 'rapida-atalho' }, `/${r.atalho}`),
+        el('span', { class: 'rapida-titulo' }, r.titulo),
+        r.podeEditar
+          ? el('button', {
+            type: 'button', class: 'btn-icone pequeno hov', title: 'Editar ou excluir',
+            onclick: (e) => { e.stopPropagation(); abrirFormRapida(r); },
+          }, icone('acoes', ICONE.pontos))
+          : null),
+      el('span', { class: 'rapida-texto' }, r.texto),
+      el('span', { class: 'rapida-meta' }, [
+        r.usos ? `usada ${r.usos}×` : 'ainda não usada',
+        r.escopo === 'equipe' ? `equipe ${r.equipeNome || ''}`.trim() : (r.escopo === 'eu' ? 'só eu' : 'todas as equipes'),
+      ].join(' · ')));
+  }
+
+  function abrirFormRapida(r = null) {
+    rapidas.form = r
+      ? { id: r.id, atalho: r.atalho, titulo: r.titulo, texto: r.texto, escopo: r.escopo, equipeId: r.equipeId }
+      : { id: null, atalho: '', titulo: '', texto: '', escopo: 'todas', equipeId: null };
+    rapidas.erro = null;
+    desenharRapidas();
+  }
+
+  async function salvarRapida(form) {
+    rapidas.erro = null;
+    try {
+      const corpo = { atalho: form.atalho, titulo: form.titulo, texto: form.texto, escopo: form.escopo, equipeId: form.equipeId };
+      const r = form.id
+        ? await api(`/respostas/${form.id}`, { method: 'PATCH', body: corpo })
+        : await api('/respostas', { method: 'POST', body: corpo });
+      rapidas.form = null;
+      await recarregarRapidas(r.respostas);
+      toast(form.id ? 'Resposta rápida atualizada.' : 'Resposta rápida criada.');
+    } catch (e) {
+      rapidas.erro = e.message;
+      desenharRapidas();
+    }
+  }
+
+  async function excluirRapida(id) {
+    if (!window.confirm('Excluir esta resposta rápida?')) return;
+    try {
+      const r = await api(`/respostas/${id}`, { method: 'DELETE' });
+      rapidas.form = null;
+      await recarregarRapidas(r.respostas);
+      toast('Resposta rápida excluída.');
+    } catch (e) {
+      toast(e.message, 5000);
+    }
+  }
+
+  function formRapida() {
+    const f = rapidas.form;
+    const equipes = estado.resumo?.equipes || [];
+    const campoAtalho = el('input', { type: 'text', class: 'campo-rapida atalho', value: f.atalho, placeholder: 'estorno', maxlength: '40', oninput: () => { f.atalho = campoAtalho.value; } });
+    const campoTitulo = el('input', { type: 'text', class: 'campo-rapida', value: f.titulo, placeholder: 'Estorno solicitado', maxlength: '120', oninput: () => { f.titulo = campoTitulo.value; } });
+    const campoTexto = el('textarea', { class: 'campo-rapida area', rows: '5', maxlength: '4000', placeholder: 'Escreva a mensagem que será enviada ao cliente…', oninput: () => { f.texto = campoTexto.value; } }, f.texto);
+    const seletorEquipe = el('select', { class: 'campo-rapida', onchange: () => { f.equipeId = Number(seletorEquipe.value) || null; } },
+      el('option', { value: '' }, 'Escolha a equipe'),
+      ...equipes.map((e) => el('option', { value: String(e.id), selected: Number(f.equipeId) === e.id ? true : null }, e.nome)));
+    seletorEquipe.hidden = f.escopo !== 'equipe';
+
+    const aba = (valor, rotulo) => el('button', {
+      type: 'button', class: `rapida-escopo${f.escopo === valor ? ' ativo' : ''}`,
+      onclick: () => { f.escopo = valor; desenharRapidas(); },
+    }, rotulo);
+
+    return el('div', { class: 'rapidas-corpo' },
+      rapidas.erro ? el('div', { class: 'aviso erro' }, rapidas.erro) : null,
+      el('label', { class: 'rapida-campo' }, el('span', { class: 'rotulo' }, 'Atalho'),
+        el('div', { class: 'rapida-atalho-campo' }, el('span', {}, '/'), campoAtalho)),
+      el('label', { class: 'rapida-campo' }, el('span', { class: 'rotulo' }, 'Título'), campoTitulo),
+      el('label', { class: 'rapida-campo' }, el('span', { class: 'rotulo' }, 'Mensagem'), campoTexto),
+      el('div', { class: 'rapida-campo' }, el('span', { class: 'rotulo' }, 'Visível para'),
+        el('div', { class: 'rapida-escopos' }, aba('todas', 'Todas as equipes'), aba('equipe', 'Uma equipe'), aba('eu', 'Só eu')),
+        seletorEquipe));
+  }
+
+  function desenharRapidas() {
+    const antigo = $('#painel-rapidas');
+    if (!rapidas.aberto) { if (antigo) antigo.remove(); return; }
+    const f = rapidas.form;
+    const lista = filtrarRapidas();
+
+    const busca = el('input', {
+      type: 'text', class: 'rapida-busca', placeholder: 'Buscar atalho ou título…', value: rapidas.busca,
+      oninput: () => { rapidas.busca = busca.value; desenharRapidas(); $('#painel-rapidas .rapida-busca')?.focus(); },
+    });
+
+    const corpo = f ? formRapida() : el('div', { class: 'rapidas-corpo lista' },
+      rapidas.erro ? el('div', { class: 'aviso erro' }, rapidas.erro) : null,
+      ...(lista.length ? lista.map(itemResposta)
+        : [el('div', { class: 'vazio' }, rapidas.carregando ? 'Carregando…'
+          : (rapidas.busca ? 'Nenhuma resposta encontrada.' : 'Nenhuma resposta rápida criada ainda.'))]));
+
+    const rodape = f
+      ? el('div', { class: 'rapidas-rodape' },
+        f.id ? el('button', { type: 'button', class: 'btn-suave hov', onclick: () => excluirRapida(f.id) }, 'Excluir') : null,
+        el('button', { type: 'button', class: 'btn-suave hov', onclick: () => { rapidas.form = null; rapidas.erro = null; desenharRapidas(); } }, 'Cancelar'),
+        el('button', { type: 'button', class: 'btn-primario', style: 'flex:1', onclick: () => salvarRapida(f) }, f.id ? 'Salvar alterações' : 'Salvar resposta rápida'))
+      : el('div', { class: 'rapidas-rodape' },
+        el('button', { type: 'button', class: 'btn-primario', style: 'flex:1', onclick: () => abrirFormRapida() },
+          icone('mais', ICONE.mais, { classe: 'branco' }), 'Nova resposta rápida'));
+
+    const painel = el('aside', { class: 'rapidas', id: 'painel-rapidas', role: 'dialog', 'aria-label': 'Respostas rápidas' },
+      el('div', { class: 'rapidas-topo' },
+        el('span', { class: 'rapidas-icone' }, icone('raio', ICONE.raio)),
+        el('div', { class: 'rapidas-titulo' },
+          el('strong', {}, f ? (f.id ? 'Editar resposta rápida' : 'Nova resposta rápida') : 'Respostas rápidas'),
+          el('span', {}, f ? 'O atalho fica disponível para quem você escolher.'
+            : `${(rapidas.lista || []).length} atalho${(rapidas.lista || []).length === 1 ? '' : 's'} salvo${(rapidas.lista || []).length === 1 ? '' : 's'}`)),
+        el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: fecharRapidas }, svg(ICONE.fechar))),
+      f ? null : el('div', { class: 'rapidas-busca' }, busca),
+      corpo,
+      f ? null : el('div', { class: 'rapidas-dica' }, 'Digite ', el('strong', {}, '/'), ' no campo de resposta para abrir este painel já filtrado.'),
+      rodape);
+
+    const area = $('#chat')?.parentElement || document.body;
+    if (antigo) antigo.replaceWith(painel); else area.append(painel);
+    // Aberto pelo botão: o cursor vai para a busca. Aberto pela barra: fica na mensagem.
+    if (!f && !antigo && rapidas.origem === 'botao') busca.focus();
+  }
+
   /* ---------------- acentuação automática ---------------- */
   const CHAVE_ACENTOS = 'crm_acentos';
   let acentosLigados = true;
@@ -591,6 +772,18 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         icone('anexo', ICONE.clipe), el('span', {}, a.nome || 'Abrir documento'));
     }
     return el('div', { class: `balao midia ${a.tipo}` }, conteudo, legenda ? el('span', { class: 'midia-legenda' }, legenda) : null);
+  }
+
+  // "/" no começo de uma palavra abre as respostas rápidas já filtradas.
+  function atalhoBarra(campo) {
+    const ate = campo.value.slice(0, campo.selectionStart);
+    const m = /(?:^|\s)\/([^\s]*)$/.exec(ate);
+    if (m) {
+      if (!rapidas.aberto) abrirRapidas({ busca: m[1], origem: 'barra' });
+      else if (m[1] !== rapidas.busca) { rapidas.busca = m[1]; desenharRapidas(); }
+    } else if (rapidas.aberto && !rapidas.form) {
+      fecharRapidas();
+    }
   }
 
   // A caixa de texto cresce com o que é digitado, até 90% da altura do chat.
@@ -673,8 +866,14 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       id: 'texto-msg', rows: '2', maxlength: '4000',
       placeholder: modoNota ? 'Escreva uma nota interna para a equipe…' : `Escreva para ${primeiroNome} pelo ${canalNome}…`,
       lang: 'pt-BR', spellcheck: 'true',
-      onkeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } },
-      oninput: () => { corrigirEnquantoDigita(textarea); ajustarAltura(textarea); },
+      onkeydown: (e) => {
+        if (e.key !== 'Enter' || e.shiftKey) return;
+        e.preventDefault();
+        const escolhidas = rapidas.aberto && rapidas.origem === 'barra' && !rapidas.form ? filtrarRapidas() : [];
+        if (escolhidas.length) usarResposta(escolhidas[0]);
+        else enviar();
+      },
+      oninput: () => { corrigirEnquantoDigita(textarea); ajustarAltura(textarea); atalhoBarra(textarea); },
       onpaste: () => setTimeout(() => { if (acentosLigados) textarea.value = corrigirTexto(textarea.value); ajustarAltura(textarea); }, 0),
     });
     const enviar = () => enviarMensagem(acentosLigados ? corrigirTexto(textarea.value) : textarea.value, modoNota ? 'nota' : 'resposta', textarea);
@@ -684,7 +883,10 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         textarea,
         el('div', { class: 'compositor-acoes' },
           el('button', { type: 'button', class: 'btn-icone hov', title: 'Anexo', onclick: () => toast('Envio de anexos: em breve.') }, icone('anexo', ICONE.clipe)),
-          el('button', { type: 'button', class: 'btn-icone hov', title: 'Respostas rápidas', onclick: () => toast('Respostas rápidas: em breve.') }, icone('raio', ICONE.raio)),
+          el('button', {
+            type: 'button', class: `btn-icone hov${rapidas.aberto ? ' ativo' : ''}`, title: 'Respostas rápidas',
+            onclick: () => (rapidas.aberto ? fecharRapidas() : abrirRapidas()),
+          }, icone('raio', ICONE.raio)),
           el('button', {
             type: 'button', class: `btn-icone hov acentos-toggle${acentosLigados ? ' ativo' : ''}`,
             title: acentosLigados ? 'Acentuação automática ligada (clique para desligar)' : 'Acentuação automática desligada (clique para ligar)',
@@ -821,22 +1023,6 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       avisos.length ? el('span', { class: 'saldo-alerta' }, `Atenção: ${avisos.join(' e ')}.`) : null);
   }
 
-  // Quem é o cliente no canal: o número do Telegram ou o telefone do WhatsApp.
-  // Um clique copia o valor.
-  function linhaIdentificacao(c) {
-    const ct = c.contato;
-    const ehTelegram = c.canal === 'telegram';
-    const valor = ehTelegram ? ct.telegramId : ct.telefone;
-    if (!valor) return null;
-    const rotulo = ehTelegram ? 'Telegram' : 'WhatsApp';
-    return el('div', {
-      class: 'pin-id', title: 'Clique para copiar',
-      onclick: () => {
-        navigator.clipboard?.writeText(String(valor)).then(() => toast(`${rotulo} do cliente copiado.`)).catch(() => {});
-      },
-    }, el('span', { class: 'pin-id-rotulo' }, rotulo), el('span', { class: 'pin-id-valor' }, String(valor)));
-  }
-
   function blocoPin(c) {
     const ct = c.contato;
     const validado = Boolean(ct.pin && ct.pinValidadoEm);
@@ -844,7 +1030,6 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     // quadradinhos quando ainda não há um PIN salvo. No WhatsApp fica vazio.
     const doCanal = c.canal === 'telegram' ? (ct.telegramId || '') : '';
     const valorInicial = saldo.pin || ct.pin || doCanal;
-    const preenchidoPeloCanal = !saldo.pin && !ct.pin && Boolean(doCanal);
     const { caixas, pinAtual } = camposPin(valorInicial);
     const podeConsultar = Boolean(estado.resumo?.saldoAtivo);
 
@@ -854,13 +1039,10 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         el('span', { class: 'rotulo' }, 'PIN do cliente'),
         el('span', { class: `selo${validado ? '' : ' pendente'}` }, validado ? 'Conferido' : 'Pendente')),
       el('div', { class: 'pin-digitos' }, ...caixas),
-      linhaIdentificacao(c),
       el('div', { class: 'linha-pin' },
         el('span', { class: 'pin-info' }, validado
           ? `Conferido às ${horaCurta(ct.pinValidadoEm)} por ${ct.pinValidadoPor || 'equipe'}`
-          : (preenchidoPeloCanal
-            ? 'Preenchido com o número do Telegram. Se o PIN for outro, digite por cima.'
-            : 'Digite o PIN que o cliente informou.')),
+          : 'Digite o PIN que o cliente informou.'),
         podeConsultar
           ? el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => consultarSaldo(pinAtual()) },
             saldo.cliente || saldo.erro ? 'Consultar de novo' : 'Consultar saldo')
@@ -1237,7 +1419,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       if (!e.target.closest('.menu-flutuante')) fecharMenus();
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { fecharVisor(); menuUsuario.hidden = true; fecharMenus(); $('#painel').classList.remove('aberto'); if (modalCanais) fecharModalCanais(); }
+      if (e.key === 'Escape') { fecharVisor(); fecharRapidas(); menuUsuario.hidden = true; fecharMenus(); $('#painel').classList.remove('aberto'); if (modalCanais) fecharModalCanais(); }
     });
   }
 

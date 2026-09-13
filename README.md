@@ -122,6 +122,19 @@ O botão **Á**, ao lado das respostas rápidas, liga e desliga a correção, e 
 
 Palavras que mudam de sentido com o acento ficam de fora de propósito: "esta/está", "e/é", "a/à", "de/dê". Para acertar essas seria preciso entender a frase inteira, e um palpite errado mudaria o que a pessoa quis dizer.
 
+## Respostas rápidas
+
+Mensagens prontas para o atendente não repetir texto o dia inteiro. Cada uma tem um atalho (por exemplo `/estorno`), um título e a mensagem.
+
+Dois jeitos de usar:
+
+1. Clicar no botão do raio, ao lado do campo de escrever. O painel abre à direita com a lista e a busca.
+2. Digitar `/` no campo de mensagem. O painel abre já filtrado pelo que vier depois da barra; Enter escolhe a primeira da lista.
+
+Clicando na resposta, o texto entra no campo de mensagem e o painel fecha. O atendente ainda pode editar antes de enviar.
+
+Ao criar, escolha quem enxerga: **todas as equipes**, **uma equipe** ou **só eu**. Cada pessoa só vê o que lhe cabe, e só quem criou (ou um administrador) pode alterar e excluir. O CRM conta quantas vezes cada atalho foi usado e mostra as mais usadas primeiro.
+
 ## Arquivos das conversas no Amazon S3
 
 Fotos, áudios, vídeos e documentos recebidos podem ser guardados no S3, em vez de serem buscados no canal a cada visualização.

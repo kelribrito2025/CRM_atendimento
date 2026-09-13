@@ -224,6 +224,44 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .midia-arquivo { display: inline-flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, .18); color: inherit; font-size: 13px; font-weight: 600; text-decoration: none; }
 .midia-arquivo:hover { background: rgba(255, 255, 255, .3); }
 .midia-legenda { padding: 2px 8px 6px; font-size: 13.5px; line-height: 1.5; }
+/* ===== Respostas rápidas (painel da direita) ===== */
+.rapidas {
+  position: absolute; right: 16px; top: 50%; transform: translateY(-50%); z-index: 40;
+  width: 380px; max-width: calc(100% - 32px); max-height: min(560px, calc(100% - 32px));
+  background: #fff; border-radius: 20px; box-shadow: 0 24px 60px rgba(11, 31, 20, .26);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.rapidas-topo { padding: 16px 18px 14px; border-bottom: 1px solid var(--borda); display: flex; align-items: flex-start; gap: 11px; }
+.rapidas-icone { width: 34px; height: 34px; border-radius: 12px; background: var(--verde-claro); color: var(--verde-texto); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.rapidas-titulo { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.rapidas-titulo strong { font-size: 15px; letter-spacing: -.01em; }
+.rapidas-titulo span { font-size: 12.5px; color: var(--texto-suave); }
+.rapidas-busca { padding: 12px 18px 0; }
+.rapida-busca { width: 100%; height: 38px; border-radius: 11px; border: 1px solid var(--borda); background: var(--fundo-suave); padding: 0 12px; font-size: 12.5px; color: var(--texto); outline: none; }
+.rapida-busca:focus { border-color: var(--verde); background: #fff; }
+.rapidas-corpo { flex: 1; min-height: 0; overflow: auto; padding: 12px 18px; display: flex; flex-direction: column; gap: 9px; }
+.rapida-item { padding: 12px; border-radius: 14px; background: var(--fundo-suave); border: 1px solid var(--borda); display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
+.rapida-linha { display: flex; align-items: center; gap: 8px; }
+.rapida-atalho { font-family: "Courier New", monospace; font-size: 11.5px; font-weight: 700; color: var(--verde-texto); background: #fff; border: 1px solid var(--borda); padding: 3px 7px; border-radius: 7px; flex-shrink: 0; }
+.rapida-titulo { font-size: 13px; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rapida-texto { font-size: 12px; line-height: 1.5; color: var(--texto-suave); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rapida-meta { font-size: 11px; color: var(--texto-suave); }
+.rapida-campo { display: flex; flex-direction: column; gap: 6px; }
+.campo-rapida { width: 100%; min-height: 42px; border-radius: 12px; border: 1px solid var(--borda); background: var(--fundo-suave); padding: 10px 12px; font-size: 13px; color: var(--texto); outline: none; font-family: inherit; }
+.campo-rapida:focus { border-color: var(--verde); background: #fff; }
+.campo-rapida.area { resize: vertical; line-height: 1.55; }
+.rapida-atalho-campo { display: flex; align-items: center; gap: 6px; border-radius: 12px; border: 1px solid var(--borda); background: var(--fundo-suave); padding: 0 12px; }
+.rapida-atalho-campo span { font-family: "Courier New", monospace; font-weight: 700; color: var(--verde-texto); }
+.rapida-atalho-campo .campo-rapida { border: 0; background: none; padding: 10px 0; font-family: "Courier New", monospace; }
+.rapida-escopos { display: flex; gap: 6px; flex-wrap: wrap; }
+.rapida-escopo { height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--borda); background: var(--fundo-suave); font-size: 12.5px; font-weight: 600; color: var(--texto-suave); }
+.rapida-escopo.ativo { background: var(--verde-fundo); border-color: var(--verde); color: var(--verde-texto); font-weight: 700; }
+.rapidas-dica { padding: 0 18px 4px; font-size: 11.5px; color: var(--texto-suave); }
+.rapidas-rodape { padding: 14px 18px; border-top: 1px solid var(--borda); display: flex; gap: 8px; }
+.btn-icone.pequeno { width: 26px; height: 26px; border-radius: 8px; background: none; }
+.btn-icone.ativo { background: var(--verde-fundo); border: 1px solid var(--verde-borda); color: var(--verde-texto); }
+.btn-icone.ativo .ic { color: var(--verde-texto); }
+
 .visor { position: fixed; inset: 0; z-index: 80; background: rgba(11, 31, 20, .82); display: flex; align-items: center; justify-content: center; padding: 32px; }
 .visor img { max-width: min(92vw, 1100px); max-height: 88vh; border-radius: 14px; display: block; box-shadow: 0 24px 60px rgba(0, 0, 0, .45); background: #fff; }
 .visor-fechar { position: absolute; top: 18px; right: 22px; width: 40px; height: 40px; border-radius: 12px; border: 0; background: rgba(255, 255, 255, .14); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }
@@ -303,10 +341,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .saldo-alerta { font-size: 11.5px; font-weight: 700; color: var(--vermelho); }
 .saldo-aguarde { font-size: 12.5px; color: var(--texto-suave); }
 .pin-digitos { display: flex; gap: 6px; }
-.pin-id { display: flex; align-items: baseline; gap: 7px; font-size: 12px; color: var(--texto-suave); cursor: copy; min-width: 0; }
-.pin-id:hover .pin-id-valor { color: var(--verde-texto); }
-.pin-id-rotulo { font-weight: 700; color: var(--texto); flex-shrink: 0; }
-.pin-id-valor { font-family: "Courier New", monospace; letter-spacing: .02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 input.pin-digito { width: 0; padding: 0; text-align: center; outline: none; }
 input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(--verde-fundo); }
 .pin-digito { flex: 1; height: 44px; border-radius: 10px; background: #fff; border: 1px solid var(--verde-borda); display: flex; align-items: center; justify-content: center; font-family: "Courier New", monospace; font-size: 19px; font-weight: 700; color: var(--verde-texto); }

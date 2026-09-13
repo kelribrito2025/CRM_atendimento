@@ -450,6 +450,119 @@ function criarRotasApi(db, opcoes = {}) {
     }
   });
 
+  /* -------------------- respostas rápidas -------------------- */
+
+  const ESCOPOS = new Set(['todas', 'equipe', 'eu']);
+
+  function formatarResposta(r, usuarioId) {
+    return {
+      id: r.id,
+      atalho: r.atalho,
+      titulo: r.titulo,
+      texto: r.texto,
+      escopo: r.escopo,
+      equipeId: r.equipe_id || null,
+      equipeNome: r.equipe_nome || null,
+      usos: Number(r.usos || 0),
+      minha: Number(r.criado_por) === Number(usuarioId),
+      podeEditar: Number(r.criado_por) === Number(usuarioId) || usuarioId === null,
+    };
+  }
+
+  // Cada pessoa vê: as de todas as equipes, as das equipes dela e as que ela criou só para si.
+  async function respostasVisiveis(usuario) {
+    const lista = await db.prepare(`
+      SELECT r.*, e.nome AS equipe_nome
+      FROM respostas_rapidas r
+      LEFT JOIN equipes e ON e.id = r.equipe_id
+      WHERE r.escopo = 'todas'
+         OR (r.escopo = 'eu' AND r.usuario_id = ?)
+         OR (r.escopo = 'equipe' AND r.equipe_id IN (SELECT equipe_id FROM equipe_membros WHERE usuario_id = ?))
+      ORDER BY r.usos DESC, r.atalho`).all(usuario.id, usuario.id);
+    return lista.map((r) => ({ ...formatarResposta(r, usuario.id), podeEditar: Number(r.criado_por) === Number(usuario.id) || usuario.papel === 'admin' }));
+  }
+
+  function limparAtalho(valor) {
+    return String(valor || '').trim().toLowerCase().replace(/^\/+/, '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+      .slice(0, 40);
+  }
+
+  r.get('/respostas', async (req, res) => {
+    res.json({ respostas: await respostasVisiveis(req.usuario) });
+  });
+
+  async function lerCorpoResposta(req, res) {
+    const atalho = limparAtalho(req.body?.atalho);
+    const titulo = String(req.body?.titulo || '').trim().slice(0, 120);
+    const texto = String(req.body?.texto || '').trim().slice(0, 4000);
+    const escopo = ESCOPOS.has(req.body?.escopo) ? req.body.escopo : 'todas';
+    let equipeId = escopo === 'equipe' ? Number(req.body?.equipeId) : null;
+
+    if (atalho.length < 2) { res.status(400).json({ erro: 'O atalho precisa ter pelo menos 2 letras (exemplo: /estorno).' }); return null; }
+    if (!titulo) { res.status(400).json({ erro: 'Dê um título para a resposta.' }); return null; }
+    if (!texto) { res.status(400).json({ erro: 'Escreva a mensagem da resposta.' }); return null; }
+    if (escopo === 'equipe') {
+      if (!Number.isInteger(equipeId) || !await sql.equipeExiste.get(equipeId)) { res.status(400).json({ erro: 'Escolha uma equipe válida.' }); return null; }
+    } else {
+      equipeId = null;
+    }
+    return { atalho, titulo, texto, escopo, equipeId };
+  }
+
+  r.post('/respostas', async (req, res) => {
+    const dados = await lerCorpoResposta(req, res);
+    if (!dados) return;
+    const repetido = await db.prepare('SELECT id FROM respostas_rapidas WHERE atalho = ? AND (escopo != ? OR usuario_id = ?)')
+      .get(dados.atalho, 'eu', req.usuario.id);
+    if (repetido) return res.status(409).json({ erro: `O atalho /${dados.atalho} já está em uso.` });
+
+    const agora = Date.now();
+    const info = await db.prepare(`INSERT INTO respostas_rapidas (atalho, titulo, texto, escopo, equipe_id, usuario_id, criado_por, usos, criado_em, atualizado_em)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`)
+      .run(dados.atalho, dados.titulo, dados.texto, dados.escopo, dados.equipeId,
+        dados.escopo === 'eu' ? req.usuario.id : null, req.usuario.id, agora, agora);
+    res.status(201).json({ respostas: await respostasVisiveis(req.usuario), id: Number(info.lastInsertRowid) });
+  });
+
+  r.patch('/respostas/:id', async (req, res) => {
+    const id = idDaRota(req);
+    const atual = id ? await db.prepare('SELECT * FROM respostas_rapidas WHERE id = ?').get(id) : null;
+    if (!atual) return res.status(404).json({ erro: 'Resposta rápida não encontrada.' });
+    if (Number(atual.criado_por) !== Number(req.usuario.id) && req.usuario.papel !== 'admin') {
+      return res.status(403).json({ erro: 'Só quem criou a resposta (ou um administrador) pode alterá-la.' });
+    }
+    const dados = await lerCorpoResposta(req, res);
+    if (!dados) return;
+    const repetido = await db.prepare('SELECT id FROM respostas_rapidas WHERE atalho = ? AND id != ?').get(dados.atalho, id);
+    if (repetido) return res.status(409).json({ erro: `O atalho /${dados.atalho} já está em uso.` });
+
+    await db.prepare('UPDATE respostas_rapidas SET atalho = ?, titulo = ?, texto = ?, escopo = ?, equipe_id = ?, usuario_id = ?, atualizado_em = ? WHERE id = ?')
+      .run(dados.atalho, dados.titulo, dados.texto, dados.escopo, dados.equipeId,
+        dados.escopo === 'eu' ? req.usuario.id : null, Date.now(), id);
+    res.json({ respostas: await respostasVisiveis(req.usuario) });
+  });
+
+  r.delete('/respostas/:id', async (req, res) => {
+    const id = idDaRota(req);
+    const atual = id ? await db.prepare('SELECT * FROM respostas_rapidas WHERE id = ?').get(id) : null;
+    if (!atual) return res.status(404).json({ erro: 'Resposta rápida não encontrada.' });
+    if (Number(atual.criado_por) !== Number(req.usuario.id) && req.usuario.papel !== 'admin') {
+      return res.status(403).json({ erro: 'Só quem criou a resposta (ou um administrador) pode excluí-la.' });
+    }
+    await db.prepare('DELETE FROM respostas_rapidas WHERE id = ?').run(id);
+    res.json({ respostas: await respostasVisiveis(req.usuario) });
+  });
+
+  // Conta quantas vezes cada atalho foi usado, para as mais usadas ficarem no topo.
+  r.post('/respostas/:id/uso', async (req, res) => {
+    const id = idDaRota(req);
+    if (!id) return res.status(404).json({ erro: 'Resposta rápida não encontrada.' });
+    await db.prepare('UPDATE respostas_rapidas SET usos = usos + 1 WHERE id = ?').run(id);
+    res.json({ ok: true });
+  });
+
   /* -------------------- consulta de saldo pelo PIN -------------------- */
 
   // A chave do agente fica só aqui no servidor. O navegador manda apenas o PIN.

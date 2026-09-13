@@ -153,6 +153,23 @@ CREATE TABLE IF NOT EXISTS canal_eventos (
   FOREIGN KEY (canal_id) REFERENCES canais(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS respostas_rapidas (
+  id ${CHAVE},
+  atalho VARCHAR(60) NOT NULL,
+  titulo VARCHAR(191) NOT NULL,
+  texto TEXT NOT NULL,
+  escopo VARCHAR(20) NOT NULL DEFAULT 'todas',
+  equipe_id BIGINT,
+  usuario_id BIGINT,
+  criado_por BIGINT,
+  usos BIGINT NOT NULL DEFAULT 0,
+  criado_em BIGINT NOT NULL,
+  atualizado_em BIGINT NOT NULL,
+  FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+  FOREIGN KEY (criado_por) REFERENCES usuarios(id)
+);
+
 CREATE TABLE IF NOT EXISTS verificacoes (
   token_hash VARCHAR(191) PRIMARY KEY,
   usuario_id BIGINT NOT NULL,
@@ -174,6 +191,7 @@ const INDICES = [
   ['idx_contatos_wa', 'contatos', 'wa_id'],
   ['idx_contatos_tg', 'contatos', 'tg_id'],
   ['idx_conversas_canal', 'conversas', 'canal_id, status'],
+  ['idx_respostas_atalho', 'respostas_rapidas', 'atalho'],
 ];
 
 // Acrescenta colunas criadas em versões mais novas sem perder os dados existentes.
