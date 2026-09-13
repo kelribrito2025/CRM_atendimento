@@ -128,7 +128,7 @@ Mensagens prontas para o atendente não repetir texto o dia inteiro. Cada uma te
 
 Dois jeitos de usar:
 
-1. Clicar no botão do raio, ao lado do campo de escrever. O painel abre à direita com a lista e a busca.
+1. Clicar no botão do raio, ao lado do campo de escrever. O painel sobe de dentro do chat, na largura toda da conversa, e para logo acima do campo de escrever.
 2. Digitar `/` no campo de mensagem. O painel abre já filtrado pelo que vier depois da barra; Enter escolhe a primeira da lista.
 
 Clicando na resposta, o texto entra no campo de mensagem e o painel fecha. O atendente ainda pode editar antes de enviar.

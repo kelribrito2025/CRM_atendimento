@@ -714,6 +714,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
           icone('mais', ICONE.mais, { classe: 'branco' }), 'Nova resposta rápida'));
 
     const painel = el('aside', { class: 'rapidas', id: 'painel-rapidas', role: 'dialog', 'aria-label': 'Respostas rápidas' },
+      el('span', { class: 'rapidas-alca' }),
       el('div', { class: 'rapidas-topo' },
         el('span', { class: 'rapidas-icone' }, icone('raio', ICONE.raio)),
         el('div', { class: 'rapidas-titulo' },
@@ -726,8 +727,13 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       f ? null : el('div', { class: 'rapidas-dica' }, 'Digite ', el('strong', {}, '/'), ' no campo de resposta para abrir este painel já filtrado.'),
       rodape);
 
-    const area = $('#chat')?.parentElement || document.body;
-    if (antigo) antigo.replaceWith(painel); else area.append(painel);
+    // Sobe de dentro do chat, na largura toda, parando acima do campo de escrever.
+    const chat = $('#chat');
+    const compositor = chat?.querySelector('.compositor');
+    const alturaCompositor = compositor ? compositor.offsetHeight + 8 : 16;
+    painel.style.bottom = `${alturaCompositor}px`;
+    painel.style.maxHeight = `calc(90% - ${alturaCompositor}px)`;
+    if (antigo) antigo.replaceWith(painel); else (chat || document.body).append(painel);
     // Aberto pelo botão: o cursor vai para a busca. Aberto pela barra: fica na mensagem.
     if (!f && !antigo && rapidas.origem === 'botao') busca.focus();
   }

@@ -182,7 +182,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .vazio { padding: 32px 16px; text-align: center; color: var(--texto-suave); font-size: 13px; line-height: 1.5; }
 
 /* ===== Chat ===== */
-.chat { flex: 1; min-width: 0; }
+.chat { flex: 1; min-width: 0; position: relative; }
 .chat-topo { padding: 14px 18px; border-bottom: 1px solid var(--borda); display: flex; flex-direction: column; gap: 11px; background: #fff; }
 .chat-cab { display: flex; align-items: center; gap: 10px; position: relative; }
 .chat-info { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 3px; }
@@ -228,11 +228,15 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .midia-legenda { padding: 2px 8px 6px; font-size: 13.5px; line-height: 1.5; }
 /* ===== Respostas rápidas (painel da direita) ===== */
 .rapidas {
-  position: absolute; right: 16px; top: 50%; transform: translateY(-50%); z-index: 40;
-  width: 380px; max-width: calc(100% - 32px); max-height: min(560px, calc(100% - 32px));
-  background: #fff; border-radius: 20px; box-shadow: 0 24px 60px rgba(11, 31, 20, .26);
+  position: absolute; left: 10px; right: 10px; bottom: 0; z-index: 40;
+  background: #fff; border-radius: 20px 20px 16px 16px;
+  box-shadow: 0 -10px 40px rgba(11, 31, 20, .16), 0 20px 50px rgba(11, 31, 20, .18);
+  border: 1px solid var(--borda);
   display: flex; flex-direction: column; overflow: hidden;
+  animation: subir .16s ease-out;
 }
+@keyframes subir { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+.rapidas-alca { width: 46px; height: 4px; border-radius: 999px; background: var(--borda); margin: 8px auto 0; flex-shrink: 0; }
 .rapidas-topo { padding: 16px 18px 14px; border-bottom: 1px solid var(--borda); display: flex; align-items: flex-start; gap: 11px; }
 .rapidas-icone { width: 34px; height: 34px; border-radius: 12px; background: var(--verde-claro); color: var(--verde-texto); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .rapidas-titulo { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
