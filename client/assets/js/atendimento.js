@@ -266,8 +266,14 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   }
 
   // Atualização periódica sem atrapalhar quem está digitando
+  // Fluxo de avisos aberto com o servidor (ver ouvirAvisos) e quando foi a
+  // última conferência: juntos decidem de quanto em quanto tempo perguntar.
+  let fluxoAvisos = null;
+  let ultimaAtualizacao = 0;
+
   async function atualizarSilencioso() {
     if (document.hidden || estado.enviando) return;
+    ultimaAtualizacao = Date.now();
     try {
       await carregarResumo();
       const { conversas } = await api(`/conversas?${paramsLista()}`);
@@ -2473,7 +2479,14 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       toast(e.message);
       $('#chat').replaceChildren(el('div', { class: 'chat-vazio' }, el('strong', {}, 'Não foi possível carregar'), el('span', {}, e.message)));
     }
-    setInterval(atualizarSilencioso, 8000);
+    // Com o fluxo aberto, a mensagem chega na hora: a checagem periódica vira só
+    // uma conferência de vez em quando. Se o fluxo cair, ela volta ao ritmo de
+    // antes na mesma hora.
+    setInterval(() => {
+      const espera = fluxoAvisos?.readyState === 1 ? 30_000 : 8000;
+      if (Date.now() - ultimaAtualizacao < espera) return;
+      atualizarSilencioso();
+    }, 2000);
     ouvirAvisos();
     // Voltou para a aba: mostra o que chegou enquanto ela estava escondida.
     document.addEventListener('visibilitychange', () => { if (!document.hidden) atualizarSilencioso(); });
@@ -2488,6 +2501,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     if (!window.EventSource) return;
     let pendente = null;
     const fluxo = new EventSource('/api/eventos');
+    fluxoAvisos = fluxo;
     fluxo.onmessage = () => {
       // Várias mensagens seguidas viram uma única atualização.
       clearTimeout(pendente);

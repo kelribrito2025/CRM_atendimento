@@ -5,7 +5,7 @@
 const $ = (s) => document.querySelector(s);
 const CHAVE_TOKEN = 'chat_atendimento_token';
 
-const estado = { token: null, ultimaId: 0, sondagem: null, enviando: false, naoLidas: 0, ouvindo: null };
+const estado = { token: null, ultimaId: 0, sondagem: null, enviando: false, naoLidas: 0, ouvindo: null, fluxoVivo: false, ultimaBusca: 0 };
 
 function guardarToken(token) {
   estado.token = token;
@@ -144,6 +144,7 @@ function liberarEnvio(pode) {
 
 async function buscarMensagens(primeira = false) {
   if (!estado.token) return;
+  estado.ultimaBusca = Date.now();
   try {
     const { mensagens } = await chamar(`/widget/mensagens?desde=${estado.ultimaId}`);
     if (mensagens.length) {
@@ -164,9 +165,20 @@ async function buscarMensagens(primeira = false) {
   }
 }
 
+// Com o fluxo aberto a mensagem chega na hora, e perguntar de 5 em 5 segundos
+// vira desperdício: a pergunta passa a ser só uma conferência de vez em quando.
+// Se o fluxo cair, ela volta a ser de 5 em 5 segundos na mesma hora.
+const ESPERA_COM_FLUXO_MS = 30_000;
+const ESPERA_SEM_FLUXO_MS = 5000;
+
 function iniciarSondagem() {
   pararSondagem();
-  estado.sondagem = setInterval(() => { if (!document.hidden) buscarMensagens(); }, 5000);
+  estado.sondagem = setInterval(() => {
+    if (document.hidden) return;
+    const espera = estado.fluxoVivo ? ESPERA_COM_FLUXO_MS : ESPERA_SEM_FLUXO_MS;
+    if (Date.now() - estado.ultimaBusca < espera) return;
+    buscarMensagens();
+  }, 2000);
   ouvirAvisos();
 }
 
@@ -175,6 +187,7 @@ function pararSondagem() {
   estado.sondagem = null;
   estado.ouvindo?.abort();
   estado.ouvindo = null;
+  estado.fluxoVivo = false;
 }
 
 // Fluxo aberto com o servidor: a resposta do atendente aparece na hora, sem
@@ -194,6 +207,7 @@ async function ouvirAvisos() {
       // Chave vencida: não adianta insistir de 3 em 3 segundos.
       if (resposta.status === 401) return;
       if (!resposta.ok || !resposta.body) throw new Error('sem fluxo');
+      estado.fluxoVivo = true;
       const leitor = resposta.body.getReader();
       const decodificador = new TextDecoder();
       let sobra = '';
@@ -209,6 +223,8 @@ async function ouvirAvisos() {
     } catch {
       /* conexão caiu: espera um pouco e tenta de novo */
     }
+    // Caiu: a conferência volta a ser de 5 em 5 segundos enquanto não reconecta.
+    estado.fluxoVivo = false;
     if (parada.signal.aborted) return;
     await new Promise((pronto) => setTimeout(pronto, 3000));
   }
