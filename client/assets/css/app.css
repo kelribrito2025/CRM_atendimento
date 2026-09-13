@@ -129,7 +129,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .nav-item .nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-item .cont { font-size: 11px; font-weight: 700; color: var(--texto-suave); }
 .nav-item.ativo .cont { background: var(--verde); color: #fff; padding: 2px 7px; border-radius: 6px; }
-.nav-item .cont.alerta { color: var(--vermelho); }
+.nav-item .cont.urgente { background: var(--vermelho-claro); color: var(--vermelho); padding: 2px 7px; border-radius: 6px; }
 .cor-equipe { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
 .separador { height: 1px; background: var(--borda); margin: 2px 4px; flex-shrink: 0; }
 .linha-rotulo { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
@@ -203,13 +203,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 }
 .menu-flutuante button { border: 0; background: none; text-align: left; padding: 9px 11px; border-radius: 8px; font-size: 13px; color: var(--texto); }
 .menu-flutuante button:hover { background: var(--hover); }
-.chat-atrib { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.select-pill { position: relative; display: flex; align-items: center; height: 36px; border-radius: 10px; border: 1px solid var(--borda); background: var(--fundo-suave); padding: 0 8px 0 11px; gap: 8px; min-width: 0; }
-.select-pill.equipe { background: var(--verde-fundo); border-color: var(--verde-borda); }
-.select-pill select { appearance: none; -webkit-appearance: none; border: 0; background: transparent; font-size: 12.5px; font-weight: 600; color: var(--texto); padding: 0 20px 0 0; outline: none; cursor: pointer; max-width: 220px; text-overflow: ellipsis; }
-.select-pill.equipe select { color: var(--verde-texto); font-weight: 700; }
-.select-pill .seta { position: absolute; right: 9px; pointer-events: none; color: var(--texto-suave); }
-.select-pill.equipe .seta { color: var(--verde-texto); }
 .mensagens { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 14px; background: var(--fundo-suave); }
 .data-sep { align-self: center; font-size: 11px; font-weight: 700; color: var(--texto-suave); background: var(--cinza); padding: 5px 12px; border-radius: 999px; }
 .msg { display: flex; flex-direction: column; min-width: 0; gap: 5px; max-width: 78%; }
@@ -331,7 +324,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .entrada .ic { color: var(--texto-suave); }
 .aviso .ic { margin-top: 1px; }
 .aviso.ok .icone .ic { color: #fff; }
-.select-pill .ic.seta { position: absolute; right: 9px; }
 
 /* ===== Janela de canais (WhatsApp) ===== */
 .modal-fundo { position: fixed; inset: 0; background: rgba(11, 31, 20, .45); display: flex; align-items: center; justify-content: center; z-index: 80; padding: 16px; }

@@ -330,7 +330,7 @@ import { icone, montarIcones } from './icones.js';
     return el('button', { type: 'button', class: `nav-item${ativo ? ' ativo' : ''}`, onclick },
       cor ? el('span', { class: 'cor-equipe', style: `background:${cor}` }) : ic,
       el('span', { class: 'nome' }, nome),
-      el('span', { class: `cont${alerta && !ativo && cont > 0 ? ' alerta' : ''}` }, String(cont)));
+      el('span', { class: `cont${alerta && !ativo && cont > 0 ? ' urgente' : ''}` }, String(cont)));
   }
 
   function renderSidebar() {
@@ -418,12 +418,6 @@ import { icone, montarIcones } from './icones.js';
   /* ================================================================
    * Render: chat
    * ============================================================== */
-  function selectPill({ classe, icone: ic, valor, opcoes, onchange, title }) {
-    const select = el('select', { title, onchange: (e) => onchange(e.target.value) },
-      ...opcoes.map((o) => el('option', { value: o.valor, selected: o.valor === valor ? true : null }, o.nome)));
-    return el('div', { class: `select-pill ${classe}` }, ic, select, icone('seta-baixo', ICONE.seta, { classe: 'seta' }));
-  }
-
   function construirMensagens(c) {
     const nos = [];
     let ultimoDia = null;
@@ -490,22 +484,7 @@ import { icone, montarIcones } from './icones.js';
           el('span', { class: 'chat-sub' }, [c.contato.empresa, `protocolo #${c.protocolo}`, textoAberto(c.criadaEm, c.status)].filter(Boolean).join(' · '))),
         el('span', { class: `pill-canal ${c.canal}`, html: ICONE[c.canal]?.(11, corCanal, 2.6) || '' }, c.contato.telefone ? mascararTelefone(c.contato.telefone) : canalNome),
         el('button', { type: 'button', class: 'btn-icone btn-info hov', title: 'Dados do cliente', onclick: () => $('#painel').classList.toggle('aberto') }, icone('info', ICONE.info)),
-        el('button', { type: 'button', class: 'btn-icone hov', title: 'Mais ações', onclick: (e) => { e.stopPropagation(); abrirMenuAcoes(e.currentTarget); } }, icone('acoes', ICONE.pontos))),
-      el('div', { class: 'chat-atrib' },
-        selectPill({
-          classe: 'equipe', title: 'Equipe responsável',
-          icone: el('span', { class: 'cor-equipe', style: `background:${c.equipe?.cor || '#4C6355'}` }),
-          valor: c.equipe ? String(c.equipe.id) : '',
-          opcoes: [{ valor: '', nome: 'Sem equipe' }, ...r.equipes.map((e) => ({ valor: String(e.id), nome: `Equipe ${e.nome}` }))],
-          onchange: (v) => atualizarConversa({ equipeId: v || null }),
-        }),
-        selectPill({
-          classe: 'atendente', title: 'Atendente responsável',
-          icone: c.atendente ? el('span', { class: 'avatar pp' }, c.atendente.iniciais) : icone('minhas', ICONE.pessoa),
-          valor: c.atendente ? String(c.atendente.id) : '',
-          opcoes: [{ valor: '', nome: 'Sem atendente' }, ...r.atendentes.map((a) => ({ valor: String(a.id), nome: a.nomeCurto }))],
-          onchange: (v) => atualizarConversa({ atendenteId: v || null }),
-        })));
+        el('button', { type: 'button', class: 'btn-icone hov', title: 'Mais ações', onclick: (e) => { e.stopPropagation(); abrirMenuAcoes(e.currentTarget); } }, icone('acoes', ICONE.pontos))));
 
     const mensagens = el('div', { class: 'rolagem mensagens', id: 'mensagens' }, ...construirMensagens(c));
 
