@@ -37,6 +37,9 @@ import { icone, montarIcones } from './icones.js';
     clipe: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.5l-8.6 8.6a5 5 0 01-7-7l9-9a3.3 3.3 0 014.7 4.7l-9 9a1.7 1.7 0 01-2.4-2.4l8.3-8.2"></path></svg>',
     raio: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9z"></path></svg>',
     enviar: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4"><path d="M21 4L3 11l6 2 2 6z"></path></svg>',
+    balao: '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 11.5a8.4 8.4 0 01-9 8.4 8.9 8.9 0 01-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0121 11.5z"></path></svg>',
+    busca: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.3-4.3"></path></svg>',
+    cadeadoGrande: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
     cadeado: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
     alerta: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8E1F16" stroke-width="2.2"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.3 3.9L2 19a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"></path></svg>',
     fechar: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18"></path><path d="M6 6l12 12"></path></svg>',
@@ -363,7 +366,7 @@ import { icone, montarIcones } from './icones.js';
           el('span', { class: 'avatar p' }, m.iniciais),
           el('div', { class: 'membro-info' },
             el('span', { class: 'membro-nome' }, m.nomeCurto),
-            el('span', { class: `membro-status${m.presenca === 'online' ? ' online' : ''}` }, `${m.presenca} · ${m.ativas} ativa${m.ativas === 1 ? '' : 's'}`)))),
+            el('span', { class: `membro-status${m.presenca === 'online' ? ' online' : ''}` }, `${m.presenca} · ${m.ativas ? `${m.ativas} ativa${m.ativas === 1 ? '' : 's'}` : 'livre'}`)))),
         membros.length ? null : el('div', { class: 'vazio' }, 'Nenhum atendente nesta equipe.')),
       el('button', { type: 'button', class: 'btn-tracejado hov', onclick: () => toast('Gestão de membros: em breve.') }, icone('mais', ICONE.mais), 'Adicionar à equipe'),
     );
@@ -413,15 +416,66 @@ import { icone, montarIcones } from './icones.js';
     $('#lista-sub').textContent = `${abertas} conversa${abertas === 1 ? '' : 's'} · ${sem} sem resposta`;
     const cont = $('#conversas');
     if (!estado.conversas.length) {
-      cont.replaceChildren(el('div', { class: 'vazio' }, estado.busca ? 'Nenhuma conversa encontrada para essa busca.' : 'Nenhuma conversa por aqui.'));
+      cont.replaceChildren(listaVazia());
       return;
     }
     cont.replaceChildren(...estado.conversas.map(itemConversa));
   }
 
+  function nomeCaixa() {
+    const equipeSel = estado.resumo?.equipes.find((e) => e.id === estado.equipeId);
+    if (equipeSel) return equipeSel.nome;
+    return { todas: 'Todas', minhas: 'Minhas', sem_resposta: 'Sem resposta' }[estado.caixa] || 'Todas';
+  }
+
+  function limparBusca() {
+    $('#busca').value = '';
+    estado.busca = '';
+    carregarConversas({ selecionarPrimeira: true }).catch((e) => toast(e.message));
+  }
+
+  // Texto e ação do estado vazio da lista, conforme a caixa escolhida.
+  function descricaoVazia() {
+    const verTodas = { acao: 'Ver todas as caixas', aoClicar: () => selecionarCaixa('todas') };
+    if (estado.busca) return { titulo: 'Nada encontrado', texto: `Nenhuma conversa encontrada para "${estado.busca}".`, acao: 'Limpar busca', aoClicar: limparBusca };
+    if (estado.equipeId) return { titulo: 'Caixa vazia', texto: `Nenhuma conversa aberta na equipe ${nomeCaixa()}.`, ...verTodas };
+    if (estado.caixa === 'minhas') return { titulo: 'Caixa vazia', texto: 'Nenhuma conversa atribuída a você no momento.', ...verTodas };
+    if (estado.caixa === 'sem_resposta') return { titulo: 'Tudo respondido', texto: 'Nenhum cliente aguardando resposta.', ...verTodas };
+    return { titulo: 'Caixa vazia', texto: 'Nenhuma conversa aberta. Assim que um cliente escrever, ela aparece aqui.', acao: null };
+  }
+
+  function listaVazia() {
+    const d = descricaoVazia();
+    return el('div', { class: 'lista-vazia' },
+      el('span', { class: 'lista-vazia-icone' }, icone('buscar', ICONE.busca)),
+      el('div', { class: 'lista-vazia-texto' }, el('strong', {}, d.titulo), el('span', {}, d.texto)),
+      d.acao ? el('button', { type: 'button', class: 'btn-branco hov', onclick: d.aoClicar }, d.acao) : null);
+  }
+
   /* ================================================================
    * Render: chat
    * ============================================================== */
+  function chatVazio() {
+    let titulo;
+    let texto;
+    if (estado.busca && !estado.conversas.length) {
+      titulo = 'Nada encontrado';
+      texto = el('span', {}, 'Nenhuma conversa corresponde à busca. Tente outro nome, CNPJ ou protocolo.');
+    } else if (!estado.conversas.length) {
+      titulo = 'Tudo limpo por aqui';
+      const fim = ' Assim que um cliente escrever pelo WhatsApp ou Telegram, a conversa aparece na lista ao lado e a equipe é avisada.';
+      texto = estado.equipeId
+        ? el('span', {}, 'A equipe ', el('strong', {}, nomeCaixa()), ' não tem nenhuma conversa aberta.', fim)
+        : el('span', {}, { minhas: 'Você não tem nenhuma conversa em atendimento.', sem_resposta: 'Nenhum cliente está aguardando resposta.' }[estado.caixa] || 'Nenhuma conversa aberta no momento.', fim);
+    } else {
+      titulo = 'Nenhuma conversa selecionada';
+      texto = el('span', {}, 'Escolha uma conversa na lista ao lado para começar o atendimento.');
+    }
+    return el('div', { class: 'chat-vazio' },
+      el('span', { class: 'chat-vazio-icone' }, icone('atendimento', ICONE.balao)),
+      el('div', { class: 'chat-vazio-texto' }, el('strong', {}, titulo), texto));
+  }
+
   function construirMensagens(c) {
     const nos = [];
     let ultimoDia = null;
@@ -469,9 +523,7 @@ import { icone, montarIcones } from './icones.js';
     const chat = $('#chat');
     const c = estado.conversa;
     if (!c) {
-      chat.replaceChildren(el('div', { class: 'chat-vazio' },
-        el('strong', {}, 'Nenhuma conversa selecionada'),
-        el('span', {}, 'Escolha uma conversa na lista ao lado para começar o atendimento.')));
+      chat.replaceChildren(chatVazio());
       return;
     }
     const r = estado.resumo;
@@ -558,7 +610,21 @@ import { icone, montarIcones } from './icones.js';
     const painel = $('#painel');
     const c = estado.conversa;
     if (!c) {
-      painel.replaceChildren(el('div', { class: 'vazio' }, 'Selecione uma conversa para ver os dados do cliente.'));
+      const itens = [
+        ['PIN do cliente', '6 dígitos conferidos no atendimento'],
+        ['Conta e saldo', 'plano, último pagamento e caixa'],
+        ['Notas internas', 'histórico visível só para a equipe'],
+      ];
+      painel.replaceChildren(
+        el('div', { class: 'painel-topo' },
+          el('span', { class: 'avatar-quadrado neutro' }, icone('pin', ICONE.cadeadoGrande)),
+          el('div', { class: 'membro-info' },
+            el('span', { class: 'painel-nome suave' }, 'Ficha do cliente'),
+            el('span', { class: 'painel-sub' }, 'Nenhuma conversa aberta'))),
+        el('div', { class: 'painel-vazio' },
+          el('span', {}, 'Ao abrir uma conversa, aparecem aqui o PIN de validação, o saldo em caixa, o plano e as notas internas da equipe.'),
+          el('div', { class: 'painel-vazio-itens' },
+            ...itens.map(([t, sub]) => el('div', { class: 'painel-vazio-item' }, el('strong', {}, t), el('span', {}, sub))))));
       return;
     }
     const ct = c.contato;

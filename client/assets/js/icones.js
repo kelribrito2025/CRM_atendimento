@@ -31,6 +31,7 @@ function normalizar(texto) {
   if (!svg || doc.querySelector('parsererror')) return null;
   svg.removeAttribute('width');
   svg.removeAttribute('height');
+  svg.querySelectorAll('title, desc').forEach((el) => el.remove());
   svg.setAttribute('aria-hidden', 'true');
   svg.setAttribute('focusable', 'false');
   svg.querySelectorAll('[stroke]').forEach((el) => {
