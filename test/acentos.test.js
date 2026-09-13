@@ -5,6 +5,13 @@ const assert = require('node:assert/strict');
 
 const carregar = () => import('../client/assets/js/acentos.mjs');
 
+test('acentos: vocabulário auditável tem pelo menos 900 correções e ampla cobertura de cedilha', async () => {
+  const { PALAVRAS } = await carregar();
+  assert.ok(PALAVRAS.size >= 900, `esperava pelo menos 900 correções, recebeu ${PALAVRAS.size}`);
+  const comCedilha = [...PALAVRAS.values()].filter((palavra) => palavra.includes('ç'));
+  assert.ok(comCedilha.length >= 100, `esperava pelo menos 100 palavras com cedilha, recebeu ${comCedilha.length}`);
+});
+
 test('acentos: palavras do dia a dia do atendimento', async () => {
   const { corrigirPalavra } = await carregar();
   const esperado = {
@@ -40,6 +47,18 @@ test('acentos: não mexe no que pode mudar de sentido', async () => {
   // já acentuado ou com número/símbolo passa direto
   for (const palavra of ['não', 'você', 'R$', '5446', 'nao1']) {
     assert.equal(corrigirPalavra(palavra), null, `${palavra} não deveria ser alterada`);
+  }
+});
+
+test('acentos: cobre palavras frequentes com cedilha', async () => {
+  const { corrigirPalavra } = await carregar();
+  const esperado = {
+    acao: 'ação', abraco: 'abraço', acucar: 'açúcar', almoco: 'almoço', cabeca: 'cabeça',
+    correcao: 'correção', informacao: 'informação', servico: 'serviço', preco: 'preço',
+    protecao: 'proteção', situacao: 'situação', atualizacao: 'atualização',
+  };
+  for (const [antes, depois] of Object.entries(esperado)) {
+    assert.equal(corrigirPalavra(antes), depois, `${antes} deveria virar ${depois}`);
   }
 });
 
