@@ -284,6 +284,10 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .saldo-alerta { font-size: 11.5px; font-weight: 700; color: var(--vermelho); }
 .saldo-aguarde { font-size: 12.5px; color: var(--texto-suave); }
 .pin-digitos { display: flex; gap: 6px; }
+.pin-id { display: flex; align-items: baseline; gap: 7px; font-size: 12px; color: var(--texto-suave); cursor: copy; min-width: 0; }
+.pin-id:hover .pin-id-valor { color: var(--verde-texto); }
+.pin-id-rotulo { font-weight: 700; color: var(--texto); flex-shrink: 0; }
+.pin-id-valor { font-family: "Courier New", monospace; letter-spacing: .02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 input.pin-digito { width: 0; padding: 0; text-align: center; outline: none; }
 input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(--verde-fundo); }
 .pin-digito { flex: 1; height: 44px; border-radius: 10px; background: #fff; border: 1px solid var(--verde-borda); display: flex; align-items: center; justify-content: center; font-family: "Courier New", monospace; font-size: 19px; font-weight: 700; color: var(--verde-texto); }

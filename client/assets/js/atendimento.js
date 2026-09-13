@@ -770,6 +770,22 @@ import { detectarNovasMensagens } from './alerta-mensagem.mjs';
       avisos.length ? el('span', { class: 'saldo-alerta' }, `Atenção: ${avisos.join(' e ')}.`) : null);
   }
 
+  // Quem é o cliente no canal: o número do Telegram ou o telefone do WhatsApp.
+  // Um clique copia o valor.
+  function linhaIdentificacao(c) {
+    const ct = c.contato;
+    const ehTelegram = c.canal === 'telegram';
+    const valor = ehTelegram ? ct.telegramId : ct.telefone;
+    if (!valor) return null;
+    const rotulo = ehTelegram ? 'Telegram' : 'WhatsApp';
+    return el('div', {
+      class: 'pin-id', title: 'Clique para copiar',
+      onclick: () => {
+        navigator.clipboard?.writeText(String(valor)).then(() => toast(`${rotulo} do cliente copiado.`)).catch(() => {});
+      },
+    }, el('span', { class: 'pin-id-rotulo' }, rotulo), el('span', { class: 'pin-id-valor' }, String(valor)));
+  }
+
   function blocoPin(c) {
     const ct = c.contato;
     const validado = Boolean(ct.pin && ct.pinValidadoEm);
@@ -782,6 +798,7 @@ import { detectarNovasMensagens } from './alerta-mensagem.mjs';
         el('span', { class: 'rotulo' }, 'PIN do cliente'),
         el('span', { class: `selo${validado ? '' : ' pendente'}` }, validado ? 'Conferido' : 'Pendente')),
       el('div', { class: 'pin-digitos' }, ...caixas),
+      linhaIdentificacao(c),
       el('div', { class: 'linha-pin' },
         el('span', { class: 'pin-info' }, validado
           ? `Conferido às ${horaCurta(ct.pinValidadoEm)} por ${ct.pinValidadoPor || 'equipe'}`
