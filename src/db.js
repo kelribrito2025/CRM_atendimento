@@ -32,6 +32,11 @@ CREATE TABLE IF NOT EXISTS equipes (
   ordem INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS ajustes (
+  chave TEXT PRIMARY KEY,
+  valor TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS equipe_membros (
   equipe_id INTEGER NOT NULL REFERENCES equipes(id) ON DELETE CASCADE,
   usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
@@ -175,29 +180,97 @@ function inserirUsuario(db, { nome, email, senha, papel = 'atendente', presenca 
   return Number(info.lastInsertRowid);
 }
 
-// Cria o administrador inicial e (opcionalmente) dados de exemplo.
+// Equipes criadas na primeira execução (podem ser renomeadas depois).
+const EQUIPES_PADRAO = [
+  ['Reembolso', '#12B85C'],
+  ['Admin', '#1D6FA5'],
+  ['Suporte técnico', '#B3261E'],
+  ['Onboarding', '#4C6355'],
+];
+
+const USUARIOS_EXEMPLO = ['marina@bigteck.com.br', 'rafael@bigteck.com.br'];
+
+function lerAjuste(db, chave) {
+  return db.prepare('SELECT valor FROM ajustes WHERE chave = ?').get(chave)?.valor ?? null;
+}
+
+function gravarAjuste(db, chave, valor) {
+  db.prepare('INSERT INTO ajustes (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor')
+    .run(chave, String(valor));
+}
+
+// Cria o administrador inicial, as equipes padrão e (opcionalmente) dados de exemplo.
+// Sem `comDadosExemplo`, os dados de exemplo criados anteriormente são removidos uma única vez.
 function semear(db, opcoes = {}) {
   const {
     adminEmail = 'admin@bigteck.com.br',
     adminSenha = 'admin123',
     adminNome = 'Gestor Bigteck',
     senhaEquipe = adminSenha,
-    comDadosExemplo = true,
+    comDadosExemplo = false,
   } = opcoes;
 
-  const resultado = { adminCriado: false, dadosExemploCriados: false };
+  const resultado = { adminCriado: false, dadosExemploCriados: false, dadosExemploRemovidos: null };
 
   if (contar(db, 'usuarios') === 0) {
     inserirUsuario(db, { nome: adminNome, email: adminEmail, senha: adminSenha, papel: 'admin' });
     resultado.adminCriado = true;
   }
 
-  if (comDadosExemplo && contar(db, 'conversas') === 0) {
-    semearDadosExemplo(db, senhaEquipe);
-    resultado.dadosExemploCriados = true;
+  criarEquipesPadrao(db);
+
+  if (comDadosExemplo) {
+    if (contar(db, 'conversas') === 0) {
+      semearDadosExemplo(db, senhaEquipe);
+      gravarAjuste(db, 'exemplos', 'criados');
+      resultado.dadosExemploCriados = true;
+    }
+  } else if (lerAjuste(db, 'exemplos') !== 'removidos') {
+    resultado.dadosExemploRemovidos = removerDadosExemplo(db);
+    gravarAjuste(db, 'exemplos', 'removidos');
   }
 
   return resultado;
+}
+
+function criarEquipesPadrao(db) {
+  if (contar(db, 'equipes') > 0) return;
+  const admin = db.prepare("SELECT id FROM usuarios WHERE papel = 'admin' ORDER BY id LIMIT 1").get();
+  const insEquipe = db.prepare('INSERT INTO equipes (nome, cor, ordem) VALUES (?, ?, ?)');
+  const insMembro = db.prepare('INSERT OR IGNORE INTO equipe_membros (equipe_id, usuario_id) VALUES (?, ?)');
+  EQUIPES_PADRAO.forEach(([nome, cor], i) => {
+    const id = Number(insEquipe.run(nome, cor, i).lastInsertRowid);
+    if (admin) insMembro.run(id, admin.id);
+  });
+}
+
+// Apaga as conversas, contatos e usuários de teste criados por semearDadosExemplo.
+// Conversas reais vêm sempre de um canal (canal_id) e contatos reais têm wa_id; só o resto é removido.
+function removerDadosExemplo(db) {
+  const totais = { conversas: 0, contatos: 0, usuarios: 0 };
+  db.exec('BEGIN');
+  try {
+    totais.conversas = db.prepare('DELETE FROM conversas WHERE canal_id IS NULL').run().changes;
+    totais.contatos = db.prepare('DELETE FROM contatos WHERE wa_id IS NULL AND id NOT IN (SELECT contato_id FROM conversas)').run().changes;
+    const marcadores = USUARIOS_EXEMPLO.map(() => '?').join(', ');
+    const ids = db.prepare(`SELECT id FROM usuarios WHERE email IN (${marcadores})`).all(...USUARIOS_EXEMPLO).map((u) => Number(u.id));
+    if (ids.length) {
+      const lista = ids.join(', ');
+      db.exec(`
+        UPDATE contatos SET pin_validado_por = NULL WHERE pin_validado_por IN (${lista});
+        UPDATE conversas SET atendente_id = NULL WHERE atendente_id IN (${lista});
+        UPDATE mensagens SET autor_id = NULL WHERE autor_id IN (${lista});
+        UPDATE convites SET criado_por = NULL WHERE criado_por IN (${lista});
+        DELETE FROM usuarios WHERE id IN (${lista});
+      `);
+      totais.usuarios = ids.length;
+    }
+    db.exec('COMMIT');
+  } catch (erro) {
+    db.exec('ROLLBACK');
+    throw erro;
+  }
+  return totais;
 }
 
 /* ------------------------------------------------------------------ */
@@ -462,4 +535,4 @@ function semearDadosExemplo(db, senhaEquipe) {
   }
 }
 
-module.exports = { abrirBanco, semear, inserirUsuario, semearDadosExemplo };
+module.exports = { abrirBanco, semear, inserirUsuario, semearDadosExemplo, removerDadosExemplo };

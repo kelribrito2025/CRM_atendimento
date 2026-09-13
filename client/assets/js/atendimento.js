@@ -125,10 +125,6 @@ import { icone, montarIcones } from './icones.js';
     const t = minutosTexto(Math.max(0, Math.round((Date.now() - ms) / 60000)));
     return t === 'agora' ? 'aberta agora' : `aberta há ${t}`;
   }
-  function mascararTelefone(tel) {
-    const m = /^(\+\d{2} \d{2} )(\d)(\d+)-(\d{4})$/.exec(tel || '');
-    return m ? `${m[1]}${m[2]}•••-${m[4]}` : (tel || '');
-  }
 
   async function api(caminho, { method = 'GET', body } = {}) {
     const resposta = await fetch(`/api${caminho}`, {
@@ -151,7 +147,7 @@ import { icone, montarIcones } from './icones.js';
    * ============================================================== */
   async function carregarResumo() {
     estado.resumo = await api('/resumo');
-    renderTopo();
+    renderRail();
     renderSidebar();
   }
 
@@ -306,20 +302,21 @@ import { icone, montarIcones } from './icones.js';
   /* ================================================================
    * Render: topo e menu do usuário
    * ============================================================== */
-  function renderTopo() {
+  function renderRail() {
     const r = estado.resumo;
-    $('#topo-sub').textContent = `${r.caixas.todas} conversa${r.caixas.todas === 1 ? '' : 's'} aberta${r.caixas.todas === 1 ? '' : 's'} · 1ª resposta em ${r.primeiraResposta}`;
     $('#rail-badge').textContent = r.caixas.todas;
     $('#rail-badge').hidden = r.caixas.todas === 0;
     $('#btn-usuario').textContent = r.usuario.iniciais;
     $('#menu-nome').textContent = r.usuario.nome;
     $('#menu-email').textContent = r.usuario.email;
+    const admin = r.usuario.papel === 'admin';
+    $('#btn-conectar').hidden = !admin;
     const wa = (r.canais || []).find((c) => c.id === 'whatsapp');
-    const chip = $('#chip-whatsapp');
-    if (chip && wa) {
-      chip.querySelector('.ponto').classList.toggle('off', !wa.conectado);
+    const status = $('#menu-whatsapp');
+    status.hidden = !(admin && wa);
+    if (admin && wa) {
       const conectados = wa.canais.filter((c) => c.status === 'connected').map((c) => c.numeroFormatado || c.nome);
-      chip.title = wa.conectado ? `WhatsApp conectado: ${conectados.join(', ')}` : (wa.configurado ? 'WhatsApp não conectado. Clique para conectar.' : 'WhatsApp não configurado (UAZAPI_URL no .env).');
+      status.textContent = wa.conectado ? `WhatsApp conectado: ${conectados.join(', ')}` : (wa.configurado ? 'WhatsApp não conectado' : 'WhatsApp não configurado no servidor');
     }
   }
 
@@ -472,7 +469,6 @@ import { icone, montarIcones } from './icones.js';
     }
     const r = estado.resumo;
     const canalNome = NOME_CANAL[c.canal] || c.canal;
-    const corCanal = c.canal === 'telegram' ? '#1D6FA5' : '#0A7A42';
     const primeiroNome = c.contato.nome.split(' ')[0];
     const modoNota = estado.modo === 'nota';
 
@@ -482,7 +478,6 @@ import { icone, montarIcones } from './icones.js';
         el('div', { class: 'chat-info' },
           el('span', { class: 'chat-nome' }, c.contato.nome),
           el('span', { class: 'chat-sub' }, [c.contato.empresa, `protocolo #${c.protocolo}`, textoAberto(c.criadaEm, c.status)].filter(Boolean).join(' · '))),
-        el('span', { class: `pill-canal ${c.canal}`, html: ICONE[c.canal]?.(11, corCanal, 2.6) || '' }, c.contato.telefone ? mascararTelefone(c.contato.telefone) : canalNome),
         el('button', { type: 'button', class: 'btn-icone btn-info hov', title: 'Dados do cliente', onclick: () => $('#painel').classList.toggle('aberto') }, icone('info', ICONE.info)),
         el('button', { type: 'button', class: 'btn-icone hov', title: 'Mais ações', onclick: (e) => { e.stopPropagation(); abrirMenuAcoes(e.currentTarget); } }, icone('acoes', ICONE.pontos))));
 
@@ -835,8 +830,6 @@ import { icone, montarIcones } from './icones.js';
       }, 250);
     });
 
-    $('#btn-conectar').addEventListener('click', abrirModalCanais);
-    $('#chip-whatsapp').addEventListener('click', abrirModalCanais);
     $('#btn-filtros').addEventListener('click', () => toast('Filtros avançados: em breve.'));
 
     document.querySelectorAll('.rail-btn[data-modulo]').forEach((b) => {
@@ -844,6 +837,7 @@ import { icone, montarIcones } from './icones.js';
     });
 
     const menuUsuario = $('#menu-usuario');
+    $('#btn-conectar').addEventListener('click', () => { menuUsuario.hidden = true; abrirModalCanais(); });
     $('#btn-usuario').addEventListener('click', (e) => {
       e.stopPropagation();
       menuUsuario.hidden = !menuUsuario.hidden;

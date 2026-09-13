@@ -11,7 +11,7 @@ const ADMIN = { email: 'admin@teste.com', senha: 'segredo123' };
 
 async function subirServidor(opcoes = {}) {
   const db = abrirBanco(':memory:');
-  semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste' });
+  semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: true });
   const app = criarApp(db, opcoes);
   const servidor = await new Promise((resolve) => {
     const s = app.listen(0, () => resolve(s));

@@ -23,7 +23,7 @@ function lerConfig() {
     adminEmail: process.env.ADMIN_EMAIL || 'admin@bigteck.com.br',
     adminSenha: process.env.ADMIN_SENHA || 'admin123',
     adminNome: process.env.ADMIN_NOME || 'Gestor Bigteck',
-    dadosExemplo: process.env.DADOS_EXEMPLO !== 'false',
+    dadosExemplo: process.env.DADOS_EXEMPLO === 'true',
     doisFatores: process.env.DOIS_FATORES === 'true',
     baseUrl: process.env.BASE_URL || '',
     cookieSeguro: process.env.COOKIE_SEGURO === 'true',
@@ -87,6 +87,10 @@ function mostrarBoasVindas({ config, resultado }, endereco) {
   }
   if (resultado.dadosExemploCriados) {
     console.log('📦 Conversas e equipes de exemplo foram criadas para você testar a tela.');
+  }
+  const removidos = resultado.dadosExemploRemovidos;
+  if (removidos && (removidos.conversas || removidos.contatos || removidos.usuarios)) {
+    console.log(`🧹 Dados de exemplo removidos: ${removidos.conversas} conversas, ${removidos.contatos} contatos e ${removidos.usuarios} usuários de teste.`);
   }
   console.log(`🔐 Verificação em duas etapas: ${config.doisFatores ? 'ativada' : 'desativada'} (DOIS_FATORES no .env)`);
   console.log('📧 E-mails (código de verificação, recuperação de senha) aparecem aqui nesta janela até um serviço de e-mail ser configurado.');

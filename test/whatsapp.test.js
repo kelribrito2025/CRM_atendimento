@@ -38,7 +38,7 @@ function uazapiFalso() {
 
 async function subirServidor(opcoes = {}) {
   const db = abrirBanco(':memory:');
-  semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste' });
+  semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: true });
   const uazapi = uazapiFalso();
   const app = criarApp(db, { enviador: criarEnviador({ modo: 'silencioso' }), uazapi, baseUrl: 'https://crm.exemplo.com.br', ...opcoes });
   const servidor = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });

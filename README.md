@@ -44,7 +44,7 @@ Para gerar a versão compilada (opcional): `npm run build` cria a pasta `dist/`,
 | E-mail | `admin@bigteck.com.br` |
 | Senha  | `admin123`             |
 
-Troque essa senha logo depois (veja abaixo). Os usuários de exemplo `marina@bigteck.com.br` e `rafael@bigteck.com.br` usam a mesma senha inicial.
+Troque essa senha logo depois (veja abaixo). O CRM começa vazio, com as equipes Reembolso, Admin, Suporte técnico e Onboarding. Para uma demonstração com conversas de exemplo, defina `DADOS_EXEMPLO=true` no `.env` (os usuários de exemplo `marina@bigteck.com.br` e `rafael@bigteck.com.br` usam a mesma senha inicial; ao voltar para `false`, os exemplos são apagados).
 
 ## Telas de acesso
 
@@ -86,12 +86,12 @@ O CRM recebe e responde mensagens de WhatsApp pela API não oficial **uazapi**.
    UAZAPI_ADMIN_TOKEN=cole-aqui-o-token
    BASE_URL=https://endereco-publico-do-crm
    ```
-3. Reinicie o sistema, entre como administrador e clique em **Conectar canal** (ou no chip WhatsApp no topo).
+3. Reinicie o sistema, entre como administrador e clique no seu avatar (canto inferior esquerdo) e em **Conectar canal**.
 4. Clique em **Adicionar WhatsApp** e conecte de um dos dois jeitos:
    - **Ler QR code**: no celular, WhatsApp › Aparelhos conectados › Conectar um aparelho › aponte para o QR code.
    - **Digitar número**: informe o número com DDD, gere o código e digite no celular em Aparelhos conectados › Conectar um aparelho › Conectar com número de telefone.
 
-Quando conectar, a bolinha do chip WhatsApp fica verde. As mensagens dos clientes aparecem na lista de conversas, e as respostas enviadas pelo chat vão para o WhatsApp do cliente.
+Quando conectar, o menu da conta (avatar) mostra "WhatsApp conectado" com o número. As mensagens dos clientes aparecem na lista de conversas, e as respostas enviadas pelo chat vão para o WhatsApp do cliente.
 
 **Importante: o `BASE_URL` precisa ser um endereço público na internet.** O servidor do uazapi entrega as mensagens chamando `BASE_URL/webhook/uazapi/...`. Em `http://localhost` isso não funciona: dá para conectar e enviar, mas as mensagens recebidas não chegam. Para testar em casa, use um túnel (por exemplo, Cloudflare Tunnel ou ngrok) e coloque o endereço do túnel em `BASE_URL`; no Manus, use o endereço público da prévia.
 
@@ -134,12 +134,12 @@ npm run usuario -- --listar
   - chat com histórico, envio de resposta, nota interna e troca de equipe/atendente;
   - marcar conversa como resolvida ou reabrir;
   - painel do cliente com PIN, dados da conta, alertas e notas.
-- Dados de exemplo criados automaticamente para testar a tela.
+- Dados de exemplo opcionais (`DADOS_EXEMPLO=true`) para testar a tela.
 - Testes automáticos (`npm test`).
 
 ## O que ainda é só visual ("em breve")
 
-Botões que mostram um aviso e ainda não fazem nada: **Entrar com Google Workspace**, **Conectar canal**, **Anexo**, **Respostas rápidas**, **Estornar**, **Ver faturas**, **Abrir conta**, **Nova equipe**, **Adicionar à equipe**, **Filtros** e os outros módulos do menu lateral.
+Botões que mostram um aviso e ainda não fazem nada: **Entrar com Google Workspace**, **Anexo**, **Respostas rápidas**, **Estornar**, **Ver faturas**, **Abrir conta**, **Nova equipe**, **Adicionar à equipe**, **Filtros** e os outros módulos do menu lateral.
 
 O Telegram ainda não está integrado. No WhatsApp, mídias (fotos, áudios, documentos) ainda não são exibidas, só indicadas como texto.
 
@@ -153,7 +153,7 @@ Copie `.env.example` para `.env` e ajuste:
 | `ADMIN_EMAIL`   | E-mail do administrador criado no primeiro acesso         |
 | `ADMIN_SENHA`   | Senha inicial do administrador                            |
 | `ADMIN_NOME`    | Nome do administrador                                     |
-| `DADOS_EXEMPLO` | `false` para começar sem conversas de exemplo             |
+| `DADOS_EXEMPLO` | `true` para criar conversas de exemplo (padrão: vazio)     |
 | `DOIS_FATORES`  | `true` para pedir um código por e-mail a cada login       |
 | `BASE_URL`      | Endereço público do sistema, usado nos links de convite, nova senha e no webhook do WhatsApp |
 | `UAZAPI_URL`    | Endereço do servidor uazapi (WhatsApp)                    |
