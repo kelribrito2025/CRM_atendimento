@@ -24,8 +24,8 @@
 .hero-rodape { position: relative; margin-top: auto; padding-top: 30px; font-size: 12.5px; color: #8FB39E; }
 
 /* Lado do formulário */
-.formulario { flex: 1; min-width: 0; background: #fff; padding: 44px 56px; display: flex; flex-direction: column; }
-.formulario-miolo { margin: auto 0; display: flex; flex-direction: column; max-width: 460px; width: 100%; }
+.formulario { flex: 1; min-width: 0; background: #fff; padding: 44px 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.formulario-miolo { margin: auto; display: flex; flex-direction: column; max-width: 460px; width: 100%; }
 .titulo { display: flex; flex-direction: column; gap: 7px; padding-bottom: 26px; }
 .titulo h2 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -.03em; }
 .titulo p { margin: 0; font-size: 14px; color: var(--texto-suave); }

@@ -482,6 +482,23 @@ import { icone, montarIcones } from './icones.js';
       el('div', { class: 'chat-vazio-texto' }, el('strong', {}, titulo), texto));
   }
 
+  let visor = null;
+
+  function fecharVisor() {
+    if (visor) visor.remove();
+    visor = null;
+  }
+
+  // Mostra a imagem grande sobre a tela, sem abrir outra aba.
+  function abrirVisor(url, legenda) {
+    fecharVisor();
+    visor = el('div', { class: 'visor', role: 'dialog', 'aria-modal': 'true', onclick: (e) => { if (e.target === visor) fecharVisor(); } },
+      el('img', { src: url, alt: legenda || 'Imagem enviada pelo cliente' }),
+      el('button', { type: 'button', class: 'visor-fechar', title: 'Fechar (Esc)', onclick: fecharVisor }, svg(ICONE.fechar)),
+      el('a', { class: 'visor-baixar', href: `${url}?baixar=1`, target: '_blank', rel: 'noopener' }, 'Baixar imagem'));
+    document.body.append(visor);
+  }
+
   // Balão da mensagem: mostra a imagem, o áudio ou o vídeo quando o cliente mandou um arquivo.
   function balaoMensagem(m) {
     const a = m.midia;
@@ -490,8 +507,10 @@ import { icone, montarIcones } from './icones.js';
     const legenda = String(m.texto || '').replace(/^\[[^\]]+\]\s*/, '').trim();
     let conteudo;
     if (a.tipo === 'imagem') {
-      conteudo = el('a', { href: a.url, target: '_blank', rel: 'noopener', class: 'midia-abrir' },
-        el('img', { src: a.url, alt: legenda || 'Imagem enviada pelo cliente', class: 'midia-imagem', loading: 'lazy' }));
+      conteudo = el('img', {
+        src: a.url, alt: legenda || 'Imagem enviada pelo cliente', class: 'midia-imagem', loading: 'lazy',
+        title: 'Clique para ver maior', onclick: () => abrirVisor(a.url, legenda),
+      });
     } else if (a.tipo === 'video') {
       conteudo = el('video', { src: a.url, controls: 'controls', class: 'midia-video', preload: 'metadata' });
     } else if (a.tipo === 'audio') {
@@ -501,6 +520,16 @@ import { icone, montarIcones } from './icones.js';
         icone('anexo', ICONE.clipe), el('span', {}, a.nome || 'Abrir documento'));
     }
     return el('div', { class: `balao midia ${a.tipo}` }, conteudo, legenda ? el('span', { class: 'midia-legenda' }, legenda) : null);
+  }
+
+  // A caixa de texto cresce com o que é digitado, até 90% da altura do chat.
+  function ajustarAltura(campo) {
+    if (!campo) return;
+    const chat = $('#chat');
+    const limite = Math.max(120, Math.round((chat?.clientHeight || 600) * 0.9));
+    campo.style.setProperty('--altura-maxima', `${limite}px`);
+    campo.style.height = 'auto';
+    campo.style.height = `${Math.min(campo.scrollHeight, limite)}px`;
   }
 
   function construirMensagens(c) {
@@ -573,6 +602,7 @@ import { icone, montarIcones } from './icones.js';
       id: 'texto-msg', rows: '2', maxlength: '4000',
       placeholder: modoNota ? 'Escreva uma nota interna para a equipe…' : `Escreva para ${primeiroNome} pelo ${canalNome}…`,
       onkeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } },
+      oninput: () => ajustarAltura(textarea),
     });
     const enviar = () => enviarMensagem(textarea.value, modoNota ? 'nota' : 'resposta', textarea);
 
@@ -593,6 +623,7 @@ import { icone, montarIcones } from './icones.js';
           el('button', { type: 'button', class: 'btn-primario', id: 'btn-enviar', onclick: enviar }, modoNota ? 'Salvar nota' : 'Enviar', modoNota ? null : icone('enviar', ICONE.enviar, { animado: true, classe: 'branco' })))));
 
     chat.replaceChildren(cabecalho, mensagens, compositor);
+    ajustarAltura(textarea);
     mensagens.scrollTop = mensagens.scrollHeight;
   }
 
@@ -711,14 +742,14 @@ import { icone, montarIcones } from './icones.js';
         el('span', { class: 'rotulo' }, 'PIN do cliente'),
         el('span', { class: `selo${validado ? '' : ' pendente'}` }, validado ? 'Conferido' : 'Pendente')),
       el('div', { class: 'pin-digitos' }, ...caixas),
-      podeConsultar
-        ? el('div', { class: 'linha-pin' },
-          el('span', { class: 'pin-info' }, validado
-            ? `Conferido às ${horaCurta(ct.pinValidadoEm)} por ${ct.pinValidadoPor || 'equipe'}`
-            : 'Digite o PIN que o cliente informou.'),
-          el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => consultarSaldo(pinAtual()) },
-            saldo.cliente || saldo.erro ? 'Consultar de novo' : 'Consultar saldo'))
-        : null,
+      el('div', { class: 'linha-pin' },
+        el('span', { class: 'pin-info' }, validado
+          ? `Conferido às ${horaCurta(ct.pinValidadoEm)} por ${ct.pinValidadoPor || 'equipe'}`
+          : 'Digite o PIN que o cliente informou.'),
+        podeConsultar
+          ? el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => consultarSaldo(pinAtual()) },
+            saldo.cliente || saldo.erro ? 'Consultar de novo' : 'Consultar saldo')
+          : null),
       blocoSaldo());
   }
 
@@ -754,7 +785,7 @@ import { icone, montarIcones } from './icones.js';
         avatarCliente({ canal: c.canal, contato: { iniciais: iniciais(ct.empresa || ct.nome) } }, 'avatar-quadrado'),
         el('div', { class: 'membro-info' },
           el('span', { class: 'painel-nome' }, ct.empresa || ct.nome),
-          el('span', { class: 'painel-sub' }, ct.cnpj || ct.telefone || '')),
+          el('span', { class: 'painel-sub' }, ct.cnpj || ct.telefone || (ct.telegramUsuario ? `@${ct.telegramUsuario}` : ''))),
         el('button', { type: 'button', class: 'link-btn', onclick: () => toast('Abrir conta do cliente: em breve.') }, 'Abrir conta')),
       el('div', { class: 'rolagem painel-corpo' },
         blocoPin(c),
@@ -1085,7 +1116,7 @@ import { icone, montarIcones } from './icones.js';
       if (!e.target.closest('.menu-flutuante')) fecharMenus();
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { menuUsuario.hidden = true; fecharMenus(); $('#painel').classList.remove('aberto'); if (modalCanais) fecharModalCanais(); }
+      if (e.key === 'Escape') { fecharVisor(); menuUsuario.hidden = true; fecharMenus(); $('#painel').classList.remove('aberto'); if (modalCanais) fecharModalCanais(); }
     });
   }
 

@@ -22,7 +22,7 @@ function lerConfig() {
   carregarEnv(path.join(RAIZ, '.env'));
   return {
     porta: Number(process.env.PORT || 3100),
-    caminhoBanco: process.env.DB_PATH || path.join(RAIZ, 'data', 'crm.sqlite'),
+    caminhoBanco: process.env.DATABASE_URL || process.env.DB_PATH || path.join(RAIZ, 'data', 'crm.sqlite'),
     adminEmail: process.env.ADMIN_EMAIL || 'admin@bigteck.com.br',
     adminSenha: process.env.ADMIN_SENHA || 'admin123',
     adminNome: process.env.ADMIN_NOME || 'Gestor Bigteck',
@@ -51,10 +51,10 @@ function pastaPublica() {
   return paginas.endsWith('client') ? path.join(paginas, 'public') : paginas;
 }
 
-function montarSistema(extras = {}) {
+async function montarSistema(extras = {}) {
   const config = lerConfig();
-  const db = abrirBanco(config.caminhoBanco);
-  const resultado = semear(db, {
+  const db = await abrirBanco(config.caminhoBanco);
+  const resultado = await semear(db, {
     adminEmail: config.adminEmail,
     adminSenha: config.adminSenha,
     adminNome: config.adminNome,
@@ -80,19 +80,22 @@ function montarSistema(extras = {}) {
 
   // Limpeza periódica de sessões, códigos e links expirados.
   setInterval(() => {
-    limparSessoesExpiradas(db);
-    limparAcessosExpirados(db);
+    Promise.all([limparSessoesExpiradas(db), limparAcessosExpirados(db)])
+      .catch((erro) => console.error('Limpeza automática falhou:', erro.message));
   }, 60 * 60 * 1000).unref();
 
   // Religa os bots do Telegram que já estavam conectados.
-  resultado.botsTelegram = canais.ligarTelegramTodos(db, telegram);
+  resultado.botsTelegram = await canais.ligarTelegramTodos(db, telegram);
 
   return { app, db, config, resultado, enviador, uazapi, telegram, saldo };
 }
 
-function mostrarBoasVindas({ config, resultado }, endereco) {
+function mostrarBoasVindas({ config, resultado, db }, endereco) {
   console.log('');
   console.log(`✅ CRM Atendimento rodando em ${endereco}`);
+  console.log(db?.dialeto === 'mysql'
+    ? `🗄️  Banco de dados: MySQL/TiDB (${db.descricao}) — os dados ficam guardados entre publicações.`
+    : `🗄️  Banco de dados: arquivo ${config.caminhoBanco}`);
   if (resultado.adminCriado) {
     console.log(`👤 Primeiro acesso → e-mail: ${config.adminEmail} | senha: ${config.adminSenha}`);
     console.log('   Troque a senha depois com: npm run usuario -- --email <seu e-mail> --senha <nova senha>');

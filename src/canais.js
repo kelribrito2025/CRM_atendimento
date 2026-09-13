@@ -103,21 +103,34 @@ function interpretarConexao(dados) {
   return null;
 }
 
-function proximoProtocolo(db) {
-  const linha = db.prepare("SELECT MAX(CAST(protocolo AS INTEGER)) AS maximo FROM conversas WHERE protocolo GLOB '[0-9]*'").get();
-  const maximo = Number(linha?.maximo || 4999);
-  return String(Math.max(maximo, 4999) + 1);
+// O protocolo é um contador guardado em `ajustes`; na primeira vez ele parte do maior já usado.
+async function proximoProtocolo(db) {
+  const guardado = Number((await db.prepare("SELECT valor FROM ajustes WHERE chave = 'protocolo'").get())?.valor || 0);
+  let maximo = guardado;
+  if (!guardado) {
+    const protocolos = await db.prepare('SELECT protocolo FROM conversas').all();
+    for (const p of protocolos) {
+      const n = /^\d+$/.test(String(p.protocolo)) ? Number(p.protocolo) : 0;
+      if (n > maximo) maximo = n;
+    }
+  }
+  const proximo = Math.max(maximo, 4999) + 1;
+  const sql = db.dialeto === 'mysql'
+    ? "INSERT INTO ajustes (chave, valor) VALUES ('protocolo', ?) ON DUPLICATE KEY UPDATE valor = VALUES(valor)"
+    : "INSERT INTO ajustes (chave, valor) VALUES ('protocolo', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor";
+  await db.prepare(sql).run(String(proximo));
+  return String(proximo);
 }
 
 // Aplica um evento do webhook ao banco. Retorna um resumo do que foi feito.
-function processarEvento(db, canal, corpo) {
+async function processarEvento(db, canal, corpo) {
   const { tipo, dados } = extrairEvento(corpo);
   const agora = Date.now();
 
   if (tipo === 'connection' || tipo === 'status' || tipo === 'connection.update') {
     const status = interpretarConexao(dados);
     if (status) {
-      db.prepare('UPDATE canais SET status = ?, atualizado_em = ? WHERE id = ?').run(status, agora, canal.id);
+      await db.prepare('UPDATE canais SET status = ?, atualizado_em = ? WHERE id = ?').run(status, agora, canal.id);
       return { resultado: 'status', status };
     }
     return { resultado: 'ignorado', motivo: 'status desconhecido' };
@@ -127,7 +140,7 @@ function processarEvento(db, canal, corpo) {
     const m = extrairMensagem(dados);
     const entrega = interpretarEntrega(m?.status);
     if (m?.messageid && entrega) {
-      const info = db.prepare("UPDATE mensagens SET entrega = ? WHERE externo_id = ? AND tipo = 'atendente'").run(entrega, m.messageid);
+      const info = await db.prepare("UPDATE mensagens SET entrega = ? WHERE externo_id = ? AND tipo = 'atendente'").run(entrega, m.messageid);
       return { resultado: 'atualizacao', entrega, alteradas: Number(info.changes) };
     }
     return { resultado: 'ignorado', motivo: 'atualização sem id ou status' };
@@ -140,48 +153,48 @@ function processarEvento(db, canal, corpo) {
     const numero = numeroDoChat(m.chatid);
     if (!numero) return { resultado: 'ignorado', motivo: 'número inválido' };
     if (!m.texto) return { resultado: 'ignorado', motivo: 'sem conteúdo' };
-    if (m.messageid && db.prepare('SELECT 1 FROM mensagens WHERE externo_id = ?').get(m.messageid)) {
+    if (m.messageid && await db.prepare('SELECT 1 FROM mensagens WHERE externo_id = ?').get(m.messageid)) {
       return { resultado: 'ignorado', motivo: 'duplicada' };
     }
 
     // contato
-    let contato = db.prepare('SELECT * FROM contatos WHERE wa_id = ?').get(numero);
+    let contato = await db.prepare('SELECT * FROM contatos WHERE wa_id = ?').get(numero);
     const telefone = formatarNumero(numero);
     if (!contato) {
-      const id = Number(db.prepare('INSERT INTO contatos (nome, telefone, wa_id) VALUES (?, ?, ?)')
-        .run(m.nome || telefone, telefone, numero).lastInsertRowid);
+      const id = Number((await db.prepare('INSERT INTO contatos (nome, telefone, wa_id) VALUES (?, ?, ?)')
+        .run(m.nome || telefone, telefone, numero)).lastInsertRowid);
       contato = { id, nome: m.nome || telefone };
     } else if (m.nome && !m.fromMe && (!contato.nome || contato.nome === contato.telefone || contato.nome.startsWith('+'))) {
-      db.prepare('UPDATE contatos SET nome = ? WHERE id = ?').run(m.nome, contato.id);
+      await db.prepare('UPDATE contatos SET nome = ? WHERE id = ?').run(m.nome, contato.id);
     }
 
-    return guardarMensagem(db, canal, contato, m, 'whatsapp');
+    return await guardarMensagem(db, canal, contato, m, 'whatsapp');
   }
 
   return { resultado: 'ignorado', motivo: `evento ${tipo || 'desconhecido'}` };
 }
 
 // Guarda uma mensagem recebida na conversa aberta do contato neste canal (cria a conversa se preciso).
-function guardarMensagem(db, canal, contato, m, tipoCanal) {
+async function guardarMensagem(db, canal, contato, m, tipoCanal) {
   const agora = Date.now();
-  let conversa = db.prepare("SELECT id, status FROM conversas WHERE contato_id = ? AND canal_id = ? AND status = 'aberta' ORDER BY id DESC LIMIT 1")
+  let conversa = await db.prepare("SELECT id, status FROM conversas WHERE contato_id = ? AND canal_id = ? AND status = 'aberta' ORDER BY id DESC LIMIT 1")
     .get(contato.id, canal.id);
   let nova = false;
   if (!conversa) {
-    const id = Number(db.prepare(`
+    const id = Number((await db.prepare(`
       INSERT INTO conversas (protocolo, contato_id, equipe_id, atendente_id, canal, status, nao_lidas, criada_em, atualizada_em, canal_id, wa_chatid)
       VALUES (?, ?, ?, NULL, ?, 'aberta', 0, ?, ?, ?, ?)`)
-      .run(proximoProtocolo(db), contato.id, canal.equipe_padrao_id || null, tipoCanal, m.criadaEm, m.criadaEm, canal.id, m.chatid).lastInsertRowid);
+      .run(await proximoProtocolo(db), contato.id, canal.equipe_padrao_id || null, tipoCanal, m.criadaEm, m.criadaEm, canal.id, m.chatid)).lastInsertRowid);
     conversa = { id, status: 'aberta' };
     nova = true;
   }
   const fromMe = Boolean(m.fromMe);
   const arq = m.arquivo || null;
-  db.prepare(`INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, entrega, criada_em, externo_id, midia_tipo, midia_id, midia_nome, midia_mime)
+  await db.prepare(`INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, entrega, criada_em, externo_id, midia_tipo, midia_id, midia_nome, midia_mime)
     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(conversa.id, fromMe ? 'atendente' : 'cliente', m.texto, fromMe ? 'enviada' : null, m.criadaEm, m.messageid,
       arq?.tipo || null, arq?.id || null, arq?.nome || null, arq?.mime || null);
-  db.prepare('UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + ?, wa_chatid = COALESCE(wa_chatid, ?) WHERE id = ?')
+  await db.prepare('UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + ?, wa_chatid = COALESCE(wa_chatid, ?) WHERE id = ?')
     .run(Math.max(m.criadaEm, agora), fromMe ? 0 : 1, m.chatid, conversa.id);
   return { resultado: 'mensagem', conversaId: conversa.id, contatoId: contato.id, nova, fromMe };
 }
@@ -247,38 +260,38 @@ function extrairMensagemTelegram(update) {
 }
 
 // Aplica um update do Telegram ao banco. Retorna um resumo do que foi feito.
-function processarUpdateTelegram(db, canal, update) {
+async function processarUpdateTelegram(db, canal, update) {
   const m = extrairMensagemTelegram(update);
   if (!m) return { resultado: 'ignorado', motivo: update?.edited_message ? 'mensagem editada' : 'sem mensagem' };
   if (m.grupo) return { resultado: 'ignorado', motivo: 'grupo' };
   if (m.deBot) return { resultado: 'ignorado', motivo: 'mensagem de bot' };
   if (!m.texto && !m.arquivo) return { resultado: 'ignorado', motivo: 'sem conteúdo' };
-  if (db.prepare('SELECT 1 FROM mensagens WHERE externo_id = ?').get(m.messageid)) return { resultado: 'ignorado', motivo: 'duplicada' };
+  if (await db.prepare('SELECT 1 FROM mensagens WHERE externo_id = ?').get(m.messageid)) return { resultado: 'ignorado', motivo: 'duplicada' };
 
   const nomePadrao = m.nome || (m.usuario ? `@${m.usuario}` : `Telegram ${m.chatid}`);
-  let contato = db.prepare('SELECT * FROM contatos WHERE tg_id = ?').get(m.chatid);
+  let contato = await db.prepare('SELECT * FROM contatos WHERE tg_id = ?').get(m.chatid);
   if (!contato) {
-    const id = Number(db.prepare('INSERT INTO contatos (nome, tg_id, tg_usuario) VALUES (?, ?, ?)').run(nomePadrao, m.chatid, m.usuario).lastInsertRowid);
+    const id = Number((await db.prepare('INSERT INTO contatos (nome, tg_id, tg_usuario) VALUES (?, ?, ?)').run(nomePadrao, m.chatid, m.usuario)).lastInsertRowid);
     contato = { id, nome: nomePadrao };
   } else if (m.usuario && m.usuario !== contato.tg_usuario) {
-    db.prepare('UPDATE contatos SET tg_usuario = ? WHERE id = ?').run(m.usuario, contato.id);
+    await db.prepare('UPDATE contatos SET tg_usuario = ? WHERE id = ?').run(m.usuario, contato.id);
   }
-  return guardarMensagem(db, canal, contato, m, 'telegram');
+  return await guardarMensagem(db, canal, contato, m, 'telegram');
 }
 
 // Começa a receber as mensagens de um bot do Telegram e guarda tudo no banco.
-function ligarTelegram(db, telegram, canal) {
+async function ligarTelegram(db, telegram, canal) {
   if (!telegram?.sondagem) return false;
   telegram.sondagem.iniciar(canal, {
-    aoReceber: (update) => {
-      registrarEvento(db, canal.id, 'telegram', update);
+    aoReceber: async (update) => {
+      await registrarEvento(db, canal.id, 'telegram', update);
       return processarUpdateTelegram(db, canal, update);
     },
-    aoEstado: (estado) => {
+    aoEstado: async (estado) => {
       if (estado.ok) {
-        db.prepare("UPDATE canais SET ultimo_erro = NULL, status = 'connected', atualizado_em = ? WHERE id = ?").run(Date.now(), canal.id);
+        await db.prepare("UPDATE canais SET ultimo_erro = NULL, status = 'connected', atualizado_em = ? WHERE id = ?").run(Date.now(), canal.id);
       } else {
-        db.prepare('UPDATE canais SET ultimo_erro = ?, status = ?, atualizado_em = ? WHERE id = ?')
+        await db.prepare('UPDATE canais SET ultimo_erro = ?, status = ?, atualizado_em = ? WHERE id = ?')
           .run(String(estado.erro || 'erro').slice(0, 500), estado.fatal ? 'disconnected' : 'connected', Date.now(), canal.id);
       }
     },
@@ -287,19 +300,21 @@ function ligarTelegram(db, telegram, canal) {
 }
 
 // Ao iniciar o sistema: religa todos os bots do Telegram que estavam conectados.
-function ligarTelegramTodos(db, telegram) {
-  const lista = db.prepare("SELECT * FROM canais WHERE tipo = 'telegram' AND status = 'connected'").all();
+async function ligarTelegramTodos(db, telegram) {
+  const lista = await db.prepare("SELECT * FROM canais WHERE tipo = 'telegram' AND status = 'connected'").all();
   let n = 0;
-  for (const canal of lista) if (ligarTelegram(db, telegram, canal)) n += 1;
+  for (const canal of lista) if (await ligarTelegram(db, telegram, canal)) n += 1;
   return n;
 }
 
-function registrarEvento(db, canalId, tipo, corpo) {
+async function registrarEvento(db, canalId, tipo, corpo) {
   let texto = '';
   try { texto = JSON.stringify(corpo); } catch { texto = String(corpo); }
   if (texto.length > 100_000) texto = `${texto.slice(0, 100_000)}…`;
-  db.prepare('INSERT INTO canal_eventos (canal_id, tipo, corpo, recebido_em) VALUES (?, ?, ?, ?)').run(canalId, tipo || null, texto, Date.now());
-  db.prepare('DELETE FROM canal_eventos WHERE canal_id = ? AND id NOT IN (SELECT id FROM canal_eventos WHERE canal_id = ? ORDER BY id DESC LIMIT 200)').run(canalId, canalId);
+  await db.prepare('INSERT INTO canal_eventos (canal_id, tipo, corpo, recebido_em) VALUES (?, ?, ?, ?)').run(canalId, tipo || null, texto, Date.now());
+  await db.prepare(
+    'DELETE FROM canal_eventos WHERE canal_id = ? AND id NOT IN (SELECT id FROM (SELECT id FROM canal_eventos WHERE canal_id = ? ORDER BY id DESC LIMIT 200) AS recentes)',
+  ).run(canalId, canalId);
 }
 
 module.exports = {

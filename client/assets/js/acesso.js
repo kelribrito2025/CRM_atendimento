@@ -120,7 +120,7 @@ import { montarIcones } from './icones.js';
       if (params.get('next')) next.value = destinoSeguro(params.get('next'));
 
       $('#btn-google').addEventListener('click', () => {
-        mostrar($('#info'), 'Entrar com Google Workspace ainda não está disponível. Use seu e-mail e senha.');
+        mostrar($('#info'), 'Entrar com Google ainda não está disponível. Use seu e-mail e senha.');
       });
 
       form.addEventListener('submit', async (evento) => {

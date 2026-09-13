@@ -10,18 +10,18 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(String(token)).digest('hex');
 }
 
-function criarSessao(db, usuarioId, lembrar = false) {
+async function criarSessao(db, usuarioId, lembrar = false) {
   const token = crypto.randomBytes(32).toString('base64url');
   const agora = Date.now();
   const expira = agora + (lembrar ? DURACAO_LEMBRAR_MS : DURACAO_MS);
-  db.prepare('INSERT INTO sessoes (token_hash, usuario_id, expira_em, criado_em) VALUES (?, ?, ?, ?)')
+  await db.prepare('INSERT INTO sessoes (token_hash, usuario_id, expira_em, criado_em) VALUES (?, ?, ?, ?)')
     .run(hashToken(token), usuarioId, expira, agora);
   return { token, expira };
 }
 
-function buscarUsuarioDaSessao(db, token) {
+async function buscarUsuarioDaSessao(db, token) {
   if (!token) return null;
-  const linha = db.prepare(`
+  const linha = await db.prepare(`
     SELECT u.id, u.nome, u.email, u.papel, u.presenca, u.ativo, s.expira_em
     FROM sessoes s
     JOIN usuarios u ON u.id = s.usuario_id
@@ -29,23 +29,23 @@ function buscarUsuarioDaSessao(db, token) {
   `).get(hashToken(token));
   if (!linha) return null;
   if (linha.expira_em < Date.now() || !linha.ativo) {
-    encerrarSessao(db, token);
+    await encerrarSessao(db, token);
     return null;
   }
   return linha;
 }
 
-function encerrarSessao(db, token) {
+async function encerrarSessao(db, token) {
   if (!token) return;
-  db.prepare('DELETE FROM sessoes WHERE token_hash = ?').run(hashToken(token));
+  await db.prepare('DELETE FROM sessoes WHERE token_hash = ?').run(hashToken(token));
 }
 
-function encerrarTodasDoUsuario(db, usuarioId) {
-  db.prepare('DELETE FROM sessoes WHERE usuario_id = ?').run(usuarioId);
+async function encerrarTodasDoUsuario(db, usuarioId) {
+  await db.prepare('DELETE FROM sessoes WHERE usuario_id = ?').run(usuarioId);
 }
 
-function limparSessoesExpiradas(db) {
-  db.prepare('DELETE FROM sessoes WHERE expira_em < ?').run(Date.now());
+async function limparSessoesExpiradas(db) {
+  await db.prepare('DELETE FROM sessoes WHERE expira_em < ?').run(Date.now());
 }
 
 function lerCookies(req) {

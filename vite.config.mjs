@@ -18,9 +18,9 @@ const PAGINAS = ['login', 'atendimento', 'convite', 'verificar', 'recuperar', 'n
 function pluginCrm() {
   return {
     name: 'crm-atendimento',
-    configureServer(server) {
+    async configureServer(server) {
       const { montarSistema, mostrarBoasVindas } = require('./src/sistema.js');
-      const sistema = montarSistema({
+      const sistema = await montarSistema({
         semEstaticos: true, // o Vite serve /assets, /icones e /vendor no modo dev
         publicoDir: path.resolve(CLIENT, 'public'),
         servirPagina: async (req, res, arquivo) => {

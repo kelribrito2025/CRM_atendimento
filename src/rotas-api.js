@@ -153,19 +153,19 @@ function criarRotasApi(db, opcoes = {}) {
     };
   }
 
-  function todasConversas() {
+  async function todasConversas() {
     const agora = Date.now();
-    return sql.conversas.all().map((row) => formatarConversa(row, agora));
+    return (await sql.conversas.all()).map((row) => formatarConversa(row, agora));
   }
 
-  function buscarConversa(id) {
-    const row = sql.conversaPorId.get(id);
+  async function buscarConversa(id) {
+    const row = await sql.conversaPorId.get(id);
     return row ? formatarConversa(row) : null;
   }
 
-  function detalharConversa(c) {
-    const ct = sql.contato.get(c.contato.id);
-    const mensagens = sql.mensagens.all(c.id).map(formatarMensagem);
+  async function detalharConversa(c) {
+    const ct = await sql.contato.get(c.contato.id);
+    const mensagens = (await sql.mensagens.all(c.id)).map(formatarMensagem);
     return {
       ...c,
       contato: {
@@ -185,28 +185,32 @@ function criarRotasApi(db, opcoes = {}) {
   }
 
   // Carrega a conversa da rota ou responde 404
-  function comConversa(req, res, next) {
-    const id = idDaRota(req);
-    const conversa = id ? buscarConversa(id) : null;
-    if (!conversa) return res.status(404).json({ erro: 'Conversa não encontrada.' });
-    req.conversa = conversa;
-    next();
+  async function comConversa(req, res, next) {
+    try {
+      const id = idDaRota(req);
+      const conversa = id ? await buscarConversa(id) : null;
+      if (!conversa) return res.status(404).json({ erro: 'Conversa não encontrada.' });
+      req.conversa = conversa;
+      next();
+    } catch (erro) {
+      next(erro);
+    }
   }
 
   /* -------------------- rotas -------------------- */
 
   r.get('/me', (req, res) => res.json({ usuario: formatarUsuario(req.usuario) }));
 
-  r.get('/resumo', (req, res) => {
-    const todas = todasConversas();
+  r.get('/resumo', async (req, res) => {
+    const todas = await todasConversas();
     const abertas = todas.filter((c) => c.status === 'aberta');
 
     const ativasPor = {};
     for (const c of abertas) if (c.atendente) ativasPor[c.atendente.id] = (ativasPor[c.atendente.id] || 0) + 1;
 
-    const atendentes = sql.usuariosAtivos.all().map((u) => ({ ...formatarUsuario(u), ativas: ativasPor[u.id] || 0 }));
-    const membros = sql.membros.all();
-    const equipes = sql.equipes.all().map((e) => ({
+    const atendentes = (await sql.usuariosAtivos.all()).map((u) => ({ ...formatarUsuario(u), ativas: ativasPor[u.id] || 0 }));
+    const membros = await sql.membros.all();
+    const equipes = (await sql.equipes.all()).map((e) => ({
       ...e,
       abertas: abertas.filter((c) => c.equipe?.id === e.id).length,
       semResposta: abertas.filter((c) => c.equipe?.id === e.id && c.semResposta).length,
@@ -216,7 +220,7 @@ function criarRotasApi(db, opcoes = {}) {
         .filter(Boolean),
     }));
 
-    const tempos = sql.temposResposta.all()
+    const tempos = (await sql.temposResposta.all())
       .filter((t) => t.pc != null && t.pa != null && t.pa >= t.pc)
       .map((t) => t.pa - t.pc);
     const media = tempos.length ? tempos.reduce((a, b) => a + b, 0) / tempos.length : null;
@@ -231,18 +235,18 @@ function criarRotasApi(db, opcoes = {}) {
       equipes,
       atendentes,
       primeiraResposta: formatarPrimeiraResposta(media),
-      canais: resumoCanais(req),
+      canais: await resumoCanais(req),
       saldoAtivo: Boolean(saldo && saldo.configurado),
     });
   });
 
-  r.get('/conversas', (req, res) => {
+  r.get('/conversas', async (req, res) => {
     const caixa = CAIXAS.has(req.query.caixa) ? req.query.caixa : 'todas';
     const equipeId = req.query.equipe ? Number(req.query.equipe) : null;
     const busca = String(req.query.q || '').trim().toLowerCase();
     const limiteResolvidas = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
-    let lista = todasConversas().filter((c) => c.status === 'aberta' || c.atualizadaEm >= limiteResolvidas);
+    let lista = (await todasConversas()).filter((c) => c.status === 'aberta' || c.atualizadaEm >= limiteResolvidas);
     if (equipeId) lista = lista.filter((c) => c.equipe?.id === equipeId);
     if (caixa === 'minhas') lista = lista.filter((c) => c.atendente?.id === req.usuario.id);
     if (caixa === 'sem_resposta') lista = lista.filter((c) => c.semResposta);
@@ -254,10 +258,10 @@ function criarRotasApi(db, opcoes = {}) {
     res.json({ conversas: lista });
   });
 
-  r.get('/conversas/:id', comConversa, (req, res) => {
-    sql.marcarLida.run(req.conversa.id);
+  r.get('/conversas/:id', comConversa, async (req, res) => {
+    await sql.marcarLida.run(req.conversa.id);
     req.conversa.naoLidas = 0;
-    res.json({ conversa: detalharConversa(req.conversa) });
+    res.json({ conversa: await detalharConversa(req.conversa) });
   });
 
   r.post('/conversas/:id/mensagens', comConversa, async (req, res) => {
@@ -271,7 +275,7 @@ function criarRotasApi(db, opcoes = {}) {
     }
 
     const agora = Date.now();
-    const info = sql.inserirMensagem.run(c.id, tipo, req.usuario.id, texto, tipo === 'atendente' ? 'enviada' : null, agora);
+    const info = await sql.inserirMensagem.run(c.id, tipo, req.usuario.id, texto, tipo === 'atendente' ? 'enviada' : null, agora);
 
     const campos = ['atualizada_em = ?'];
     const valores = [agora];
@@ -280,13 +284,13 @@ function criarRotasApi(db, opcoes = {}) {
       if (c.status === 'resolvida') { campos.push("status = 'aberta'"); }
     }
     valores.push(c.id);
-    db.prepare(`UPDATE conversas SET ${campos.join(', ')} WHERE id = ?`).run(...valores);
+    await db.prepare(`UPDATE conversas SET ${campos.join(', ')} WHERE id = ?`).run(...valores);
 
     // Conversa vinda de um canal (WhatsApp ou Telegram): envia a resposta por ele
     let erroEnvio = null;
     if (tipo === 'atendente' && c.canalId) {
       const mensagemId = Number(info.lastInsertRowid);
-      const canalRow = db.prepare('SELECT * FROM canais WHERE id = ?').get(c.canalId);
+      const canalRow = await db.prepare('SELECT * FROM canais WHERE id = ?').get(c.canalId);
       try {
         if (!canalRow) throw new Error('O canal desta conversa não existe mais.');
         let idExterno = null;
@@ -302,26 +306,26 @@ function criarRotasApi(db, opcoes = {}) {
           const r2 = await uazapi.enviarTexto(canalRow.instancia_token, numero, texto);
           idExterno = r2?.messageid || r2?.id || r2?.key?.id || r2?.message?.messageid || null;
         }
-        db.prepare("UPDATE mensagens SET entrega = 'enviada', externo_id = COALESCE(?, externo_id) WHERE id = ?")
+        await db.prepare("UPDATE mensagens SET entrega = 'enviada', externo_id = COALESCE(?, externo_id) WHERE id = ?")
           .run(idExterno ? String(idExterno) : null, mensagemId);
       } catch (erro) {
         erroEnvio = erro.message;
       }
-      if (erroEnvio) db.prepare("UPDATE mensagens SET entrega = 'falhou' WHERE id = ?").run(mensagemId);
+      if (erroEnvio) await db.prepare("UPDATE mensagens SET entrega = 'falhou' WHERE id = ?").run(mensagemId);
     }
 
-    const mensagem = formatarMensagem(sql.mensagemPorId.get(Number(info.lastInsertRowid)));
-    res.status(201).json({ mensagem, conversa: buscarConversa(c.id), erroEnvio });
+    const mensagem = formatarMensagem(await sql.mensagemPorId.get(Number(info.lastInsertRowid)));
+    res.status(201).json({ mensagem, conversa: await buscarConversa(c.id), erroEnvio });
   });
 
-  r.patch('/conversas/:id', comConversa, (req, res) => {
+  r.patch('/conversas/:id', comConversa, async (req, res) => {
     const corpo = req.body || {};
     const campos = [];
     const valores = [];
 
     if ('equipeId' in corpo) {
       const v = corpo.equipeId === null || corpo.equipeId === '' ? null : Number(corpo.equipeId);
-      if (v !== null && (!Number.isInteger(v) || !sql.equipeExiste.get(v))) {
+      if (v !== null && (!Number.isInteger(v) || !await sql.equipeExiste.get(v))) {
         return res.status(400).json({ erro: 'Equipe não encontrada.' });
       }
       campos.push('equipe_id = ?');
@@ -329,7 +333,7 @@ function criarRotasApi(db, opcoes = {}) {
     }
     if ('atendenteId' in corpo) {
       const v = corpo.atendenteId === null || corpo.atendenteId === '' ? null : Number(corpo.atendenteId);
-      if (v !== null && (!Number.isInteger(v) || !sql.usuarioExiste.get(v))) {
+      if (v !== null && (!Number.isInteger(v) || !await sql.usuarioExiste.get(v))) {
         return res.status(400).json({ erro: 'Atendente não encontrado.' });
       }
       campos.push('atendente_id = ?');
@@ -339,33 +343,33 @@ function criarRotasApi(db, opcoes = {}) {
 
     campos.push('atualizada_em = ?');
     valores.push(Date.now(), req.conversa.id);
-    db.prepare(`UPDATE conversas SET ${campos.join(', ')} WHERE id = ?`).run(...valores);
-    res.json({ conversa: buscarConversa(req.conversa.id) });
+    await db.prepare(`UPDATE conversas SET ${campos.join(', ')} WHERE id = ?`).run(...valores);
+    res.json({ conversa: await buscarConversa(req.conversa.id) });
   });
 
-  r.post('/conversas/:id/status', comConversa, (req, res) => {
+  r.post('/conversas/:id/status', comConversa, async (req, res) => {
     const status = req.body?.status;
     if (!STATUS.has(status)) return res.status(400).json({ erro: 'Status inválido.' });
-    db.prepare('UPDATE conversas SET status = ?, atualizada_em = ? WHERE id = ?').run(status, Date.now(), req.conversa.id);
-    res.json({ conversa: buscarConversa(req.conversa.id) });
+    await db.prepare('UPDATE conversas SET status = ?, atualizada_em = ? WHERE id = ?').run(status, Date.now(), req.conversa.id);
+    res.json({ conversa: await buscarConversa(req.conversa.id) });
   });
 
-  r.post('/conversas/:id/pin', comConversa, (req, res) => {
+  r.post('/conversas/:id/pin', comConversa, async (req, res) => {
     const acao = req.body?.acao;
     const contatoId = req.conversa.contato.id;
     if (acao === 'validar') {
-      const ct = sql.contato.get(contatoId);
+      const ct = await sql.contato.get(contatoId);
       if (!ct.pin) return res.status(400).json({ erro: 'Este cliente ainda não tem PIN gerado.' });
-      db.prepare('UPDATE contatos SET pin_validado_em = ?, pin_validado_por = ? WHERE id = ?')
+      await db.prepare('UPDATE contatos SET pin_validado_em = ?, pin_validado_por = ? WHERE id = ?')
         .run(Date.now(), req.usuario.id, contatoId);
     } else if (acao === 'novo') {
       const pin = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
-      db.prepare('UPDATE contatos SET pin = ?, pin_validado_em = NULL, pin_validado_por = NULL WHERE id = ?')
+      await db.prepare('UPDATE contatos SET pin = ?, pin_validado_em = NULL, pin_validado_por = NULL WHERE id = ?')
         .run(pin, contatoId);
     } else {
       return res.status(400).json({ erro: 'Ação inválida.' });
     }
-    res.json({ conversa: detalharConversa(buscarConversa(req.conversa.id)) });
+    res.json({ conversa: await detalharConversa(await buscarConversa(req.conversa.id)) });
   });
 
   /* -------------------- arquivos recebidos (imagens, áudios, documentos) -------------------- */
@@ -376,9 +380,9 @@ function criarRotasApi(db, opcoes = {}) {
   // O navegador nunca recebe o token do bot: o CRM baixa o arquivo e repassa.
   r.get('/midia/:id', async (req, res) => {
     const id = idDaRota(req);
-    const m = id ? db.prepare('SELECT m.*, c.canal_id FROM mensagens m JOIN conversas c ON c.id = m.conversa_id WHERE m.id = ?').get(id) : null;
+    const m = id ? await db.prepare('SELECT m.*, c.canal_id FROM mensagens m JOIN conversas c ON c.id = m.conversa_id WHERE m.id = ?').get(id) : null;
     if (!m || !m.midia_id) return res.status(404).json({ erro: 'Arquivo não encontrado.' });
-    const canal = m.canal_id ? db.prepare('SELECT * FROM canais WHERE id = ?').get(m.canal_id) : null;
+    const canal = m.canal_id ? await db.prepare('SELECT * FROM canais WHERE id = ?').get(m.canal_id) : null;
     if (!canal || canal.tipo !== 'telegram') return res.status(400).json({ erro: 'Este canal ainda não entrega arquivos no CRM.' });
     if (!telegram) return res.status(400).json({ erro: 'Integração com Telegram indisponível.' });
 
@@ -422,11 +426,11 @@ function criarRotasApi(db, opcoes = {}) {
       // Consulta que deu certo confere o PIN: guarda no cliente da conversa.
       let conversa = null;
       const id = Number(req.body?.conversaId);
-      const linha = Number.isInteger(id) && id > 0 ? buscarConversa(id) : null;
+      const linha = Number.isInteger(id) && id > 0 ? await buscarConversa(id) : null;
       if (linha) {
-        db.prepare('UPDATE contatos SET pin = ?, pin_validado_em = ?, pin_validado_por = ? WHERE id = ?')
+        await db.prepare('UPDATE contatos SET pin = ?, pin_validado_em = ?, pin_validado_por = ? WHERE id = ?')
           .run(String(pin), Date.now(), req.usuario.id, linha.contato.id);
-        conversa = detalharConversa(buscarConversa(id));
+        conversa = await detalharConversa(await buscarConversa(id));
       }
       res.json({ cliente, conversa });
     } catch (erro) {
@@ -450,9 +454,9 @@ function criarRotasApi(db, opcoes = {}) {
   }
 
   // Canais do Telegram não dependem do servidor do WhatsApp.
-  function exigirUazapiParaWhatsapp(req, res, next) {
+  async function exigirUazapiParaWhatsapp(req, res, next) {
     const id = idDaRota(req);
-    const row = id ? sqlCanal.get(id) : null;
+    const row = id ? await sqlCanal.get(id) : null;
     if (row && row.tipo === 'telegram') return next();
     return exigirUazapi(req, res, next);
   }
@@ -490,8 +494,8 @@ function criarRotasApi(db, opcoes = {}) {
     };
   }
 
-  function resumoCanais(req) {
-    const lista = db.prepare('SELECT * FROM canais ORDER BY id').all().map((c) => formatarCanal(req, c));
+  async function resumoCanais(req) {
+    const lista = (await db.prepare('SELECT * FROM canais ORDER BY id').all()).map((c) => formatarCanal(req, c));
     const whats = lista.filter((c) => c.tipo !== 'telegram');
     const tg = lista.filter((c) => c.tipo === 'telegram');
     return [
@@ -502,21 +506,21 @@ function criarRotasApi(db, opcoes = {}) {
 
   const sqlCanal = db.prepare('SELECT * FROM canais WHERE id = ?');
 
-  function canalDaRota(req, res) {
+  async function canalDaRota(req, res) {
     const id = idDaRota(req);
-    const row = id ? sqlCanal.get(id) : null;
+    const row = id ? await sqlCanal.get(id) : null;
     if (!row) res.status(404).json({ erro: 'Canal não encontrado.' });
     return row;
   }
 
-  function aplicarStatus(row, st) {
-    db.prepare(`UPDATE canais SET status = ?, numero = COALESCE(?, numero), perfil_nome = COALESCE(?, perfil_nome),
+  async function aplicarStatus(row, st) {
+    await db.prepare(`UPDATE canais SET status = ?, numero = COALESCE(?, numero), perfil_nome = COALESCE(?, perfil_nome),
       instancia_id = COALESCE(?, instancia_id), ultimo_erro = NULL, atualizado_em = ? WHERE id = ?`)
       .run(st.status, st.numero, st.perfil, st.instanciaId, Date.now(), row.id);
   }
 
-  function registrarErro(row, erro) {
-    db.prepare('UPDATE canais SET ultimo_erro = ?, atualizado_em = ? WHERE id = ?')
+  async function registrarErro(row, erro) {
+    await db.prepare('UPDATE canais SET ultimo_erro = ?, atualizado_em = ? WHERE id = ?')
       .run(String(erro.message || erro).slice(0, 500), Date.now(), row.id);
   }
 
@@ -533,8 +537,8 @@ function criarRotasApi(db, opcoes = {}) {
     return url;
   }
 
-  r.get('/canais', exigirAdmin, (req, res) => {
-    const lista = db.prepare('SELECT * FROM canais ORDER BY id').all().map((c) => formatarCanal(req, c));
+  r.get('/canais', exigirAdmin, async (req, res) => {
+    const lista = (await db.prepare('SELECT * FROM canais ORDER BY id').all()).map((c) => formatarCanal(req, c));
     res.json({ configurado: Boolean(uazapi && uazapi.configurado), telegram: Boolean(telegram), servidor: uazapi ? uazapi.base : '', canais: lista });
   });
 
@@ -551,17 +555,17 @@ function criarRotasApi(db, opcoes = {}) {
     if (!token) return res.status(502).json({ erro: 'O servidor do WhatsApp não devolveu o token da instância.' });
 
     const agora = Date.now();
-    const id = Number(db.prepare(`
+    const id = Number((await db.prepare(`
       INSERT INTO canais (tipo, nome, instancia_id, instancia_token, webhook_segredo, status, criado_em, atualizado_em)
       VALUES ('whatsapp', ?, ?, ?, ?, 'disconnected', ?, ?)`)
-      .run(nome, inst.id || null, String(token), canais.novoSegredo(), agora, agora).lastInsertRowid);
-    const row = sqlCanal.get(id);
+      .run(nome, inst.id || null, String(token), canais.novoSegredo(), agora, agora)).lastInsertRowid);
+    const row = await sqlCanal.get(id);
     try {
       await configurarWebhookDoCanal(req, row);
     } catch (erro) {
-      registrarErro(row, new Error(`Webhook não configurado: ${erro.message}`));
+      await registrarErro(row, new Error(`Webhook não configurado: ${erro.message}`));
     }
-    res.status(201).json({ canal: formatarCanal(req, sqlCanal.get(id)) });
+    res.status(201).json({ canal: formatarCanal(req, await sqlCanal.get(id)) });
   });
 
   r.post('/canais/telegram', exigirAdmin, async (req, res) => {
@@ -576,35 +580,35 @@ function criarRotasApi(db, opcoes = {}) {
     } catch (erro) {
       return res.status(erro.status === 401 || erro.status === 404 || erro.status === 400 ? 400 : 502).json({ erro: erro.message });
     }
-    const existente = db.prepare("SELECT id FROM canais WHERE tipo = 'telegram' AND (instancia_id = ? OR instancia_token = ?)").get(bot.id, token);
+    const existente = await db.prepare("SELECT id FROM canais WHERE tipo = 'telegram' AND (instancia_id = ? OR instancia_token = ?)").get(bot.id, token);
     if (existente) return res.status(409).json({ erro: `Este bot (@${bot.usuario || bot.id}) já está conectado.` });
 
     const agora = Date.now();
     const nome = String(req.body?.nome || '').trim().slice(0, 60) || bot.nome || 'Telegram';
-    const id = Number(db.prepare(`
+    const id = Number((await db.prepare(`
       INSERT INTO canais (tipo, nome, instancia_id, instancia_token, webhook_segredo, numero, perfil_nome, status, criado_em, atualizado_em)
       VALUES ('telegram', ?, ?, ?, ?, ?, ?, 'connected', ?, ?)`)
-      .run(nome, bot.id, token, canais.novoSegredo(), bot.usuario, bot.nome, agora, agora).lastInsertRowid);
+      .run(nome, bot.id, token, canais.novoSegredo(), bot.usuario, bot.nome, agora, agora)).lastInsertRowid);
     try { await telegram.removerWebhook(token); } catch { /* segue com a consulta contínua */ }
-    canais.ligarTelegram(db, telegram, sqlCanal.get(id));
-    res.status(201).json({ canal: formatarCanal(req, sqlCanal.get(id)) });
+    await canais.ligarTelegram(db, telegram, await sqlCanal.get(id));
+    res.status(201).json({ canal: formatarCanal(req, await sqlCanal.get(id)) });
   });
 
   r.post('/canais/:id/conectar', exigirAdmin, exigirUazapiParaWhatsapp, async (req, res) => {
-    const row = canalDaRota(req, res);
+    const row = await canalDaRota(req, res);
     if (!row) return;
     if (row.tipo === 'telegram') {
       if (!telegram) return res.status(400).json({ erro: 'Integração com Telegram indisponível.' });
       try {
         const bot = await telegram.validarToken(row.instancia_token);
-        db.prepare("UPDATE canais SET status = 'connected', numero = ?, perfil_nome = ?, ultimo_erro = NULL, atualizado_em = ? WHERE id = ?")
+        await db.prepare("UPDATE canais SET status = 'connected', numero = ?, perfil_nome = ?, ultimo_erro = NULL, atualizado_em = ? WHERE id = ?")
           .run(bot.usuario, bot.nome, Date.now(), row.id);
         try { await telegram.removerWebhook(row.instancia_token); } catch { /* segue */ }
-        canais.ligarTelegram(db, telegram, sqlCanal.get(row.id));
-        return res.json({ status: 'connected', canal: formatarCanal(req, sqlCanal.get(row.id)) });
+        await canais.ligarTelegram(db, telegram, await sqlCanal.get(row.id));
+        return res.json({ status: 'connected', canal: formatarCanal(req, await sqlCanal.get(row.id)) });
       } catch (erro) {
-        registrarErro(row, erro);
-        db.prepare("UPDATE canais SET status = 'disconnected' WHERE id = ?").run(row.id);
+        await registrarErro(row, erro);
+        await db.prepare("UPDATE canais SET status = 'disconnected' WHERE id = ?").run(row.id);
         return res.status(502).json({ erro: erro.message });
       }
     }
@@ -614,65 +618,65 @@ function criarRotasApi(db, opcoes = {}) {
     }
     try {
       const st = interpretarStatus(await uazapi.conectar(row.instancia_token, telefone || undefined));
-      aplicarStatus(row, st);
-      res.json({ status: st.status, qrcode: st.qrcode, paircode: st.paircode, canal: formatarCanal(req, sqlCanal.get(row.id)) });
+      await aplicarStatus(row, st);
+      res.json({ status: st.status, qrcode: st.qrcode, paircode: st.paircode, canal: formatarCanal(req, await sqlCanal.get(row.id)) });
     } catch (erro) {
-      registrarErro(row, erro);
+      await registrarErro(row, erro);
       res.status(502).json({ erro: erro.message });
     }
   });
 
   r.get('/canais/:id/status', exigirAdmin, exigirUazapiParaWhatsapp, async (req, res) => {
-    const row = canalDaRota(req, res);
+    const row = await canalDaRota(req, res);
     if (!row) return;
     if (row.tipo === 'telegram') return res.json({ status: row.status, canal: formatarCanal(req, row) });
     try {
       const st = interpretarStatus(await uazapi.status(row.instancia_token));
-      aplicarStatus(row, st);
-      res.json({ status: st.status, qrcode: st.qrcode, paircode: st.paircode, canal: formatarCanal(req, sqlCanal.get(row.id)) });
+      await aplicarStatus(row, st);
+      res.json({ status: st.status, qrcode: st.qrcode, paircode: st.paircode, canal: formatarCanal(req, await sqlCanal.get(row.id)) });
     } catch (erro) {
-      registrarErro(row, erro);
+      await registrarErro(row, erro);
       res.status(502).json({ erro: erro.message });
     }
   });
 
   r.post('/canais/:id/desconectar', exigirAdmin, exigirUazapiParaWhatsapp, async (req, res) => {
-    const row = canalDaRota(req, res);
+    const row = await canalDaRota(req, res);
     if (!row) return;
     if (row.tipo === 'telegram') {
       telegram?.sondagem?.parar(row.id);
-      db.prepare("UPDATE canais SET status = 'disconnected', ultimo_erro = NULL, atualizado_em = ? WHERE id = ?").run(Date.now(), row.id);
-      return res.json({ canal: formatarCanal(req, sqlCanal.get(row.id)) });
+      await db.prepare("UPDATE canais SET status = 'disconnected', ultimo_erro = NULL, atualizado_em = ? WHERE id = ?").run(Date.now(), row.id);
+      return res.json({ canal: formatarCanal(req, await sqlCanal.get(row.id)) });
     }
     try {
       await uazapi.desconectar(row.instancia_token);
-      db.prepare("UPDATE canais SET status = 'disconnected', ultimo_erro = NULL, atualizado_em = ? WHERE id = ?").run(Date.now(), row.id);
-      res.json({ canal: formatarCanal(req, sqlCanal.get(row.id)) });
+      await db.prepare("UPDATE canais SET status = 'disconnected', ultimo_erro = NULL, atualizado_em = ? WHERE id = ?").run(Date.now(), row.id);
+      res.json({ canal: formatarCanal(req, await sqlCanal.get(row.id)) });
     } catch (erro) {
-      registrarErro(row, erro);
+      await registrarErro(row, erro);
       res.status(502).json({ erro: erro.message });
     }
   });
 
   r.post('/canais/:id/webhook', exigirAdmin, exigirUazapiParaWhatsapp, async (req, res) => {
-    const row = canalDaRota(req, res);
+    const row = await canalDaRota(req, res);
     if (!row) return;
     if (row.tipo === 'telegram') return res.status(400).json({ erro: 'O Telegram não usa webhook neste CRM: as mensagens são buscadas automaticamente.' });
     try {
       const url = await configurarWebhookDoCanal(req, row);
-      db.prepare('UPDATE canais SET ultimo_erro = NULL, atualizado_em = ? WHERE id = ?').run(Date.now(), row.id);
-      res.json({ url, canal: formatarCanal(req, sqlCanal.get(row.id)) });
+      await db.prepare('UPDATE canais SET ultimo_erro = NULL, atualizado_em = ? WHERE id = ?').run(Date.now(), row.id);
+      res.json({ url, canal: formatarCanal(req, await sqlCanal.get(row.id)) });
     } catch (erro) {
-      registrarErro(row, erro);
+      await registrarErro(row, erro);
       res.status(502).json({ erro: erro.message });
     }
   });
 
-  r.get('/canais/:id/eventos', exigirAdmin, (req, res) => {
-    const row = canalDaRota(req, res);
+  r.get('/canais/:id/eventos', exigirAdmin, async (req, res) => {
+    const row = await canalDaRota(req, res);
     if (!row) return;
-    const eventos = db.prepare('SELECT id, tipo, corpo, recebido_em FROM canal_eventos WHERE canal_id = ? ORDER BY id DESC LIMIT 50')
-      .all(row.id)
+    const eventos = (await db.prepare('SELECT id, tipo, corpo, recebido_em FROM canal_eventos WHERE canal_id = ? ORDER BY id DESC LIMIT 50')
+      .all(row.id))
       .map((e) => {
         let corpo = e.corpo;
         try { corpo = JSON.parse(e.corpo); } catch { /* mantém o texto */ }
@@ -682,15 +686,15 @@ function criarRotasApi(db, opcoes = {}) {
   });
 
   r.delete('/canais/:id', exigirAdmin, async (req, res) => {
-    const row = canalDaRota(req, res);
+    const row = await canalDaRota(req, res);
     if (!row) return;
     if (row.tipo === 'telegram') {
       telegram?.sondagem?.parar(row.id);
     } else if (uazapi && uazapi.configurado) {
       try { await uazapi.excluir(row.instancia_token); } catch { /* remove do CRM mesmo assim */ }
     }
-    db.prepare('UPDATE conversas SET canal_id = NULL WHERE canal_id = ?').run(row.id);
-    db.prepare('DELETE FROM canais WHERE id = ?').run(row.id);
+    await db.prepare('UPDATE conversas SET canal_id = NULL WHERE canal_id = ?').run(row.id);
+    await db.prepare('DELETE FROM canais WHERE id = ?').run(row.id);
     res.json({ ok: true });
   });
 

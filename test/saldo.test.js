@@ -2,7 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { abrirBanco, semear } = require('../src/db');
+const { semear } = require('../src/db');
+const { abrirBancoDeTeste } = require('./apoio');
 const { criarApp } = require('../src/app');
 const { criarEnviador } = require('../src/email');
 const { criarSaldo, normalizarPin } = require('../src/saldo');
@@ -37,8 +38,8 @@ function fetchFalso(registro = []) {
 }
 
 async function subirServidor(opcoesSaldo = {}) {
-  const db = abrirBanco(':memory:');
-  semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: true });
+  const db = await abrirBancoDeTeste();
+  await semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: true });
   const registro = [];
   const saldo = criarSaldo({ url: 'https://app.numero-virtual.com/api/agents/customer/lookup', token: CHAVE, fetchImpl: fetchFalso(registro), ...opcoesSaldo });
   const app = criarApp(db, { enviador: criarEnviador({ modo: 'silencioso' }), saldo });
@@ -50,7 +51,7 @@ async function subirServidor(opcoesSaldo = {}) {
     const r = await fetch(`${base}${caminho}`, { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
     return { status: r.status, dados: await r.json().catch(() => ({})) };
   };
-  return { base, chamar, cookie, registro, fechar: () => new Promise((r) => servidor.close(r)) };
+  return { base, chamar, cookie, registro, fechar: async () => { await new Promise((r) => servidor.close(r)); await db.fechar(); } };
 }
 
 test('saldo: PIN vira número e os valores saem em centavos e em reais', () => {

@@ -2,7 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { abrirBanco, semear } = require('../src/db');
+const { semear } = require('../src/db');
+const { abrirBancoDeTeste } = require('./apoio');
 const { criarApp } = require('../src/app');
 const { criarEnviador } = require('../src/email');
 const { criarUazapi, interpretarStatus } = require('../src/uazapi');
@@ -37,8 +38,8 @@ function uazapiFalso() {
 }
 
 async function subirServidor(opcoes = {}) {
-  const db = abrirBanco(':memory:');
-  semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: true });
+  const db = await abrirBancoDeTeste();
+  await semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: true });
   const uazapi = uazapiFalso();
   const app = criarApp(db, { enviador: criarEnviador({ modo: 'silencioso' }), uazapi, baseUrl: 'https://crm.exemplo.com.br', ...opcoes });
   const servidor = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
@@ -50,7 +51,7 @@ async function subirServidor(opcoes = {}) {
     const r = await fetch(`${base}${caminho}`, { method: metodo, headers: h, body: corpo ? JSON.stringify(corpo) : undefined });
     return { status: r.status, dados: await r.json().catch(() => ({})) };
   };
-  return { db, base, uazapi, h, chamar, fechar: () => new Promise((r) => servidor.close(r)) };
+  return { db, base, uazapi, h, chamar, fechar: async () => { await new Promise((r) => servidor.close(r)); await db.fechar(); } };
 }
 
 test('uazapi: cliente monta cabeçalhos e traduz erros', async () => {
@@ -163,7 +164,7 @@ test('whatsapp: criar canal, conectar por QR e por número, receber e responder 
     assert.deepEqual(envio, ['texto', '5531988887777', 'Claro! Me passa o CNPJ?']);
 
     // confirmação de leitura pelo webhook
-    const idSaida = s.db.prepare("SELECT externo_id FROM mensagens WHERE tipo = 'atendente' AND conversa_id = ?").get(conversa.id).externo_id;
+    const idSaida = (await s.db.prepare("SELECT externo_id FROM mensagens WHERE tipo = 'atendente' AND conversa_id = ?").get(conversa.id)).externo_id;
     assert.ok(idSaida);
     const lida = await evento({ EventType: 'messages_update', message: { messageid: idSaida, status: 'READ' } });
     assert.equal((await lida.json()).entrega, 'lida');

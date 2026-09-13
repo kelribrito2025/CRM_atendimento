@@ -2,7 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { abrirBanco, semear } = require('../src/db');
+const { semear } = require('../src/db');
+const { abrirBancoDeTeste } = require('./apoio');
 const { criarApp } = require('../src/app');
 const { criarEnviador } = require('../src/email');
 const { criarTelegram, tokenValido } = require('../src/telegram');
@@ -39,8 +40,8 @@ function telegramFalso() {
 }
 
 async function subirServidor() {
-  const db = abrirBanco(':memory:');
-  semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: true });
+  const db = await abrirBancoDeTeste();
+  await semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: true });
   const telegram = telegramFalso();
   const app = criarApp(db, { enviador: criarEnviador({ modo: 'silencioso' }), telegram });
   const servidor = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
@@ -52,7 +53,7 @@ async function subirServidor() {
     const r = await fetch(`${base}${caminho}`, { method: metodo, headers: h, body: corpo ? JSON.stringify(corpo) : undefined });
     return { status: r.status, dados: await r.json().catch(() => ({})) };
   };
-  return { db, base, telegram, chamar, cookie, fechar: () => new Promise((r) => servidor.close(r)) };
+  return { db, base, telegram, chamar, cookie, fechar: async () => { await new Promise((r) => servidor.close(r)); await db.fechar(); } };
 }
 
 const update = (id, texto, extra = {}) => ({
@@ -149,16 +150,16 @@ test('telegram: conectar bot pelo token, receber mensagem e responder pelo CRM',
     assert.equal(tg.canais.length, 1);
 
     // mensagem do cliente chega pela consulta contínua
-    const row = s.db.prepare('SELECT * FROM canais WHERE id = ?').get(canal.id);
-    const r1 = canais.processarUpdateTelegram(s.db, row, update(1, 'Olá, preciso de ajuda com a fatura'));
+    const row = await s.db.prepare('SELECT * FROM canais WHERE id = ?').get(canal.id);
+    const r1 = await canais.processarUpdateTelegram(s.db, row, update(1, 'Olá, preciso de ajuda com a fatura'));
     assert.equal(r1.resultado, 'mensagem');
     assert.equal(r1.nova, true);
-    assert.equal(canais.processarUpdateTelegram(s.db, row, update(1, 'Olá, preciso de ajuda com a fatura')).motivo, 'duplicada');
-    assert.equal(canais.processarUpdateTelegram(s.db, row, { update_id: 5, message: { message_id: 1, chat: { id: -100, type: 'group' }, text: 'oi' } }).motivo, 'grupo');
-    assert.equal(canais.processarUpdateTelegram(s.db, row, { update_id: 6, edited_message: {} }).motivo, 'mensagem editada');
-    const r2 = canais.processarUpdateTelegram(s.db, row, update(2, '', { photo: [{ file_id: 'pequena' }, { file_id: 'foto-123' }], caption: 'segue o boleto' }));
+    assert.equal((await canais.processarUpdateTelegram(s.db, row, update(1, 'Olá, preciso de ajuda com a fatura'))).motivo, 'duplicada');
+    assert.equal((await canais.processarUpdateTelegram(s.db, row, { update_id: 5, message: { message_id: 1, chat: { id: -100, type: 'group' }, text: 'oi' } })).motivo, 'grupo');
+    assert.equal((await canais.processarUpdateTelegram(s.db, row, { update_id: 6, edited_message: {} })).motivo, 'mensagem editada');
+    const r2 = await canais.processarUpdateTelegram(s.db, row, update(2, '', { photo: [{ file_id: 'pequena' }, { file_id: 'foto-123' }], caption: 'segue o boleto' }));
     assert.equal(r2.nova, false);
-    const inicio = canais.processarUpdateTelegram(s.db, row, { update_id: 7, message: { message_id: 3, date: 1_700_000_100, from: { id: 777, first_name: 'Ana' }, chat: { id: 777, type: 'private' }, text: '/start' } });
+    const inicio = await canais.processarUpdateTelegram(s.db, row, { update_id: 7, message: { message_id: 3, date: 1_700_000_100, from: { id: 777, first_name: 'Ana' }, chat: { id: 777, type: 'private' }, text: '/start' } });
     assert.equal(inicio.nova, true);
 
     const lista = await s.chamar('/api/conversas');
@@ -193,7 +194,7 @@ test('telegram: conectar bot pelo token, receber mensagem e responder pelo CRM',
     assert.equal(resposta.dados.mensagem.entrega, 'enviada');
     const envio = s.telegram.chamadas.find((c) => c[0] === 'sendMessage');
     assert.deepEqual(envio, ['sendMessage', TOKEN, '555', 'Claro! Me passa o CNPJ?']);
-    assert.equal(s.db.prepare('SELECT externo_id FROM mensagens WHERE id = ?').get(resposta.dados.mensagem.id).externo_id, 'tg:555:77');
+    assert.equal((await s.db.prepare('SELECT externo_id FROM mensagens WHERE id = ?').get(resposta.dados.mensagem.id)).externo_id, 'tg:555:77');
 
     // desconectar, reconectar e excluir
     const desc = await s.chamar(`/api/canais/${canal.id}/desconectar`, 'POST', {});

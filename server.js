@@ -13,11 +13,17 @@ process.on('warning', (aviso) => {
 
 const { montarSistema, mostrarBoasVindas, pastaPaginas } = require('./src/sistema');
 
-const sistema = montarSistema();
-const { app, config } = sistema;
-
-app.listen(config.porta, () => {
-  mostrarBoasVindas(sistema, `http://localhost:${config.porta}`);
-  console.log(`📁 Páginas servidas de: ${pastaPaginas()}`);
-  console.log('');
+montarSistema().then((sistema) => {
+  const { app, config } = sistema;
+  app.listen(config.porta, () => {
+    mostrarBoasVindas(sistema, `http://localhost:${config.porta}`);
+    console.log(`📁 Páginas servidas de: ${pastaPaginas()}`);
+    console.log('');
+  });
+}).catch((erro) => {
+  console.error('');
+  console.error('❌ Não foi possível iniciar o CRM:', erro.message);
+  console.error('   Se estiver usando banco na nuvem, confira a variável DATABASE_URL.');
+  console.error('');
+  process.exit(1);
 });

@@ -13,11 +13,13 @@
     "start": "node --disable-warning=ExperimentalWarning server.js",
     "usuario": "node --disable-warning=ExperimentalWarning scripts/criar-usuario.js",
     "convite": "node --disable-warning=ExperimentalWarning scripts/criar-convite.js",
-    "test": "node --test --disable-warning=ExperimentalWarning \"test/**/*.test.js\""
+    "test": "node --test --disable-warning=ExperimentalWarning \"test/**/*.test.js\"",
+    "test:mysql": "node --test --test-concurrency=1 --disable-warning=ExperimentalWarning \"test/**/*.test.js\""
   },
   "dependencies": {
     "express": "^5.1.0",
-    "lottie-web": "^5.13.0"
+    "lottie-web": "^5.13.0",
+    "mysql2": "^3.24.4"
   },
   "devDependencies": {
     "vite": "^7.1.7",

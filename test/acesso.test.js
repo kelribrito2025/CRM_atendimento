@@ -2,7 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { abrirBanco, semear } = require('../src/db');
+const { semear } = require('../src/db');
+const { abrirBancoDeTeste } = require('./apoio');
 const { criarApp } = require('../src/app');
 const { criarEnviador } = require('../src/email');
 const acesso = require('../src/acesso');
@@ -10,15 +11,15 @@ const acesso = require('../src/acesso');
 const ADMIN = { email: 'admin@teste.com', senha: 'segredo123' };
 
 async function subirServidor(opcoes = {}) {
-  const db = abrirBanco(':memory:');
-  semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: true });
+  const db = await abrirBancoDeTeste();
+  await semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: true });
   const enviador = criarEnviador({ modo: 'silencioso' });
   const app = criarApp(db, { enviador, ...opcoes });
   const servidor = await new Promise((resolve) => {
     const s = app.listen(0, () => resolve(s));
   });
   const base = `http://127.0.0.1:${servidor.address().port}`;
-  return { db, servidor, base, enviador, fechar: () => new Promise((r) => servidor.close(r)) };
+  return { db, servidor, base, enviador, fechar: async () => { await new Promise((r) => servidor.close(r)); await db.fechar(); } };
 }
 
 function json(body) {
@@ -115,8 +116,8 @@ test('recuperar acesso: link por e-mail, nova senha e sessões antigas encerrada
 test('convite: cria conta com papel e equipes do convite', async () => {
   const s = await subirServidor();
   try {
-    const equipe = s.db.prepare("SELECT id FROM equipes WHERE nome = 'Admin'").get();
-    const { token } = acesso.criarConvite(s.db, { email: 'nova@teste.com', papel: 'atendente', equipeIds: [equipe.id], criadoPor: 1 });
+    const equipe = await s.db.prepare("SELECT id FROM equipes WHERE nome = 'Admin'").get();
+    const { token } = await acesso.criarConvite(s.db, { email: 'nova@teste.com', papel: 'atendente', equipeIds: [equipe.id], criadoPor: 1 });
 
     const info = await fetch(`${s.base}/acesso/convite?token=${token}`);
     assert.equal(info.status, 200);
@@ -135,14 +136,14 @@ test('convite: cria conta com papel e equipes do convite', async () => {
     assert.equal(me.usuario.email, 'nova@teste.com');
     assert.equal(me.usuario.nome, 'Nova Pessoa');
 
-    const membro = s.db.prepare('SELECT 1 FROM equipe_membros WHERE equipe_id = ? AND usuario_id = ?').get(equipe.id, me.usuario.id);
+    const membro = await s.db.prepare('SELECT 1 FROM equipe_membros WHERE equipe_id = ? AND usuario_id = ?').get(equipe.id, me.usuario.id);
     assert.ok(membro);
 
     const reuso = await fetch(`${s.base}/acesso/convite?token=${token}`);
     assert.equal(reuso.status, 400);
     assert.match((await reuso.json()).erro, /já foi usado/);
 
-    const { token: expirado } = acesso.criarConvite(s.db, { email: 'tarde@teste.com', validadeMs: -1 });
+    const { token: expirado } = await acesso.criarConvite(s.db, { email: 'tarde@teste.com', validadeMs: -1 });
     const exp = await fetch(`${s.base}/acesso/convite?token=${expirado}`);
     assert.equal(exp.status, 400);
     assert.match((await exp.json()).erro, /expirou/);

@@ -2,7 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { abrirBanco, semear } = require('../src/db');
+const { semear } = require('../src/db');
+const { abrirBancoDeTeste } = require('./apoio');
 const { criarApp } = require('../src/app');
 const { gerarHashSenha, verificarSenha } = require('../src/senha');
 const { LimitadorTentativas } = require('../src/limitador');
@@ -10,14 +11,14 @@ const { LimitadorTentativas } = require('../src/limitador');
 const ADMIN = { email: 'admin@teste.com', senha: 'segredo123' };
 
 async function subirServidor(opcoes = {}) {
-  const db = abrirBanco(':memory:');
-  semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: true });
+  const db = await abrirBancoDeTeste();
+  await semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: true });
   const app = criarApp(db, opcoes);
   const servidor = await new Promise((resolve) => {
     const s = app.listen(0, () => resolve(s));
   });
   const base = `http://127.0.0.1:${servidor.address().port}`;
-  return { db, servidor, base, fechar: () => new Promise((r) => servidor.close(r)) };
+  return { db, servidor, base, fechar: async () => { await new Promise((r) => servidor.close(r)); await db.fechar(); } };
 }
 
 async function logar(base, credenciais = ADMIN) {

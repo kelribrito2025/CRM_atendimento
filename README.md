@@ -97,6 +97,23 @@ Quando conectar, o menu da conta (avatar) mostra "WhatsApp conectado" com o núm
 
 Na janela de canais, o botão **Eventos** mostra os últimos avisos que o uazapi enviou ao CRM, o que ajuda a diagnosticar problemas. Mensagens de grupos são ignoradas. Fotos, áudios e documentos aparecem por enquanto como texto (por exemplo, "[Imagem]").
 
+## Onde os dados ficam guardados
+
+O CRM funciona com dois tipos de banco de dados, e escolhe sozinho:
+
+| Situação | Banco usado |
+|---|---|
+| No seu computador (padrão) | Arquivo `data/crm.sqlite`, sem instalar nada |
+| Na publicação, com `DATABASE_URL` definida | MySQL/TiDB da hospedagem |
+
+**Por que isso importa:** em hospedagens como a do Manus (Cloud Run), o disco é apagado a cada publicação, e com ele o arquivo do banco. Definindo a variável `DATABASE_URL` com o endereço do banco gerenciado, as conversas, os usuários e os canais continuam existindo depois de cada publicação.
+
+```
+DATABASE_URL=mysql://usuario:senha@servidor:3306/nome_do_banco
+```
+
+O sistema cria as tabelas sozinho na primeira vez, nos dois casos. Para rodar os testes contra um MySQL de verdade: `BANCO_TESTE=mysql://... npm run test:mysql`.
+
 ## Consulta de saldo pelo PIN
 
 No card **PIN do cliente** (painel da direita), o atendente digita o PIN nos quadradinhos e clica em **Consultar saldo**. Aparecem o saldo, o nome, quantas recargas o cliente tem e avisos de conta bloqueada ou desativada. Quando a consulta dá certo, o PIN fica guardado naquele cliente e o card marca **Conferido**, com a hora e quem conferiu.
@@ -178,6 +195,7 @@ Copie `.env.example` para `.env` e ajuste:
 | `ADMIN_EMAIL`   | E-mail do administrador criado no primeiro acesso         |
 | `ADMIN_SENHA`   | Senha inicial do administrador                            |
 | `ADMIN_NOME`    | Nome do administrador                                     |
+| `DATABASE_URL`  | Banco MySQL/TiDB da publicação (sem ela, usa o arquivo local) |
 | `DADOS_EXEMPLO` | `true` para criar conversas de exemplo (padrão: vazio)     |
 | `DOIS_FATORES`  | `true` para pedir um código por e-mail a cada login       |
 | `BASE_URL`      | Endereço público do sistema, usado nos links de convite, nova senha e no webhook do WhatsApp |
@@ -198,7 +216,8 @@ src/app.js                rotas de login, sessão e páginas
 src/rotas-api.js          API de conversas, mensagens, equipes e canais
 src/uazapi.js             cliente da API do uazapi (WhatsApp)
 src/canais.js             traduz os eventos do WhatsApp em conversas e mensagens
-src/db.js                 banco de dados (SQLite) e dados de exemplo
+src/banco.js              conversa com o banco: arquivo SQLite ou MySQL/TiDB
+src/db.js                 tabelas do sistema e dados de exemplo
 src/telegram.js           cliente da Bot API do Telegram e consulta contínua
 src/saldo.js              consulta de saldo do cliente pelo PIN
 src/senha.js              hash e verificação de senha

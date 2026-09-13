@@ -68,20 +68,24 @@ function criarApp(db, opcoes = {}) {
   }
 
   // Identifica o usuário logado pelo cookie de sessão
-  app.use((req, res, next) => {
-    const cookies = sessoes.lerCookies(req);
-    req.cookies = cookies;
-    req.tokenSessao = cookies[sessoes.NOME_COOKIE] || null;
-    req.usuario = sessoes.buscarUsuarioDaSessao(db, req.tokenSessao);
-    next();
+  app.use(async (req, res, next) => {
+    try {
+      const cookies = sessoes.lerCookies(req);
+      req.cookies = cookies;
+      req.tokenSessao = cookies[sessoes.NOME_COOKIE] || null;
+      req.usuario = await sessoes.buscarUsuarioDaSessao(db, req.tokenSessao);
+      next();
+    } catch (erro) {
+      next(erro);
+    }
   });
 
   /* ------------------------------ auxiliares ------------------------------ */
 
   const cookieBase = { httpOnly: true, sameSite: 'lax', secure: cookieSeguro, path: '/' };
 
-  function iniciarSessao(res, usuarioId, lembrar) {
-    const { token, expira } = sessoes.criarSessao(db, usuarioId, lembrar);
+  async function iniciarSessao(res, usuarioId, lembrar) {
+    const { token, expira } = await sessoes.criarSessao(db, usuarioId, lembrar);
     res.cookie(sessoes.NOME_COOKIE, token, { ...cookieBase, expires: new Date(expira) });
   }
 
@@ -123,8 +127,8 @@ function criarApp(db, opcoes = {}) {
     return req.cookies[COOKIE_VERIFICACAO] || null;
   }
 
-  function encerrarVerificacao(req, res) {
-    acesso.cancelarVerificacao(db, tokenVerificacao(req));
+  async function encerrarVerificacao(req, res) {
+    await acesso.cancelarVerificacao(db, tokenVerificacao(req));
     res.clearCookie(COOKIE_VERIFICACAO, { path: '/' });
   }
 
@@ -134,9 +138,9 @@ function criarApp(db, opcoes = {}) {
 
   app.get('/login', (req, res) => (req.usuario ? res.redirect('/') : enviarPagina(req, res, 'login.html')));
 
-  app.get('/verificar', (req, res) => {
+  app.get('/verificar', async (req, res) => {
     if (req.usuario) return res.redirect('/');
-    if (!acesso.buscarVerificacao(db, tokenVerificacao(req))) return res.redirect('/login');
+    if (!await acesso.buscarVerificacao(db, tokenVerificacao(req))) return res.redirect('/login');
     enviarPagina(req, res, 'verificar.html');
   });
 
@@ -146,7 +150,7 @@ function criarApp(db, opcoes = {}) {
 
   /* --------------------------------- login --------------------------------- */
 
-  app.post('/login', (req, res) => {
+  app.post('/login', async (req, res) => {
     const json = querJson(req);
     const email = String(req.body?.email || '').trim().toLowerCase();
     const senha = String(req.body?.senha || '');
@@ -166,7 +170,7 @@ function criarApp(db, opcoes = {}) {
       return responderErro(429, `Muitas tentativas. Tente novamente em ${minutos} min.`);
     }
 
-    const usuario = db.prepare('SELECT id, nome, email, senha_hash, ativo FROM usuarios WHERE email = ?').get(email);
+    const usuario = await db.prepare('SELECT id, nome, email, senha_hash, ativo FROM usuarios WHERE email = ?').get(email);
     const senhaOk = verificarSenha(senha, usuario ? usuario.senha_hash : HASH_FALSO);
     if (!usuario || !usuario.ativo || !senhaOk) {
       limitador.registrarFalha(chave);
@@ -175,27 +179,27 @@ function criarApp(db, opcoes = {}) {
     limitador.limpar(chave);
 
     if (doisFatores) {
-      const { token, codigo, expira } = acesso.criarVerificacao(db, usuario.id, lembrar);
+      const { token, codigo, expira } = await acesso.criarVerificacao(db, usuario.id, lembrar);
       enviarCodigo(usuario, codigo);
       res.cookie(COOKIE_VERIFICACAO, token, { ...cookieBase, expires: new Date(expira + 60_000) });
       const url = destino !== '/' ? `/verificar?next=${encodeURIComponent(destino)}` : '/verificar';
       return json ? res.json({ ok: true, redirect: url, verificacao: true }) : res.redirect(url);
     }
 
-    iniciarSessao(res, usuario.id, lembrar);
+    await iniciarSessao(res, usuario.id, lembrar);
     return json ? res.json({ ok: true, redirect: destino }) : res.redirect(destino);
   });
 
-  app.post('/logout', (req, res) => {
-    sessoes.encerrarSessao(db, req.tokenSessao);
+  app.post('/logout', async (req, res) => {
+    await sessoes.encerrarSessao(db, req.tokenSessao);
     res.clearCookie(sessoes.NOME_COOKIE, { path: '/' });
     return querJson(req) ? res.json({ ok: true }) : res.redirect('/login');
   });
 
   /* ----------------------- verificação em duas etapas ----------------------- */
 
-  app.get('/acesso/verificacao', (req, res) => {
-    const v = acesso.buscarVerificacao(db, tokenVerificacao(req));
+  app.get('/acesso/verificacao', async (req, res) => {
+    const v = await acesso.buscarVerificacao(db, tokenVerificacao(req));
     if (!v) return res.status(401).json({ erro: 'A verificação expirou. Entre novamente.', reiniciar: true });
     res.set('Cache-Control', 'no-store');
     res.json({
@@ -206,19 +210,19 @@ function criarApp(db, opcoes = {}) {
     });
   });
 
-  app.post('/acesso/verificar', (req, res) => {
-    const r = acesso.confirmarVerificacao(db, tokenVerificacao(req), req.body?.codigo);
+  app.post('/acesso/verificar', async (req, res) => {
+    const r = await acesso.confirmarVerificacao(db, tokenVerificacao(req), req.body?.codigo);
     if (r.erro) {
       if (r.reiniciar) res.clearCookie(COOKIE_VERIFICACAO, { path: '/' });
       return res.status(r.reiniciar ? 401 : 400).json({ erro: r.erro, reiniciar: Boolean(r.reiniciar) });
     }
     res.clearCookie(COOKIE_VERIFICACAO, { path: '/' });
-    iniciarSessao(res, r.usuarioId, r.lembrar);
+    await iniciarSessao(res, r.usuarioId, r.lembrar);
     res.json({ ok: true, redirect: destinoSeguro(req.body?.next) });
   });
 
-  app.post('/acesso/verificar/reenviar', (req, res) => {
-    const r = acesso.reenviarCodigo(db, tokenVerificacao(req));
+  app.post('/acesso/verificar/reenviar', async (req, res) => {
+    const r = await acesso.reenviarCodigo(db, tokenVerificacao(req));
     if (r.erro) {
       if (r.reiniciar) res.clearCookie(COOKIE_VERIFICACAO, { path: '/' });
       return res.status(r.reiniciar ? 401 : 429).json({ erro: r.erro, reiniciar: Boolean(r.reiniciar) });
@@ -227,14 +231,14 @@ function criarApp(db, opcoes = {}) {
     res.json({ ok: true, expiraEm: r.expira, reenvioEm: r.reenvioEm });
   });
 
-  app.get('/acesso/cancelar-verificacao', (req, res) => {
-    encerrarVerificacao(req, res);
+  app.get('/acesso/cancelar-verificacao', async (req, res) => {
+    await encerrarVerificacao(req, res);
     res.redirect('/login');
   });
 
   /* --------------------------- recuperação de senha --------------------------- */
 
-  app.post('/acesso/recuperar', (req, res) => {
+  app.post('/acesso/recuperar', async (req, res) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
     if (!EMAIL_VALIDO.test(email)) return res.status(400).json({ erro: 'Digite um e-mail válido.' });
 
@@ -244,9 +248,9 @@ function criarApp(db, opcoes = {}) {
     }
     limitadorRecuperar.registrarFalha(chave);
 
-    const usuario = db.prepare('SELECT id, nome, email FROM usuarios WHERE email = ? AND ativo = 1').get(email);
+    const usuario = await db.prepare('SELECT id, nome, email FROM usuarios WHERE email = ? AND ativo = 1').get(email);
     if (usuario) {
-      const { token } = acesso.criarRedefinicao(db, usuario.id);
+      const { token } = await acesso.criarRedefinicao(db, usuario.id);
       const link = `${urlBase(req)}/nova-senha?token=${token}`;
       enviador.enviar({
         para: usuario.email,
@@ -258,14 +262,14 @@ function criarApp(db, opcoes = {}) {
     res.json({ ok: true, modoTeste });
   });
 
-  app.get('/acesso/redefinicao', (req, res) => {
+  app.get('/acesso/redefinicao', async (req, res) => {
     res.set('Cache-Control', 'no-store');
-    const r = acesso.buscarRedefinicao(db, String(req.query.token || ''));
+    const r = await acesso.buscarRedefinicao(db, String(req.query.token || ''));
     if (r.erro) return res.status(400).json({ erro: r.erro });
     res.json({ email: r.redefinicao.email, expiraEm: r.redefinicao.expiraEm });
   });
 
-  app.post('/acesso/nova-senha', (req, res) => {
+  app.post('/acesso/nova-senha', async (req, res) => {
     const token = String(req.body?.token || '');
     const senha = String(req.body?.senha || '');
     const repetir = String(req.body?.repetir || '');
@@ -274,23 +278,23 @@ function criarApp(db, opcoes = {}) {
     if (problemas.length) return res.status(400).json({ erro: `A senha precisa ter: ${problemas.join(' e ').toLowerCase()}.` });
     if (senha !== repetir) return res.status(400).json({ erro: 'As senhas não conferem.' });
 
-    const r = acesso.usarRedefinicao(db, token, senha);
+    const r = await acesso.usarRedefinicao(db, token, senha);
     if (r.erro) return res.status(400).json({ erro: r.erro });
 
-    iniciarSessao(res, r.usuarioId, false);
+    await iniciarSessao(res, r.usuarioId, false);
     res.json({ ok: true, redirect: '/' });
   });
 
   /* --------------------------------- convite --------------------------------- */
 
-  app.get('/acesso/convite', (req, res) => {
+  app.get('/acesso/convite', async (req, res) => {
     res.set('Cache-Control', 'no-store');
-    const r = acesso.buscarConvite(db, String(req.query.token || ''));
+    const r = await acesso.buscarConvite(db, String(req.query.token || ''));
     if (r.erro) return res.status(400).json({ erro: r.erro });
     res.json({ convite: r.convite });
   });
 
-  app.post('/acesso/convite', (req, res) => {
+  app.post('/acesso/convite', async (req, res) => {
     const chave = `convite|${req.ip}`;
     if (limitadorConvite.bloqueadoPor(chave) > 0) {
       return res.status(429).json({ erro: 'Muitas tentativas. Tente novamente em alguns minutos.' });
@@ -304,27 +308,27 @@ function criarApp(db, opcoes = {}) {
     if (problemas.length) return res.status(400).json({ erro: `A senha precisa ter: ${problemas.join(' e ').toLowerCase()}.` });
     if (req.body?.aceito !== true) return res.status(400).json({ erro: 'Você precisa aceitar a política de uso interno.' });
 
-    const r = acesso.usarConvite(db, token, { nome, senha });
+    const r = await acesso.usarConvite(db, token, { nome, senha });
     if (r.erro) {
       limitadorConvite.registrarFalha(chave);
       return res.status(400).json({ erro: r.erro });
     }
-    iniciarSessao(res, r.usuarioId, false);
+    await iniciarSessao(res, r.usuarioId, false);
     res.status(201).json({ ok: true, redirect: '/' });
   });
 
   /* ------------------------ webhook do WhatsApp (uazapi) ------------------------ */
   // Público, protegido pelo segredo na URL. Sempre responde 200 para o uazapi não reenviar.
-  app.post('/webhook/uazapi/:segredo', express.json({ limit: '5mb', type: () => true }), (req, res) => {
+  app.post('/webhook/uazapi/:segredo', express.json({ limit: '5mb', type: () => true }), async (req, res) => {
     const segredo = String(req.params.segredo || '');
-    const canal = /^[a-f0-9]{32}$/.test(segredo) ? db.prepare('SELECT * FROM canais WHERE webhook_segredo = ?').get(segredo) : null;
+    const canal = /^[a-f0-9]{32}$/.test(segredo) ? await db.prepare('SELECT * FROM canais WHERE webhook_segredo = ?').get(segredo) : null;
     if (!canal) return res.status(404).json({ erro: 'Canal não encontrado.' });
     const corpo = req.body && typeof req.body === 'object' ? req.body : {};
     const { tipo } = canais.extrairEvento(corpo);
     let resultado;
     try {
-      canais.registrarEvento(db, canal.id, tipo, corpo);
-      resultado = canais.processarEvento(db, canal, corpo);
+      await canais.registrarEvento(db, canal.id, tipo, corpo);
+      resultado = await canais.processarEvento(db, canal, corpo);
     } catch (erro) {
       console.error('Erro ao processar webhook do WhatsApp:', erro);
       resultado = { resultado: 'erro', motivo: erro.message };

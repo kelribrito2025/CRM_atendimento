@@ -1,208 +1,236 @@
 'use strict';
 
-const fs = require('node:fs');
-const path = require('node:path');
-const { DatabaseSync } = require('node:sqlite');
+const { abrirBanco: abrirConexao } = require('./banco');
 const { gerarHashSenha } = require('./senha');
 
-const SCHEMA = `
+// O mesmo schema serve para SQLite e MySQL/TiDB: o que muda é só a chave primária
+// e a marcação de "não diferencia maiúsculas" (no MySQL isso já é o padrão).
+function montarSchema(dialeto) {
+  const CHAVE = dialeto === 'mysql' ? 'BIGINT AUTO_INCREMENT PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+  const SEM_CAIXA = dialeto === 'mysql' ? '' : ' COLLATE NOCASE';
+  return `
 CREATE TABLE IF NOT EXISTS usuarios (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id ${CHAVE},
   nome TEXT NOT NULL,
-  email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  email VARCHAR(191) NOT NULL UNIQUE${SEM_CAIXA},
   senha_hash TEXT NOT NULL,
-  papel TEXT NOT NULL DEFAULT 'atendente',
-  presenca TEXT NOT NULL DEFAULT 'online',
-  ativo INTEGER NOT NULL DEFAULT 1,
-  criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+  papel VARCHAR(20) NOT NULL DEFAULT 'atendente',
+  presenca VARCHAR(20) NOT NULL DEFAULT 'online',
+  ativo BIGINT NOT NULL DEFAULT 1,
+  criado_em VARCHAR(32) NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS sessoes (
-  token_hash TEXT PRIMARY KEY,
-  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-  expira_em INTEGER NOT NULL,
-  criado_em INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_sessoes_expira ON sessoes(expira_em);
 
 CREATE TABLE IF NOT EXISTS equipes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nome TEXT NOT NULL UNIQUE,
-  cor TEXT NOT NULL DEFAULT '#12B85C',
-  ordem INTEGER NOT NULL DEFAULT 0
+  id ${CHAVE},
+  nome VARCHAR(191) NOT NULL UNIQUE,
+  cor VARCHAR(20) NOT NULL DEFAULT '#12B85C',
+  ordem BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS ajustes (
-  chave TEXT PRIMARY KEY,
+  chave VARCHAR(191) PRIMARY KEY,
   valor TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sessoes (
+  token_hash VARCHAR(191) PRIMARY KEY,
+  usuario_id BIGINT NOT NULL,
+  expira_em BIGINT NOT NULL,
+  criado_em BIGINT NOT NULL,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS equipe_membros (
-  equipe_id INTEGER NOT NULL REFERENCES equipes(id) ON DELETE CASCADE,
-  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-  PRIMARY KEY (equipe_id, usuario_id)
+  equipe_id BIGINT NOT NULL,
+  usuario_id BIGINT NOT NULL,
+  PRIMARY KEY (equipe_id, usuario_id),
+  FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS contatos (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id ${CHAVE},
   nome TEXT NOT NULL,
   empresa TEXT,
-  cnpj TEXT,
-  telefone TEXT,
+  cnpj VARCHAR(32),
+  telefone VARCHAR(32),
   dados_conta TEXT,
-  pin TEXT,
-  pin_validado_em INTEGER,
-  pin_validado_por INTEGER REFERENCES usuarios(id)
-);
-
-CREATE TABLE IF NOT EXISTS conversas (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  protocolo TEXT NOT NULL UNIQUE,
-  contato_id INTEGER NOT NULL REFERENCES contatos(id),
-  equipe_id INTEGER REFERENCES equipes(id),
-  atendente_id INTEGER REFERENCES usuarios(id),
-  canal TEXT NOT NULL DEFAULT 'whatsapp',
-  status TEXT NOT NULL DEFAULT 'aberta',
-  alerta TEXT,
-  nao_lidas INTEGER NOT NULL DEFAULT 0,
-  criada_em INTEGER NOT NULL,
-  atualizada_em INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS mensagens (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  conversa_id INTEGER NOT NULL REFERENCES conversas(id) ON DELETE CASCADE,
-  tipo TEXT NOT NULL,
-  autor_id INTEGER REFERENCES usuarios(id),
-  texto TEXT NOT NULL,
-  entrega TEXT,
-  criada_em INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_mensagens_conversa ON mensagens(conversa_id, criada_em);
-
-CREATE TABLE IF NOT EXISTS convites (
-  token_hash TEXT PRIMARY KEY,
-  email TEXT NOT NULL COLLATE NOCASE,
-  papel TEXT NOT NULL DEFAULT 'atendente',
-  equipes TEXT,
-  criado_por INTEGER REFERENCES usuarios(id),
-  criado_em INTEGER NOT NULL,
-  expira_em INTEGER NOT NULL,
-  usado_em INTEGER
-);
-
-CREATE TABLE IF NOT EXISTS redefinicoes (
-  token_hash TEXT PRIMARY KEY,
-  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-  criado_em INTEGER NOT NULL,
-  expira_em INTEGER NOT NULL,
-  usado_em INTEGER
+  pin VARCHAR(32),
+  pin_validado_em BIGINT,
+  pin_validado_por BIGINT,
+  wa_id VARCHAR(64),
+  tg_id VARCHAR(64),
+  tg_usuario VARCHAR(191),
+  FOREIGN KEY (pin_validado_por) REFERENCES usuarios(id)
 );
 
 CREATE TABLE IF NOT EXISTS canais (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  tipo TEXT NOT NULL DEFAULT 'whatsapp',
+  id ${CHAVE},
+  tipo VARCHAR(20) NOT NULL DEFAULT 'whatsapp',
   nome TEXT NOT NULL,
-  instancia_id TEXT,
+  instancia_id VARCHAR(191),
   instancia_token TEXT,
-  webhook_segredo TEXT NOT NULL UNIQUE,
-  numero TEXT,
+  webhook_segredo VARCHAR(191) NOT NULL UNIQUE,
+  numero VARCHAR(64),
   perfil_nome TEXT,
-  status TEXT NOT NULL DEFAULT 'disconnected',
-  equipe_padrao_id INTEGER REFERENCES equipes(id),
+  status VARCHAR(20) NOT NULL DEFAULT 'disconnected',
+  equipe_padrao_id BIGINT,
   ultimo_erro TEXT,
-  criado_em INTEGER NOT NULL,
-  atualizado_em INTEGER NOT NULL
+  criado_em BIGINT NOT NULL,
+  atualizado_em BIGINT NOT NULL,
+  FOREIGN KEY (equipe_padrao_id) REFERENCES equipes(id)
+);
+
+CREATE TABLE IF NOT EXISTS conversas (
+  id ${CHAVE},
+  protocolo VARCHAR(32) NOT NULL UNIQUE,
+  contato_id BIGINT NOT NULL,
+  equipe_id BIGINT,
+  atendente_id BIGINT,
+  canal VARCHAR(20) NOT NULL DEFAULT 'whatsapp',
+  status VARCHAR(20) NOT NULL DEFAULT 'aberta',
+  alerta TEXT,
+  nao_lidas BIGINT NOT NULL DEFAULT 0,
+  criada_em BIGINT NOT NULL,
+  atualizada_em BIGINT NOT NULL,
+  canal_id BIGINT,
+  wa_chatid VARCHAR(191),
+  FOREIGN KEY (contato_id) REFERENCES contatos(id),
+  FOREIGN KEY (equipe_id) REFERENCES equipes(id),
+  FOREIGN KEY (atendente_id) REFERENCES usuarios(id),
+  FOREIGN KEY (canal_id) REFERENCES canais(id)
+);
+
+CREATE TABLE IF NOT EXISTS mensagens (
+  id ${CHAVE},
+  conversa_id BIGINT NOT NULL,
+  tipo VARCHAR(20) NOT NULL,
+  autor_id BIGINT,
+  texto TEXT NOT NULL,
+  entrega VARCHAR(20),
+  criada_em BIGINT NOT NULL,
+  externo_id VARCHAR(191),
+  midia_tipo VARCHAR(20),
+  midia_id VARCHAR(255),
+  midia_nome TEXT,
+  midia_mime VARCHAR(127),
+  FOREIGN KEY (conversa_id) REFERENCES conversas(id) ON DELETE CASCADE,
+  FOREIGN KEY (autor_id) REFERENCES usuarios(id)
+);
+
+CREATE TABLE IF NOT EXISTS convites (
+  token_hash VARCHAR(191) PRIMARY KEY,
+  email VARCHAR(191) NOT NULL${SEM_CAIXA},
+  papel VARCHAR(20) NOT NULL DEFAULT 'atendente',
+  equipes TEXT,
+  criado_por BIGINT,
+  criado_em BIGINT NOT NULL,
+  expira_em BIGINT NOT NULL,
+  usado_em BIGINT,
+  FOREIGN KEY (criado_por) REFERENCES usuarios(id)
+);
+
+CREATE TABLE IF NOT EXISTS redefinicoes (
+  token_hash VARCHAR(191) PRIMARY KEY,
+  usuario_id BIGINT NOT NULL,
+  criado_em BIGINT NOT NULL,
+  expira_em BIGINT NOT NULL,
+  usado_em BIGINT,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS canal_eventos (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  canal_id INTEGER REFERENCES canais(id) ON DELETE CASCADE,
-  tipo TEXT,
+  id ${CHAVE},
+  canal_id BIGINT,
+  tipo VARCHAR(64),
   corpo TEXT,
-  recebido_em INTEGER NOT NULL
+  recebido_em BIGINT NOT NULL,
+  FOREIGN KEY (canal_id) REFERENCES canais(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS verificacoes (
-  token_hash TEXT PRIMARY KEY,
-  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  token_hash VARCHAR(191) PRIMARY KEY,
+  usuario_id BIGINT NOT NULL,
   codigo_hash TEXT NOT NULL,
-  lembrar INTEGER NOT NULL DEFAULT 0,
-  tentativas INTEGER NOT NULL DEFAULT 0,
-  reenviado_em INTEGER NOT NULL,
-  criado_em INTEGER NOT NULL,
-  expira_em INTEGER NOT NULL
+  lembrar BIGINT NOT NULL DEFAULT 0,
+  tentativas BIGINT NOT NULL DEFAULT 0,
+  reenviado_em BIGINT NOT NULL,
+  criado_em BIGINT NOT NULL,
+  expira_em BIGINT NOT NULL,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
 );
 `;
+}
+
+const INDICES = [
+  ['idx_sessoes_expira', 'sessoes', 'expira_em'],
+  ['idx_mensagens_conversa', 'mensagens', 'conversa_id, criada_em'],
+  ['idx_mensagens_externo', 'mensagens', 'externo_id'],
+  ['idx_contatos_wa', 'contatos', 'wa_id'],
+  ['idx_contatos_tg', 'contatos', 'tg_id'],
+  ['idx_conversas_canal', 'conversas', 'canal_id, status'],
+];
 
 // Acrescenta colunas criadas em versões mais novas sem perder os dados existentes.
-function garantirColuna(db, tabela, coluna, definicao) {
-  const existentes = db.prepare(`PRAGMA table_info(${tabela})`).all().map((c) => c.name);
-  if (!existentes.includes(coluna)) db.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${definicao}`);
+async function garantirColuna(db, tabela, coluna, definicao) {
+  const existentes = await db.colunas(tabela);
+  if (!existentes.includes(coluna)) await db.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${definicao}`);
 }
 
 // Apaga equipes pelo nome; as conversas e canais ligados a elas ficam "sem equipe".
-function removerEquipes(db, nomes) {
+async function removerEquipes(db, nomes) {
   const marcadores = nomes.map(() => '?').join(', ');
-  const ids = db.prepare(`SELECT id FROM equipes WHERE nome IN (${marcadores})`).all(...nomes).map((e) => Number(e.id));
+  const ids = (await db.prepare(`SELECT id FROM equipes WHERE nome IN (${marcadores})`).all(...nomes)).map((e) => Number(e.id));
   if (!ids.length) return 0;
   const lista = ids.join(', ');
-  db.exec(`
-    UPDATE conversas SET equipe_id = NULL WHERE equipe_id IN (${lista});
-    UPDATE canais SET equipe_padrao_id = NULL WHERE equipe_padrao_id IN (${lista});
-    DELETE FROM equipes WHERE id IN (${lista});
-  `);
+  await db.exec(`UPDATE conversas SET equipe_id = NULL WHERE equipe_id IN (${lista})`);
+  await db.exec(`UPDATE canais SET equipe_padrao_id = NULL WHERE equipe_padrao_id IN (${lista})`);
+  await db.exec(`DELETE FROM equipes WHERE id IN (${lista})`);
   return ids.length;
 }
 
 // Renomeia uma equipe já existente (bancos criados antes da mudança de nome).
-function renomearEquipe(db, de, para) {
-  const jaExiste = db.prepare('SELECT id FROM equipes WHERE nome = ?').get(para);
-  if (!jaExiste) db.prepare('UPDATE equipes SET nome = ? WHERE nome = ?').run(para, de);
+async function renomearEquipe(db, de, para) {
+  const jaExiste = await db.prepare('SELECT id FROM equipes WHERE nome = ?').get(para);
+  if (!jaExiste) await db.prepare('UPDATE equipes SET nome = ? WHERE nome = ?').run(para, de);
 }
 
-function migrar(db) {
-  garantirColuna(db, 'conversas', 'canal_id', 'INTEGER REFERENCES canais(id)');
-  garantirColuna(db, 'conversas', 'wa_chatid', 'TEXT');
-  garantirColuna(db, 'mensagens', 'externo_id', 'TEXT');
-  garantirColuna(db, 'mensagens', 'midia_tipo', 'TEXT');
-  garantirColuna(db, 'mensagens', 'midia_id', 'TEXT');
-  garantirColuna(db, 'mensagens', 'midia_nome', 'TEXT');
-  garantirColuna(db, 'mensagens', 'midia_mime', 'TEXT');
-  garantirColuna(db, 'contatos', 'wa_id', 'TEXT');
-  garantirColuna(db, 'contatos', 'tg_id', 'TEXT');
-  garantirColuna(db, 'contatos', 'tg_usuario', 'TEXT');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_contatos_tg ON contatos(tg_id);');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_mensagens_externo ON mensagens(externo_id);');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_contatos_wa ON contatos(wa_id);');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_conversas_canal ON conversas(canal_id, status);');
-  renomearEquipe(db, 'Cobrança', 'Admin');
+async function migrar(db) {
+  await garantirColuna(db, 'conversas', 'canal_id', 'BIGINT');
+  await garantirColuna(db, 'conversas', 'wa_chatid', 'VARCHAR(191)');
+  await garantirColuna(db, 'mensagens', 'externo_id', 'VARCHAR(191)');
+  await garantirColuna(db, 'mensagens', 'midia_tipo', 'VARCHAR(20)');
+  await garantirColuna(db, 'mensagens', 'midia_id', 'VARCHAR(255)');
+  await garantirColuna(db, 'mensagens', 'midia_nome', 'TEXT');
+  await garantirColuna(db, 'mensagens', 'midia_mime', 'VARCHAR(127)');
+  await garantirColuna(db, 'contatos', 'wa_id', 'VARCHAR(64)');
+  await garantirColuna(db, 'contatos', 'tg_id', 'VARCHAR(64)');
+  await garantirColuna(db, 'contatos', 'tg_usuario', 'VARCHAR(191)');
+  for (const [nome, tabela, colunas] of INDICES) await db.criarIndice(nome, tabela, colunas);
+  await renomearEquipe(db, 'Cobrança', 'Admin');
   // Equipes padrão antigas que deixaram de existir (removidas uma única vez).
-  if (lerAjuste(db, 'equipes_padrao') !== '2') {
-    removerEquipes(db, ['Suporte técnico', 'Onboarding']);
-    gravarAjuste(db, 'equipes_padrao', '2');
+  if (await lerAjuste(db, 'equipes_padrao') !== '2') {
+    await removerEquipes(db, ['Suporte técnico', 'Onboarding']);
+    await gravarAjuste(db, 'equipes_padrao', '2');
   }
 }
 
-function abrirBanco(caminho = ':memory:') {
-  const emMemoria = caminho === ':memory:';
-  if (!emMemoria) fs.mkdirSync(path.dirname(caminho), { recursive: true });
-  const db = new DatabaseSync(caminho);
-  db.exec('PRAGMA foreign_keys = ON;');
-  if (!emMemoria) db.exec('PRAGMA journal_mode = WAL;');
-  db.exec(SCHEMA);
-  migrar(db);
+// `destino`: caminho de um arquivo SQLite ou uma URL mysql:// (publicação).
+async function abrirBanco(destino = ':memory:') {
+  const db = await abrirConexao(destino);
+  await db.exec(montarSchema(db.dialeto));
+  await migrar(db);
   return db;
 }
 
-function contar(db, tabela) {
-  return db.prepare(`SELECT COUNT(*) AS n FROM ${tabela}`).get().n;
+async function contar(db, tabela) {
+  return Number((await db.prepare(`SELECT COUNT(*) AS n FROM ${tabela}`).get()).n);
 }
 
-function inserirUsuario(db, { nome, email, senha, papel = 'atendente', presenca = 'online' }) {
-  const info = db
-    .prepare('INSERT INTO usuarios (nome, email, senha_hash, papel, presenca) VALUES (?, ?, ?, ?, ?)')
-    .run(String(nome).trim(), String(email).trim().toLowerCase(), gerarHashSenha(senha), papel, presenca);
+async function inserirUsuario(db, { nome, email, senha, papel = 'atendente', presenca = 'online' }) {
+  const info = await db
+    .prepare('INSERT INTO usuarios (nome, email, senha_hash, papel, presenca, criado_em) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(String(nome).trim(), String(email).trim().toLowerCase(), gerarHashSenha(senha), papel, presenca, new Date().toISOString());
   return Number(info.lastInsertRowid);
 }
 
@@ -214,18 +242,20 @@ const EQUIPES_PADRAO = [
 
 const USUARIOS_EXEMPLO = ['marina@bigteck.com.br', 'rafael@bigteck.com.br'];
 
-function lerAjuste(db, chave) {
-  return db.prepare('SELECT valor FROM ajustes WHERE chave = ?').get(chave)?.valor ?? null;
+async function lerAjuste(db, chave) {
+  return (await db.prepare('SELECT valor FROM ajustes WHERE chave = ?').get(chave))?.valor ?? null;
 }
 
-function gravarAjuste(db, chave, valor) {
-  db.prepare('INSERT INTO ajustes (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor')
-    .run(chave, String(valor));
+async function gravarAjuste(db, chave, valor) {
+  const sql = db.dialeto === 'mysql'
+    ? 'INSERT INTO ajustes (chave, valor) VALUES (?, ?) ON DUPLICATE KEY UPDATE valor = VALUES(valor)'
+    : 'INSERT INTO ajustes (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor';
+  await db.prepare(sql).run(chave, String(valor));
 }
 
 // Cria o administrador inicial, as equipes padrão e (opcionalmente) dados de exemplo.
 // Sem `comDadosExemplo`, os dados de exemplo criados anteriormente são removidos uma única vez.
-function semear(db, opcoes = {}) {
+async function semear(db, opcoes = {}) {
   const {
     adminEmail = 'admin@bigteck.com.br',
     adminSenha = 'admin123',
@@ -236,64 +266,59 @@ function semear(db, opcoes = {}) {
 
   const resultado = { adminCriado: false, dadosExemploCriados: false, dadosExemploRemovidos: null };
 
-  if (contar(db, 'usuarios') === 0) {
-    inserirUsuario(db, { nome: adminNome, email: adminEmail, senha: adminSenha, papel: 'admin' });
+  if (await contar(db, 'usuarios') === 0) {
+    await inserirUsuario(db, { nome: adminNome, email: adminEmail, senha: adminSenha, papel: 'admin' });
     resultado.adminCriado = true;
   }
 
-  criarEquipesPadrao(db);
+  await criarEquipesPadrao(db);
 
   if (comDadosExemplo) {
-    if (contar(db, 'conversas') === 0) {
-      semearDadosExemplo(db, senhaEquipe);
-      gravarAjuste(db, 'exemplos', 'criados');
+    if (await contar(db, 'conversas') === 0) {
+      await semearDadosExemplo(db, senhaEquipe);
+      await gravarAjuste(db, 'exemplos', 'criados');
       resultado.dadosExemploCriados = true;
     }
-  } else if (lerAjuste(db, 'exemplos') !== 'removidos') {
-    resultado.dadosExemploRemovidos = removerDadosExemplo(db);
-    gravarAjuste(db, 'exemplos', 'removidos');
+  } else if (await lerAjuste(db, 'exemplos') !== 'removidos') {
+    resultado.dadosExemploRemovidos = await removerDadosExemplo(db);
+    await gravarAjuste(db, 'exemplos', 'removidos');
   }
 
   return resultado;
 }
 
-function criarEquipesPadrao(db) {
-  if (contar(db, 'equipes') > 0) return;
-  const admin = db.prepare("SELECT id FROM usuarios WHERE papel = 'admin' ORDER BY id LIMIT 1").get();
+async function criarEquipesPadrao(db) {
+  if (await contar(db, 'equipes') > 0) return;
+  const admin = await db.prepare("SELECT id FROM usuarios WHERE papel = 'admin' ORDER BY id LIMIT 1").get();
   const insEquipe = db.prepare('INSERT INTO equipes (nome, cor, ordem) VALUES (?, ?, ?)');
   const insMembro = db.prepare('INSERT OR IGNORE INTO equipe_membros (equipe_id, usuario_id) VALUES (?, ?)');
-  EQUIPES_PADRAO.forEach(([nome, cor], i) => {
-    const id = Number(insEquipe.run(nome, cor, i).lastInsertRowid);
-    if (admin) insMembro.run(id, admin.id);
-  });
+  for (const [i, [nome, cor]] of EQUIPES_PADRAO.entries()) {
+    const id = Number((await insEquipe.run(nome, cor, i)).lastInsertRowid);
+    if (admin) await insMembro.run(id, admin.id);
+  }
 }
 
 // Apaga as conversas, contatos e usuários de teste criados por semearDadosExemplo.
 // Conversas reais vêm sempre de um canal (canal_id) e contatos reais têm wa_id; só o resto é removido.
-function removerDadosExemplo(db) {
+async function removerDadosExemplo(db) {
   const totais = { conversas: 0, contatos: 0, usuarios: 0 };
-  db.exec('BEGIN');
-  try {
-    totais.conversas = db.prepare('DELETE FROM conversas WHERE canal_id IS NULL').run().changes;
-    totais.contatos = db.prepare('DELETE FROM contatos WHERE wa_id IS NULL AND tg_id IS NULL AND id NOT IN (SELECT contato_id FROM conversas)').run().changes;
+  await db.transacao(async () => {
+    totais.conversas = (await db.prepare('DELETE FROM conversas WHERE canal_id IS NULL').run()).changes;
+    totais.contatos = (await db.prepare(
+      'DELETE FROM contatos WHERE wa_id IS NULL AND tg_id IS NULL AND id NOT IN (SELECT contato_id FROM (SELECT contato_id FROM conversas) AS c)',
+    ).run()).changes;
     const marcadores = USUARIOS_EXEMPLO.map(() => '?').join(', ');
-    const ids = db.prepare(`SELECT id FROM usuarios WHERE email IN (${marcadores})`).all(...USUARIOS_EXEMPLO).map((u) => Number(u.id));
+    const ids = (await db.prepare(`SELECT id FROM usuarios WHERE email IN (${marcadores})`).all(...USUARIOS_EXEMPLO)).map((u) => Number(u.id));
     if (ids.length) {
       const lista = ids.join(', ');
-      db.exec(`
-        UPDATE contatos SET pin_validado_por = NULL WHERE pin_validado_por IN (${lista});
-        UPDATE conversas SET atendente_id = NULL WHERE atendente_id IN (${lista});
-        UPDATE mensagens SET autor_id = NULL WHERE autor_id IN (${lista});
-        UPDATE convites SET criado_por = NULL WHERE criado_por IN (${lista});
-        DELETE FROM usuarios WHERE id IN (${lista});
-      `);
+      await db.exec(`UPDATE contatos SET pin_validado_por = NULL WHERE pin_validado_por IN (${lista})`);
+      await db.exec(`UPDATE conversas SET atendente_id = NULL WHERE atendente_id IN (${lista})`);
+      await db.exec(`UPDATE mensagens SET autor_id = NULL WHERE autor_id IN (${lista})`);
+      await db.exec(`UPDATE convites SET criado_por = NULL WHERE criado_por IN (${lista})`);
+      await db.exec(`DELETE FROM usuarios WHERE id IN (${lista})`);
       totais.usuarios = ids.length;
     }
-    db.exec('COMMIT');
-  } catch (erro) {
-    db.exec('ROLLBACK');
-    throw erro;
-  }
+  });
   return totais;
 }
 
@@ -485,27 +510,27 @@ const CONVERSAS_EXEMPLO = [
   },
 ];
 
-function semearDadosExemplo(db, senhaEquipe) {
-  const admin = db.prepare('SELECT id FROM usuarios ORDER BY id LIMIT 1').get();
+async function semearDadosExemplo(db, senhaEquipe) {
+  const admin = await db.prepare('SELECT id FROM usuarios ORDER BY id LIMIT 1').get();
   const buscarPorEmail = (email) => db.prepare('SELECT id FROM usuarios WHERE email = ?').get(email);
 
   const usuarios = {
     admin: admin.id,
-    marina: buscarPorEmail('marina@bigteck.com.br')?.id
-      ?? inserirUsuario(db, { nome: 'Marina Alves', email: 'marina@bigteck.com.br', senha: senhaEquipe, presenca: 'online' }),
-    rafael: buscarPorEmail('rafael@bigteck.com.br')?.id
-      ?? inserirUsuario(db, { nome: 'Rafael Costa', email: 'rafael@bigteck.com.br', senha: senhaEquipe, presenca: 'ausente' }),
+    marina: (await buscarPorEmail('marina@bigteck.com.br'))?.id
+      ?? await inserirUsuario(db, { nome: 'Marina Alves', email: 'marina@bigteck.com.br', senha: senhaEquipe, presenca: 'online' }),
+    rafael: (await buscarPorEmail('rafael@bigteck.com.br'))?.id
+      ?? await inserirUsuario(db, { nome: 'Rafael Costa', email: 'rafael@bigteck.com.br', senha: senhaEquipe, presenca: 'ausente' }),
   };
 
   const equipes = {};
   const insEquipe = db.prepare('INSERT INTO equipes (nome, cor, ordem) VALUES (?, ?, ?)');
   const insMembro = db.prepare('INSERT OR IGNORE INTO equipe_membros (equipe_id, usuario_id) VALUES (?, ?)');
-  EQUIPES_EXEMPLO.forEach(([nome, cor, membros], i) => {
-    const existente = db.prepare('SELECT id FROM equipes WHERE nome = ?').get(nome);
-    const id = existente ? existente.id : Number(insEquipe.run(nome, cor, i).lastInsertRowid);
+  for (const [i, [nome, cor, membros]] of EQUIPES_EXEMPLO.entries()) {
+    const existente = await db.prepare('SELECT id FROM equipes WHERE nome = ?').get(nome);
+    const id = existente ? existente.id : Number((await insEquipe.run(nome, cor, i)).lastInsertRowid);
     equipes[nome] = id;
-    for (const m of membros) insMembro.run(id, usuarios[m]);
-  });
+    for (const m of membros) await insMembro.run(id, usuarios[m]);
+  }
 
   const agora = Date.now();
   const em = (min) => agora + min * 60_000;
@@ -522,41 +547,36 @@ function semearDadosExemplo(db, senhaEquipe) {
 
   let proximoProtocolo = 4790;
 
-  db.exec('BEGIN');
-  try {
+  await db.transacao(async () => {
     for (const c of CONVERSAS_EXEMPLO) {
       const ct = c.contato;
-      const contatoId = Number(insContato.run(
+      const contatoId = Number((await insContato.run(
         ct.nome, ct.empresa ?? null, ct.cnpj ?? null, ct.telefone ?? null,
         ct.dados ? JSON.stringify(ct.dados) : null,
         ct.pin ?? null,
         ct.pin && ct.pinValidadoPor ? em(-(ct.pinValidadoHaMin ?? 0)) : null,
         ct.pin && ct.pinValidadoPor ? usuarios[ct.pinValidadoPor] : null,
-      ).lastInsertRowid);
+      )).lastInsertRowid);
 
       const tempos = c.mensagens.map((m) => em(m[1]));
       const criadaEm = Math.min(...tempos);
       const atualizadaEm = Math.max(...tempos);
       const protocolo = c.protocolo ?? String(proximoProtocolo++);
 
-      const conversaId = Number(insConversa.run(
+      const conversaId = Number((await insConversa.run(
         protocolo, contatoId, equipes[c.equipe] ?? null,
         c.atendente ? usuarios[c.atendente] : null,
         c.canal, c.status ?? 'aberta',
         c.alerta ? JSON.stringify(c.alerta) : null,
         c.naoLidas ?? 0, criadaEm, atualizadaEm,
-      ).lastInsertRowid);
+      )).lastInsertRowid);
 
       for (const [tipo, min, texto, entrega] of c.mensagens) {
         const autorId = tipo === 'cliente' ? null : usuarios[c.atendente ?? 'marina'];
-        insMsg.run(conversaId, tipo, autorId, texto, tipo === 'atendente' ? (entrega ?? 'entregue') : null, em(min));
+        await insMsg.run(conversaId, tipo, autorId, texto, tipo === 'atendente' ? (entrega ?? 'entregue') : null, em(min));
       }
     }
-    db.exec('COMMIT');
-  } catch (erro) {
-    db.exec('ROLLBACK');
-    throw erro;
-  }
+  });
 }
 
 module.exports = { abrirBanco, semear, inserirUsuario, semearDadosExemplo, removerDadosExemplo };
