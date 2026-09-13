@@ -1,3 +1,5 @@
+import { PALAVRAS_ACENTUADAS } from './palavras-acentuadas.mjs';
+
 // Acentuação automática do português: corrige a palavra quando o atendente
 // termina de escrevê-la (espaço, ponto, vírgula…).
 //
@@ -30,60 +32,8 @@ const REGRAS = [
   ['oria', 'ória'],
 ];
 
-// Palavras do dia a dia do atendimento que não seguem regra.
-const PALAVRAS = new Map(Object.entries({
-  nao: 'não', voce: 'você', voces: 'vocês', entao: 'então', tambem: 'também',
-  ola: 'olá', agua: 'água', aguas: 'águas', cafe: 'café', cafes: 'cafés',
-  ate: 'até', apos: 'após', atras: 'atrás', atraves: 'através', alem: 'além',
-  so: 'só', tres: 'três', mes: 'mês', pes: 'pés', ja: 'já', la: 'lá', ca: 'cá',
-  agencia: 'agência', numero: 'número', numeros: 'números', codigo: 'código', codigos: 'códigos',
-  servico: 'serviço', servicos: 'serviços', endereco: 'endereço', enderecos: 'endereços',
-  preco: 'preço', precos: 'preços', comeco: 'começo', comecar: 'começar', comecou: 'começou',
-  atencao: 'atenção', obrigacao: 'obrigação', licenca: 'licença', diferenca: 'diferença',
-  seguranca: 'segurança', cobranca: 'cobrança', mudanca: 'mudança', confianca: 'confiança',
-  crianca: 'criança', criancas: 'crianças', experiencia: 'experiência',
-  saldo: 'saldo', credito: 'crédito', creditos: 'créditos', debito: 'débito', debitos: 'débitos',
-  fatura: 'fatura', boleto: 'boleto', pagina: 'página', paginas: 'páginas',
-  historico: 'histórico', automatico: 'automático', basico: 'básico', publico: 'público',
-  unico: 'único', unica: 'única', proprio: 'próprio', propria: 'própria',
-  minimo: 'mínimo', maximo: 'máximo', otimo: 'ótimo', otima: 'ótima', pessimo: 'péssimo',
-  ultimo: 'último', ultima: 'última', ultimos: 'últimos', ultimas: 'últimas',
-  proximo: 'próximo', proxima: 'próxima', proximos: 'próximos', proximas: 'próximas',
-  rapido: 'rápido', rapida: 'rápida', facil: 'fácil', dificil: 'difícil',
-  periodo: 'período', horario: 'horário', calendario: 'calendário',
-  duvida: 'dúvida', duvidas: 'dúvidas', analise: 'análise', analises: 'análises',
-  ideia: 'ideia', video: 'vídeo', videos: 'vídeos', audio: 'áudio', audios: 'áudios',
-  pais: 'país', mae: 'mãe', pai: 'pai', irmao: 'irmão', irmaos: 'irmãos',
-  amanha: 'amanhã', manha: 'manhã', ninguem: 'ninguém', alguem: 'alguém', porem: 'porém',
-  parabens: 'parabéns', voltara: 'voltará', sera: 'será', serao: 'serão', estara: 'estará',
-  estarao: 'estarão', tera: 'terá', terao: 'terão', fara: 'fará', farao: 'farão',
-  podera: 'poderá', poderao: 'poderão', ira: 'irá', irao: 'irão', havera: 'haverá',
-  ficara: 'ficará', ficarao: 'ficarão', precisara: 'precisará', devera: 'deverá',
-  aparecera: 'aparecerá', chegara: 'chegará', comecara: 'começará',
-  valido: 'válido', valida: 'válida', invalido: 'inválido', invalida: 'inválida',
-  possivel: 'possível', impossivel: 'impossível', indisponivel: 'indisponível',
-  usuario: 'usuário', usuarios: 'usuários', relatorio: 'relatório', relatorios: 'relatórios',
-  necessario: 'necessário', necessaria: 'necessária', obrigatorio: 'obrigatório',
-  bancario: 'bancário', bancaria: 'bancária', salario: 'salário', diario: 'diário',
-  memoria: 'memória', categoria: 'categoria', transferencia: 'transferência',
-  referencia: 'referência', urgencia: 'urgência', pendencia: 'pendência',
-  assistencia: 'assistência', preferencia: 'preferência', importancia: 'importância',
-  distancia: 'distância', instancia: 'instância', tolerancia: 'tolerância',
-  responsavel: 'responsável', disponivel: 'disponível', visivel: 'visível',
-  aceitavel: 'aceitável', confiavel: 'confiável', razoavel: 'razoável',
-  vario: 'vário', varios: 'vários', varias: 'várias', proximidade: 'proximidade',
-  familia: 'família', empresario: 'empresário', escritorio: 'escritório',
-  inicio: 'início', iniciou: 'iniciou', beneficio: 'benefício', beneficios: 'benefícios',
-  exercicio: 'exercício', prejuizo: 'prejuízo', juizo: 'juízo',
-  numerario: 'numerário', tarifa: 'tarifa', conteudo: 'conteúdo', conteudos: 'conteúdos',
-  reembolso: 'reembolso', estorno: 'estorno', cartao: 'cartão', cartoes: 'cartões',
-  celular: 'celular', telefone: 'telefone', conexao: 'conexão', conexoes: 'conexões',
-  sessao: 'sessão', sessoes: 'sessões', senha: 'senha', confirmacao: 'confirmação',
-  solicitacao: 'solicitação', solicitacoes: 'solicitações', autorizacao: 'autorização',
-  verificacao: 'verificação', validacao: 'validação', ativacao: 'ativação',
-  aprovacao: 'aprovação', devolucao: 'devolução', resolucao: 'resolução',
-  recarga: 'recarga', deposito: 'depósito', depositos: 'depósitos',
-}));
+// Palavras explícitas ficam em um arquivo separado para facilitar consulta e edição.
+const PALAVRAS = new Map(Object.entries(PALAVRAS_ACENTUADAS));
 
 function ehMaiuscula(letra) {
   return letra === letra.toUpperCase() && letra !== letra.toLowerCase();

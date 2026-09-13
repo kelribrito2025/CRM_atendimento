@@ -122,6 +122,8 @@ O botão **Á**, ao lado das respostas rápidas, liga e desliga a correção, e 
 
 Palavras que mudam de sentido com o acento ficam de fora de propósito: "esta/está", "e/é", "a/à", "de/dê". Para acertar essas seria preciso entender a frase inteira, e um palpite errado mudaria o que a pessoa quis dizer.
 
+O vocabulário auditável fica em `client/assets/js/palavras-acentuadas.mjs`. Para adicionar uma correção segura, inclua uma linha no formato `palavra_sem_acento: 'palavra_com_acento',`. O arquivo contém mais de 900 correções frequentes, incluindo palavras com cedilha; depois de qualquer alteração, rode `pnpm test`.
+
 ## Respostas rápidas
 
 Mensagens prontas para o atendente não repetir texto o dia inteiro. Cada uma tem um atalho (por exemplo `/estorno`), um título e a mensagem.
