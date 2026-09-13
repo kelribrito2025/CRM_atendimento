@@ -658,17 +658,38 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   }
 
   // Encerra a conversa direto pelo card da lista, sem precisar abri-la.
+  // Conversas que acabaram de ser encerradas e ainda estão sendo confirmadas
+  // pelo servidor. Ficam de fora da lista para o card não reaparecer caso a
+  // atualização automática chegue no meio do caminho.
+  const encerrandoAgora = new Set();
+
+  // O card some assim que o gesto completa; a confirmação vai atrás. Se o
+  // servidor recusar, a conversa volta para a lista e o atendente é avisado.
   async function encerrarPeloCard(id) {
+    if (encerrandoAgora.has(id)) return;
+    encerrandoAgora.add(id);
+    const conversaAberta = estado.conversa?.id === id ? estado.conversa.status : null;
+    if (conversaAberta) {
+      estado.conversa.status = 'resolvida';
+      aplicarConversa(estado.conversa);
+    }
+    renderLista();
+    toast('Conversa encerrada.');
     try {
-      const r = await api(`/conversas/${id}/status`, { method: 'POST', body: { status: 'resolvida' } });
-      if (estado.conversa?.id === id) {
-        Object.assign(estado.conversa, { status: r.conversa.status });
-        aplicarConversa(estado.conversa);
-      }
-      toast('Conversa encerrada.');
+      await api(`/conversas/${id}/status`, { method: 'POST', body: { status: 'resolvida' } });
       await Promise.all([carregarResumo(), carregarConversas()]);
     } catch (e) {
+      // Não deu: devolve a conversa para a lista, como estava. Sair da lista de
+      // "encerrando" vem ANTES de redesenhar, senão o card continua escondido.
+      encerrandoAgora.delete(id);
+      if (conversaAberta && estado.conversa?.id === id) {
+        estado.conversa.status = conversaAberta;
+        aplicarConversa(estado.conversa);
+      }
       toast(e.message);
+      renderLista();
+    } finally {
+      encerrandoAgora.delete(id);
     }
   }
 
@@ -894,16 +915,19 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 
   function renderLista() {
     cancelarPressao(); // a lista vai ser trocada: nenhum gesto sobrevive a isso
-    const abertas = estado.conversas.filter((c) => c.status === 'aberta').length;
-    const sem = estado.conversas.filter((c) => c.semResposta).length;
+    const lista = encerrandoAgora.size
+      ? estado.conversas.filter((c) => !encerrandoAgora.has(c.id))
+      : estado.conversas;
+    const abertas = lista.filter((c) => c.status === 'aberta').length;
+    const sem = lista.filter((c) => c.semResposta).length;
     $('#lista-titulo').textContent = tituloLista();
     $('#lista-sub').textContent = `${abertas} conversa${abertas === 1 ? '' : 's'} · ${sem} sem resposta`;
     const cont = $('#conversas');
-    if (!estado.conversas.length) {
+    if (!lista.length) {
       cont.replaceChildren(listaVazia());
       return;
     }
-    cont.replaceChildren(...estado.conversas.map(itemConversa));
+    cont.replaceChildren(...lista.map(itemConversa));
   }
 
   function nomeCaixa() {
