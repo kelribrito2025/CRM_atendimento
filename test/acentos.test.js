@@ -9,6 +9,7 @@ test('acentos: palavras do dia a dia do atendimento', async () => {
   const { corrigirPalavra } = await carregar();
   const esperado = {
     nao: 'não', voce: 'você', entao: 'então', tambem: 'também', ate: 'até',
+    ola: 'olá', agua: 'água', aguas: 'águas', cafe: 'café', cafes: 'cafés',
     duvida: 'dúvida', codigo: 'código', numero: 'número', servico: 'serviço',
     endereco: 'endereço', cobranca: 'cobrança', sera: 'será', mes: 'mês',
   };
@@ -54,8 +55,9 @@ test('acentos: corrige o texto inteiro sem mexer na pontuação', async () => {
   const { corrigirTexto } = await carregar();
   assert.equal(
     corrigirTexto('Ola! Nao recebi a confirmacao das opcoes no meu cartao. Voce pode verificar?'),
-    'Ola! Não recebi a confirmação das opções no meu cartão. Você pode verificar?',
+    'Olá! Não recebi a confirmação das opções no meu cartão. Você pode verificar?',
   );
   assert.equal(corrigirTexto('PIN 5446 - saldo R$ 314,21'), 'PIN 5446 - saldo R$ 314,21');
+  assert.equal(corrigirTexto('Ola, quero agua e cafe.'), 'Olá, quero água e café.');
   assert.equal(corrigirTexto(''), '');
 });
