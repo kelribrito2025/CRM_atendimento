@@ -20,7 +20,7 @@ import { detectarNovasMensagens } from './alerta-mensagem.mjs';
   };
 
   const $ = (sel, raiz = document) => raiz.querySelector(sel);
-  const somNovaMensagem = new Audio('/sons/sound4-soft.mp3');
+  const somNovaMensagem = new Audio(new URL('../sons/sound4-soft.mp3', import.meta.url).href);
   somNovaMensagem.preload = 'auto';
   somNovaMensagem.volume = 0.72;
   let somLiberado = false;

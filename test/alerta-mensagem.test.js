@@ -60,7 +60,7 @@ test('alerta: avisa para uma conversa nova que chega não lida', async () => {
 
 test('alerta: o arquivo de áudio configurado existe', () => {
   const fs = require('node:fs');
-  const arquivo = path.join(__dirname, '../client/public/sons/sound4-soft.mp3');
+  const arquivo = path.join(__dirname, '../client/assets/sons/sound4-soft.mp3');
   assert.ok(fs.existsSync(arquivo));
   assert.ok(fs.statSync(arquivo).size > 0);
 });
