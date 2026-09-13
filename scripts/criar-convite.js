@@ -4,7 +4,7 @@
 //
 //   npm run convite -- --email joao@empresa.com.br
 //   npm run convite -- --email joao@empresa.com.br --papel admin
-//   npm run convite -- --email joao@empresa.com.br --equipes "Reembolso,Cobrança" --dias 7
+//   npm run convite -- --email joao@empresa.com.br --equipes "Reembolso,Admin" --dias 7
 //   npm run convite -- --listar
 
 const path = require('node:path');
@@ -49,7 +49,7 @@ if (args.listar) {
 }
 
 if (!args.email || !/^\S+@\S+\.\S+$/.test(args.email)) {
-  console.log('Uso: npm run convite -- --email <e-mail> [--papel admin|atendente] [--equipes "Reembolso,Cobrança"] [--dias 7]');
+  console.log('Uso: npm run convite -- --email <e-mail> [--papel admin|atendente] [--equipes "Reembolso,Admin"] [--dias 7]');
   console.log('     npm run convite -- --listar');
   process.exit(1);
 }

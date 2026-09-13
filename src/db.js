@@ -136,6 +136,12 @@ function garantirColuna(db, tabela, coluna, definicao) {
   if (!existentes.includes(coluna)) db.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${definicao}`);
 }
 
+// Renomeia uma equipe já existente (bancos criados antes da mudança de nome).
+function renomearEquipe(db, de, para) {
+  const jaExiste = db.prepare('SELECT id FROM equipes WHERE nome = ?').get(para);
+  if (!jaExiste) db.prepare('UPDATE equipes SET nome = ? WHERE nome = ?').run(para, de);
+}
+
 function migrar(db) {
   garantirColuna(db, 'conversas', 'canal_id', 'INTEGER REFERENCES canais(id)');
   garantirColuna(db, 'conversas', 'wa_chatid', 'TEXT');
@@ -144,6 +150,7 @@ function migrar(db) {
   db.exec('CREATE INDEX IF NOT EXISTS idx_mensagens_externo ON mensagens(externo_id);');
   db.exec('CREATE INDEX IF NOT EXISTS idx_contatos_wa ON contatos(wa_id);');
   db.exec('CREATE INDEX IF NOT EXISTS idx_conversas_canal ON conversas(canal_id, status);');
+  renomearEquipe(db, 'Cobrança', 'Admin');
 }
 
 function abrirBanco(caminho = ':memory:') {
@@ -199,7 +206,7 @@ function semear(db, opcoes = {}) {
 
 const EQUIPES_EXEMPLO = [
   ['Reembolso', '#12B85C', ['marina', 'rafael']],
-  ['Cobrança', '#1D6FA5', ['admin', 'rafael']],
+  ['Admin', '#1D6FA5', ['admin', 'rafael']],
   ['Suporte técnico', '#B3261E', ['admin', 'marina']],
   ['Onboarding', '#4C6355', ['admin']],
 ];
@@ -287,9 +294,9 @@ const CONVERSAS_EXEMPLO = [
     ],
   },
 
-  // ---------------- Cobrança (4 abertas) ----------------
+  // ---------------- Admin (4 abertas) ----------------
   {
-    equipe: 'Cobrança', canal: 'whatsapp', atendente: 'admin',
+    equipe: 'Admin', canal: 'whatsapp', atendente: 'admin',
     contato: { nome: 'Fernanda Rocha', empresa: 'Rocha Contabilidade', telefone: '+55 11 99333-7788' },
     mensagens: [
       ['cliente', -95, 'Meu boleto venceu ontem, consigo uma segunda via?'],
@@ -297,7 +304,7 @@ const CONVERSAS_EXEMPLO = [
     ],
   },
   {
-    equipe: 'Cobrança', canal: 'telegram', atendente: 'rafael',
+    equipe: 'Admin', canal: 'telegram', atendente: 'rafael',
     contato: { nome: 'Distribuidora Norte', cnpj: '08.221.930/0001-12', telefone: '@distnorte' },
     mensagens: [
       ['cliente', -240, 'Podemos parcelar a fatura de agosto?'],
@@ -307,7 +314,7 @@ const CONVERSAS_EXEMPLO = [
     ],
   },
   {
-    equipe: 'Cobrança', canal: 'whatsapp', atendente: 'admin',
+    equipe: 'Admin', canal: 'whatsapp', atendente: 'admin',
     contato: { nome: 'Marcos Vieira', empresa: 'Vieira Pneus', telefone: '+55 31 98811-2200' },
     mensagens: [
       ['cliente', -400, 'A cobrança de setembro veio com valor diferente.'],
@@ -315,7 +322,7 @@ const CONVERSAS_EXEMPLO = [
     ],
   },
   {
-    equipe: 'Cobrança', canal: 'whatsapp', atendente: 'rafael',
+    equipe: 'Admin', canal: 'whatsapp', atendente: 'rafael',
     contato: { nome: 'Bella Flor Decorações', telefone: '+55 27 99655-1122' },
     mensagens: [
       ['cliente', -520, 'Quero mudar a data de vencimento para o dia 15.'],

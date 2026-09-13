@@ -115,7 +115,7 @@ test('recuperar acesso: link por e-mail, nova senha e sessões antigas encerrada
 test('convite: cria conta com papel e equipes do convite', async () => {
   const s = await subirServidor();
   try {
-    const equipe = s.db.prepare("SELECT id FROM equipes WHERE nome = 'Cobrança'").get();
+    const equipe = s.db.prepare("SELECT id FROM equipes WHERE nome = 'Admin'").get();
     const { token } = acesso.criarConvite(s.db, { email: 'nova@teste.com', papel: 'atendente', equipeIds: [equipe.id], criadoPor: 1 });
 
     const info = await fetch(`${s.base}/acesso/convite?token=${token}`);
@@ -123,7 +123,7 @@ test('convite: cria conta com papel e equipes do convite', async () => {
     const { convite } = await info.json();
     assert.equal(convite.email, 'nova@teste.com');
     assert.equal(convite.convidante, 'Admin Teste');
-    assert.equal(convite.equipes[0].nome, 'Cobrança');
+    assert.equal(convite.equipes[0].nome, 'Admin');
 
     const semAceite = await fetch(`${s.base}/acesso/convite`, json({ token, nome: 'Nova Pessoa', senha: 'SenhaForte12', aceito: false }));
     assert.equal(semAceite.status, 400);

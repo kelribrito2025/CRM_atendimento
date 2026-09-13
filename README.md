@@ -69,7 +69,7 @@ Ainda não há serviço de e-mail configurado. Por enquanto, o código de verifi
 ```bash
 npm run convite -- --email joao@empresa.com.br
 npm run convite -- --email joao@empresa.com.br --papel admin
-npm run convite -- --email joao@empresa.com.br --equipes "Reembolso,Cobrança" --dias 7
+npm run convite -- --email joao@empresa.com.br --equipes "Reembolso,Admin" --dias 7
 npm run convite -- --listar
 ```
 

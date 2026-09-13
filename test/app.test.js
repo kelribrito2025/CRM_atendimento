@@ -154,7 +154,7 @@ test('fluxo: resumo, conversas, envio de mensagem, nota e logout', async () => {
     assert.equal(inexistente.status, 404);
 
     // Reatribuição e status
-    const equipe = resumo.equipes.find((e) => e.nome === 'Cobrança');
+    const equipe = resumo.equipes.find((e) => e.nome === 'Admin');
     const patch = await fetch(`${s.base}/api/conversas/${semResp.id}`, {
       method: 'PATCH', headers: h, body: JSON.stringify({ equipeId: equipe.id, atendenteId: null }),
     });
