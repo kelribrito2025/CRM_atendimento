@@ -1772,7 +1772,7 @@ import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notific
   /* ================================================================
    * Configurações
    * ============================================================== */
-  const config = { aberto: false, secao: 'equipe', dados: null, carregando: false, erro: null, convite: null, formConvite: null };
+  const config = { aberto: false, secao: 'equipe', dados: null, carregando: false, erro: null };
 
   const SECOES_CONFIG = [
     { grupo: 'Atendimento' },
@@ -1804,7 +1804,6 @@ import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notific
 
   function escolherSecao(id) {
     config.secao = id;
-    config.convite = null;
     renderConfig();
     if (id === 'equipe') carregarEquipe();
     if (id === 'respostas') carregarRapidas().then(renderConfig).catch((e) => toast(e.message, 5000));
@@ -1857,8 +1856,7 @@ import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notific
       const d = config.dados;
       if (!d) return 'Carregando…';
       const ativos = d.usuarios.filter((u) => u.ativo).length;
-      const convites = d.convites.length;
-      return `${ativos} atendente${ativos === 1 ? '' : 's'} ativo${ativos === 1 ? '' : 's'}${convites ? ` · ${convites} convite${convites === 1 ? '' : 's'} pendente${convites === 1 ? '' : 's'}` : ''}`;
+      return `${ativos} atendente${ativos === 1 ? '' : 's'} ativo${ativos === 1 ? '' : 's'}`;
     }
     if (config.secao === 'canais') return 'WhatsApp, Telegram e o chat do site.';
     if (config.secao === 'aparencia') return 'Vale só para você, neste navegador.';
@@ -1873,22 +1871,11 @@ import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notific
     const d = config.dados;
     if (!d) return [el('div', { class: 'config-vazio' }, 'Nada por aqui.')];
 
-    const partes = [el('div', { class: 'config-bloco' },
+    return [el('div', { class: 'config-bloco' },
       el('div', { class: 'cabeca' },
         el('span', { class: 'rotulo' }, 'Atendentes'),
         el('span', { class: 'dica' }, 'Cada pessoa vê as caixas das equipes em que está.')),
       el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, ...d.usuarios.map((u) => linhaPessoa(u, d.equipes))))];
-
-    if (d.convites.length) {
-      partes.push(el('div', { class: 'config-bloco' },
-        el('div', { class: 'cabeca' },
-          el('span', { class: 'rotulo' }, 'Convites pendentes'),
-          el('span', { class: 'dica' }, 'Ainda não criaram a senha. O link vale sete dias.')),
-        el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, ...d.convites.map((c) => linhaConvite(c, d.equipes)))));
-    }
-
-    partes.push(formConvite(d.equipes));
-    return partes;
   }
 
   function linhaPessoa(u, equipes) {
@@ -1916,53 +1903,6 @@ import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notific
       el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => editarEquipesDe(u, equipes) }, 'Equipes'));
   }
 
-  function linhaConvite(c, equipes) {
-    const nomes = c.equipeIds.map((id) => equipes.find((e) => e.id === id)).filter(Boolean);
-    return el('div', { class: 'pessoa' },
-      el('span', { class: 'avatar p' }, '@'),
-      el('div', { class: 'dados' },
-        el('span', { class: 'nome' }, c.email),
-        el('span', { class: 'email' }, `convidado por ${c.convidadoPor || 'equipe'} · expira ${horaLista(c.expiraEm)}`)),
-      el('div', { class: 'equipes' }, ...nomes.map((e) => el('span', { class: 'selo-equipe' }, el('span', { class: 'ponto', style: `background:${e.cor}` }), e.nome))),
-      el('span', { class: 'papel' }, c.papel === 'admin' ? 'Administrador' : 'Atendente'),
-      el('span', { class: 'selo-presenca aviso' }, 'convite'),
-      el('button', { type: 'button', class: 'btn-suave hov', onclick: () => cancelarConvite(c.id) }, 'Cancelar'));
-  }
-
-  function formConvite(equipes) {
-    const f = config.formConvite || (config.formConvite = { email: '', papel: 'atendente', equipeIds: [] });
-    const campoEmail = el('input', { type: 'email', placeholder: 'nome@empresa.com.br', value: f.email, oninput: () => { f.email = campoEmail.value; } });
-    const campoPapel = el('select', { onchange: () => { f.papel = campoPapel.value; } },
-      ...['atendente', 'admin'].map((v) => el('option', { value: v, selected: f.papel === v ? 'selected' : null }, v === 'admin' ? 'Administrador' : 'Atendente')));
-
-    return el('div', { class: 'config-bloco' },
-      el('div', { class: 'cabeca' },
-        el('span', { class: 'rotulo' }, 'Convidar alguém'),
-        el('span', { class: 'dica' }, 'A pessoa recebe um link para criar a própria senha.')),
-      el('div', { class: 'config-form' },
-        el('div', { class: 'config-linha' },
-          el('label', { class: 'config-campo' }, el('span', {}, 'E-mail'), campoEmail),
-          el('label', { class: 'config-campo', style: 'max-width:200px' }, el('span', {}, 'Papel'), campoPapel)),
-        el('div', { class: 'config-campo' },
-          el('span', {}, 'Equipes'),
-          el('div', { class: 'escolha-equipes' }, ...equipes.map((e) => {
-            const marcada = f.equipeIds.includes(e.id);
-            return el('button', {
-              type: 'button', class: `escolha-equipe${marcada ? ' marcada' : ''}`,
-              onclick: () => {
-                f.equipeIds = marcada ? f.equipeIds.filter((id) => id !== e.id) : [...f.equipeIds, e.id];
-                renderConfig();
-              },
-            }, el('span', { class: 'ponto', style: `background:${e.cor};width:7px;height:7px;border-radius:50%` }), e.nome);
-          }))),
-        el('div', { style: 'display:flex;justify-content:flex-end' },
-          el('button', { type: 'button', class: 'btn-primario', onclick: () => enviarConvite(f) }, 'Enviar convite')),
-        config.convite ? el('div', { class: 'convite-link' },
-          el('span', { class: 'dica', style: 'color:inherit;font-weight:700' }, config.convite.porEmail ? 'Convite enviado por e-mail.' : 'Copie e mande o link:'),
-          el('code', {}, config.convite.link),
-          el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => copiar(config.convite.link) }, 'Copiar')) : null));
-  }
-
   // Copia o PIN e avisa, para o atendente colar onde precisar.
   function copiarPin(valor) {
     const pin = String(valor || '').trim();
@@ -1970,10 +1910,6 @@ import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notific
     navigator.clipboard?.writeText(pin)
       .then(() => toast(`PIN ${pin} copiado.`))
       .catch(() => toast('Não consegui copiar. Selecione o número e use Ctrl+C.'));
-  }
-
-  function copiar(texto) {
-    navigator.clipboard?.writeText(texto).then(() => toast('Link copiado.')).catch(() => toast('Copie o link com Ctrl+C.'));
   }
 
   async function salvarPessoa(id, mudanca) {
@@ -2013,29 +1949,6 @@ import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notific
               onclick: () => { fundo.remove(); salvarPessoa(u.id, { equipeIds: [...atuais] }); },
             }, 'Salvar')))));
     document.body.append(fundo);
-  }
-
-  async function enviarConvite(f) {
-    if (!f.email.trim()) return toast('Digite o e-mail de quem você quer convidar.');
-    try {
-      config.convite = await api('/equipe/convites', { method: 'POST', body: { email: f.email.trim(), papel: f.papel, equipeIds: f.equipeIds } });
-      config.formConvite = { email: '', papel: 'atendente', equipeIds: [] };
-      await carregarEquipe();
-      toast(config.convite.porEmail ? 'Convite enviado.' : 'Convite criado. Copie o link e mande para a pessoa.', 5000);
-    } catch (e) {
-      toast(e.message, 5000);
-    }
-  }
-
-  async function cancelarConvite(id) {
-    if (!window.confirm('Cancelar este convite? O link para de funcionar.')) return;
-    try {
-      await api(`/equipe/convites/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      await carregarEquipe();
-      toast('Convite cancelado.');
-    } catch (e) {
-      toast(e.message, 5000);
-    }
   }
 
   /* ---------------- Configurações › Aparência ---------------- */

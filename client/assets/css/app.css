@@ -610,11 +610,6 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
   border: 1px solid var(--borda); background: var(--superficie); font-size: 12px; font-weight: 600; color: var(--texto-suave); cursor: pointer;
 }
 .escolha-equipe.marcada { border-color: var(--verde); background: var(--verde-fundo); color: var(--verde-texto); }
-.convite-link {
-  display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 12px;
-  background: var(--verde-fundo); border: 1px solid var(--verde-borda);
-}
-.convite-link code { flex: 1; min-width: 0; font-size: 11.5px; color: var(--verde-texto); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .config-vazio { font-size: 12.5px; color: var(--texto-suave); padding: 4px 0; }
 
 /* ===== Tema escuro =====
