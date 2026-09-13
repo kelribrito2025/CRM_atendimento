@@ -212,3 +212,74 @@ test('atendente: o selo da conversa mostra quem respondeu por último', async ()
     assert.equal(lista.dados.conversas[0].atendente.nomeCurto, 'Kely R.');
   } finally { await s.fechar(); }
 });
+
+test('nota interna: quem escreveu pode editar e apagar; os outros não', async () => {
+  const s = await subirServidor();
+  try {
+    const { conversa } = await conversaDeWhatsapp(s);
+    const senha = 'outrasenha123';
+    const { gerarHashSenha } = require('../src/senha');
+    await s.db.prepare('INSERT INTO usuarios (nome, email, senha_hash, papel, ativo, criado_em) VALUES (?, ?, ?, ?, 1, ?)')
+      .run('Bruno Alves', 'bruno@teste.com', gerarHashSenha(senha), 'atendente', Date.now());
+    const cookieBruno = await s.entrar('bruno@teste.com', senha);
+
+    // o Bruno escreve a nota
+    const criada = await s.chamar(`/api/conversas/${conversa.id}/mensagens`, 'POST', { texto: 'Cliente do plano ouro', tipo: 'nota' }, cookieBruno);
+    assert.equal(criada.status, 201);
+    const notaId = criada.dados.mensagem.id;
+    assert.equal(criada.dados.mensagem.editadaEm, null);
+
+    // ele mesmo edita
+    const editada = await s.chamar(`/api/notas/${notaId}`, 'PATCH', { texto: 'Cliente do plano ouro desde 2021' }, cookieBruno);
+    assert.equal(editada.status, 200, JSON.stringify(editada.dados));
+    assert.equal(editada.dados.mensagem.texto, 'Cliente do plano ouro desde 2021');
+    assert.ok(editada.dados.mensagem.editadaEm, 'a nota fica marcada como editada');
+
+    // nota vazia não passa
+    assert.equal((await s.chamar(`/api/notas/${notaId}`, 'PATCH', { texto: '   ' }, cookieBruno)).status, 400);
+
+    // uma mensagem normal não pode ser editada por esta rota
+    const resposta = await s.chamar(`/api/conversas/${conversa.id}/mensagens`, 'POST', { texto: 'Oi!' }, cookieBruno);
+    assert.equal((await s.chamar(`/api/notas/${resposta.dados.mensagem.id}`, 'PATCH', { texto: 'trocado' }, cookieBruno)).status, 404);
+
+    // o administrador também pode mexer
+    const doAdmin = await s.chamar(`/api/notas/${notaId}`, 'PATCH', { texto: 'Plano ouro · conferido' });
+    assert.equal(doAdmin.status, 200);
+
+    // e apagar some com a nota, sem levar o resto da conversa junto
+    assert.equal((await s.chamar(`/api/notas/${notaId}`, 'DELETE', null, cookieBruno)).status, 200);
+    const detalhe = await s.chamar(`/api/conversas/${conversa.id}`);
+    assert.equal(detalhe.dados.conversa.mensagens.filter((m) => m.tipo === 'nota').length, 0);
+    assert.equal(detalhe.dados.conversa.mensagens.length, 2, 'a mensagem do cliente e a resposta continuam lá');
+    assert.equal((await s.chamar(`/api/notas/${notaId}`, 'DELETE')).status, 404);
+  } finally { await s.fechar(); }
+});
+
+test('nota interna: atendente não mexe na nota de outro atendente', async () => {
+  const s = await subirServidor();
+  try {
+    const { conversa } = await conversaDeWhatsapp(s);
+    const { gerarHashSenha } = require('../src/senha');
+    for (const [nome, email] of [['Bruno Alves', 'bruno@teste.com'], ['Célia Dias', 'celia@teste.com']]) {
+      await s.db.prepare('INSERT INTO usuarios (nome, email, senha_hash, papel, ativo, criado_em) VALUES (?, ?, ?, ?, 1, ?)')
+        .run(nome, email, gerarHashSenha('outrasenha123'), 'atendente', Date.now());
+    }
+    const bruno = await s.entrar('bruno@teste.com', 'outrasenha123');
+    const celia = await s.entrar('celia@teste.com', 'outrasenha123');
+
+    const criada = await s.chamar(`/api/conversas/${conversa.id}/mensagens`, 'POST', { texto: 'Nota do Bruno', tipo: 'nota' }, bruno);
+    const notaId = criada.dados.mensagem.id;
+    assert.equal((await s.chamar(`/api/notas/${notaId}`, 'PATCH', { texto: 'mexido' }, celia)).status, 403);
+    assert.equal((await s.chamar(`/api/notas/${notaId}`, 'DELETE', null, celia)).status, 403);
+    const detalhe = await s.chamar(`/api/conversas/${conversa.id}`);
+    assert.equal(detalhe.dados.conversa.mensagens.find((m) => m.tipo === 'nota').texto, 'Nota do Bruno');
+  } finally { await s.fechar(); }
+});
+
+test('equipes: o CRM passa a ter também a equipe Prioridade', async () => {
+  const s = await subirServidor();
+  try {
+    const nomes = (await s.chamar('/api/resumo')).dados.equipes.map((e) => e.nome);
+    assert.deepEqual(nomes, ['Reembolso', 'Admin', 'Prioridade']);
+  } finally { await s.fechar(); }
+});

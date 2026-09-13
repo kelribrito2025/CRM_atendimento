@@ -189,6 +189,7 @@ function criarRotasApi(db, opcoes = {}) {
       entrega: m.entrega,
       criadaEm: m.criada_em,
       autor: m.autor_id ? { id: m.autor_id, nome: m.autor_nome, nomeCurto: nomeCurto(m.autor_nome) } : null,
+      editadaEm: m.editada_em || null,
     };
   }
 
@@ -429,6 +430,37 @@ function criarRotasApi(db, opcoes = {}) {
 
     const mensagem = formatarMensagem(await sql.mensagemPorId.get(mensagemId));
     res.status(201).json({ mensagem, conversa: await buscarConversa(c.id), erroEnvio });
+  });
+
+  // Notas internas: só quem escreveu (ou um administrador) pode alterar ou apagar.
+  async function comNota(req, res, next) {
+    try {
+      const id = idDaRota(req);
+      const nota = id ? await db.prepare("SELECT * FROM mensagens WHERE id = ? AND tipo = 'nota'").get(id) : null;
+      if (!nota) return res.status(404).json({ erro: 'Nota não encontrada.' });
+      if (Number(nota.autor_id) !== Number(req.usuario.id) && req.usuario.papel !== 'admin') {
+        return res.status(403).json({ erro: 'Só quem escreveu a nota (ou um administrador) pode alterá-la.' });
+      }
+      req.nota = nota;
+      next();
+    } catch (erro) {
+      next(erro);
+    }
+  }
+
+  r.patch('/notas/:id', comNota, async (req, res) => {
+    const texto = String(req.body?.texto ?? '').trim();
+    if (!texto) return res.status(400).json({ erro: 'Escreva a nota antes de salvar.' });
+    if (texto.length > TAMANHO_MAXIMO_MENSAGEM) {
+      return res.status(400).json({ erro: `Nota muito longa (máximo ${TAMANHO_MAXIMO_MENSAGEM} caracteres).` });
+    }
+    await db.prepare('UPDATE mensagens SET texto = ?, editada_em = ? WHERE id = ?').run(texto, Date.now(), req.nota.id);
+    res.json({ mensagem: formatarMensagem(await sql.mensagemPorId.get(req.nota.id)) });
+  });
+
+  r.delete('/notas/:id', comNota, async (req, res) => {
+    await db.prepare('DELETE FROM mensagens WHERE id = ?').run(req.nota.id);
+    res.json({ ok: true, id: req.nota.id });
   });
 
   r.patch('/conversas/:id', comConversa, async (req, res) => {

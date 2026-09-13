@@ -113,7 +113,7 @@ test('fluxo: resumo, conversas, envio de mensagem, nota e logout', async () => {
     assert.equal(resumo.caixas.todas, 18);
     assert.equal(resumo.caixas.minhas, 5);
     assert.equal(resumo.caixas.semResposta, 3);
-    assert.equal(resumo.equipes.length, 4);
+    assert.equal(resumo.equipes.length, 5); // 2 padrão + Prioridade + 2 dos dados de exemplo
     assert.equal(resumo.equipes.find((e) => e.nome === 'Reembolso').abertas, 7);
 
     const lista = await (await fetch(`${s.base}/api/conversas?caixa=sem_resposta`, { headers: h })).json();

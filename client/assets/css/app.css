@@ -75,7 +75,12 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
   width: 44px; height: 44px; border-radius: 13px; display: flex; align-items: center; justify-content: center;
   position: relative; border: 0; background: none; color: var(--rail-icone); transition: background .14s;
 }
-.rail-btn:hover { background: var(--rail-hover); }
+.rail-btn:hover:not(.desligado) { background: var(--rail-hover); }
+
+/* Botões do que ainda não funciona: visíveis, porém desligados. */
+.desligado { opacity: .38; cursor: default; }
+.desligado:hover { background: none; text-decoration: none; }
+.menu-flutuante button.desligado:hover { background: none; }
 .rail-btn.ativo { background: var(--verde); color: #fff; }
 .rail-btn svg { stroke: currentColor; }
 .rail-badge {
@@ -166,7 +171,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .conversa:hover { background: var(--hover); }
 .conversa.ativa { background: var(--verde-fundo); border-color: var(--verde); }
 .avatar-wrap { position: relative; flex-shrink: 0; align-self: flex-start; }
-.canal-badge { position: absolute; right: -3px; bottom: -3px; width: 17px; height: 17px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; }
+.canal-badge { position: absolute; right: -3px; bottom: -3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; }
 .conversa-corpo { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 3px; }
 .conversa-linha { display: flex; align-items: baseline; gap: 8px; }
 .conversa-nome { font-size: 13.5px; font-weight: 700; min-width: 0; margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -275,6 +280,16 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .visor-baixar:hover { background: rgba(255, 255, 255, .26); }
 .msg-meta { font-size: 11px; color: var(--texto-suave); padding: 0 4px; }
 .nota { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--nota-fundo); border: 1px dashed var(--nota-borda); }
+.nota-acoes { display: flex; gap: 3px; flex-shrink: 0; opacity: 0; transition: opacity .12s ease; }
+.nota:hover .nota-acoes, .nota-item:hover .nota-acoes, .nota-acoes:focus-within { opacity: 1; }
+.nota-acoes.linha { opacity: 1; }
+.btn-nota { width: 24px; height: 24px; border: 0; border-radius: 7px; background: none; color: var(--nota-suave); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.btn-nota:hover { background: rgba(138, 106, 22, .12); color: var(--nota-texto); }
+.nota-edicao { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.nota-edicao textarea { border: 1px solid var(--nota-borda); border-radius: 10px; background: #fff; padding: 9px 10px; font: inherit; font-size: 12.5px; line-height: 1.5; color: var(--nota-texto); resize: vertical; outline: none; width: 100%; }
+.nota-edicao textarea:focus { border-color: var(--nota-suave); }
+.nota-edicao .rodape { display: flex; justify-content: flex-end; gap: 7px; }
+.nota-item-pe { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .nota svg { flex-shrink: 0; margin-top: 1px; }
 .nota-corpo { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 3px; }
 .nota-texto { font-size: 12.5px; line-height: 1.5; color: var(--nota-texto); white-space: pre-wrap; word-break: break-word; }

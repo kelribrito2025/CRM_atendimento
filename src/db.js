@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS mensagens (
   midia_mime VARCHAR(127),
   midia_chave VARCHAR(500),
   midia_tamanho BIGINT,
+  editada_em BIGINT,
   FOREIGN KEY (conversa_id) REFERENCES conversas(id) ON DELETE CASCADE,
   FOREIGN KEY (autor_id) REFERENCES usuarios(id)
 );
@@ -230,6 +231,13 @@ async function renomearEquipe(db, de, para) {
   if (!jaExiste) await db.prepare('UPDATE equipes SET nome = ? WHERE nome = ?').run(para, de);
 }
 
+// Cria a equipe se ela ainda não existir (usado nas atualizações do sistema).
+async function garantirEquipe(db, nome, cor) {
+  if (await db.prepare('SELECT id FROM equipes WHERE nome = ?').get(nome)) return;
+  const ultima = await db.prepare('SELECT MAX(ordem) AS fim FROM equipes').get();
+  await db.prepare('INSERT INTO equipes (nome, cor, ordem) VALUES (?, ?, ?)').run(nome, cor, Number(ultima?.fim ?? -1) + 1);
+}
+
 async function migrar(db) {
   await garantirColuna(db, 'conversas', 'canal_id', 'BIGINT');
   await garantirColuna(db, 'conversas', 'wa_chatid', 'VARCHAR(191)');
@@ -244,15 +252,19 @@ async function migrar(db) {
   await garantirColuna(db, 'contatos', 'tg_id', 'VARCHAR(64)');
   await garantirColuna(db, 'contatos', 'tg_usuario', 'VARCHAR(191)');
   await garantirColuna(db, 'contatos', 'site_id', 'VARCHAR(191)');
+  await garantirColuna(db, 'mensagens', 'editada_em', 'BIGINT');
   await garantirColuna(db, 'contatos', 'wa_foto_url', 'TEXT');
   await garantirColuna(db, 'contatos', 'tg_foto_id', 'VARCHAR(255)');
   await garantirColuna(db, 'contatos', 'tg_foto_em', 'BIGINT');
   for (const [nome, tabela, colunas] of INDICES) await db.criarIndice(nome, tabela, colunas);
   await renomearEquipe(db, 'Cobrança', 'Admin');
   // Equipes padrão antigas que deixaram de existir (removidas uma única vez).
-  if (await lerAjuste(db, 'equipes_padrao') !== '2') {
+  if (await lerAjuste(db, 'equipes_padrao') !== '3') {
     await removerEquipes(db, ['Suporte técnico', 'Onboarding']);
-    await gravarAjuste(db, 'equipes_padrao', '2');
+    // Banco que já rodava antes: ganha a equipe nova. Banco novo é montado
+    // por criarEquipesPadrao, logo depois, com as três equipes na ordem certa.
+    if (await contar(db, 'equipes') > 0) await garantirEquipe(db, 'Prioridade', '#E5544A');
+    await gravarAjuste(db, 'equipes_padrao', '3');
   }
 }
 
@@ -279,6 +291,7 @@ async function inserirUsuario(db, { nome, email, senha, papel = 'atendente', pre
 const EQUIPES_PADRAO = [
   ['Reembolso', '#12B85C'],
   ['Admin', '#1D6FA5'],
+  ['Prioridade', '#E5544A'],
 ];
 
 const USUARIOS_EXEMPLO = ['marina@bigteck.com.br', 'rafael@bigteck.com.br'];

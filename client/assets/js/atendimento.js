@@ -32,8 +32,9 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
    * Ícones (SVG estáticos)
    * ============================================================== */
   const ICONE = {
-    whatsapp: (t, cor, e = 2.2) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="${e}"><path d="M21 11.5a8.4 8.4 0 01-9 8.4 8.9 8.9 0 01-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0121 11.5z"></path></svg>`,
-    telegram: (t, cor, e = 2.2) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="${e}"><path d="M21 4L3 11l6 2 2 6z"></path><path d="M21 4l-10 9"></path></svg>`,
+    // Marcas do WhatsApp e do Telegram desenhadas cheias, como os logos de verdade.
+    whatsapp: (t, cor) => `<svg width="${t}" height="${t}" viewBox="0 0 32 32" fill="${cor}" aria-hidden="true"><path d="M16.03 3.2c-7.02 0-12.72 5.7-12.72 12.72 0 2.24.59 4.43 1.71 6.36L3.2 28.8l6.69-1.75a12.67 12.67 0 006.14 1.56h.01c7.01 0 12.72-5.7 12.72-12.72 0-3.4-1.33-6.6-3.73-9a12.63 12.63 0 00-9-3.73zm0 23.26h-.01a10.56 10.56 0 01-5.38-1.47l-.39-.23-4 1.05 1.07-3.9-.25-.4a10.53 10.53 0 01-1.62-5.62c0-5.83 4.75-10.57 10.58-10.57 2.82 0 5.48 1.1 7.47 3.1a10.5 10.5 0 013.1 7.48c0 5.83-4.75 10.56-10.57 10.56zm5.8-7.92c-.32-.16-1.88-.93-2.17-1.03-.29-.11-.5-.16-.71.16-.21.31-.82 1.02-1 1.23-.19.21-.37.24-.68.08-.32-.16-1.34-.5-2.56-1.58-.94-.84-1.58-1.88-1.77-2.2-.18-.31-.02-.48.14-.64.15-.14.32-.37.48-.56.16-.19.21-.32.32-.53.1-.21.05-.4-.03-.56-.08-.16-.71-1.72-.98-2.35-.25-.62-.51-.53-.7-.54l-.6-.01c-.21 0-.55.08-.83.4-.29.31-1.09 1.07-1.09 2.6s1.12 3.02 1.27 3.23c.16.21 2.2 3.36 5.33 4.71.74.32 1.32.51 1.78.66.75.24 1.43.2 1.97.12.6-.09 1.85-.76 2.11-1.49.26-.73.26-1.35.18-1.48-.08-.13-.29-.21-.6-.37z"></path></svg>`,
+    telegram: (t, cor) => `<svg width="${t}" height="${t}" viewBox="0 0 32 32" fill="${cor}" aria-hidden="true"><path d="M27.9 5.2a1.9 1.9 0 00-1.95-.3L4.42 13.4a1.9 1.9 0 00.15 3.58l5.03 1.53 2.83 6.9a1.36 1.36 0 002.26.44l3.1-3.2 5.6 4.1a1.9 1.9 0 002.98-1.14l4.2-18.6a1.9 1.9 0 00-.67-1.81zM12.7 18.3l-.9 4.3-1.9-4.65 11.6-7.8-8.8 8.15zm2.3 4.9l.62-2.98 1.9 1.4-2.52 1.58zm8.9 1.3l-8.35-6.12L25.7 8.6l-2.8 15.9z"></path></svg>`,
     widget: (t, cor, e = 2.2) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="${e}" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M3 8h18"></path><path d="M9 21h6"></path><path d="M12 17v4"></path></svg>`,
     seta: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"></path></svg>',
     mais: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',
@@ -53,9 +54,13 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     fechar: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18"></path><path d="M6 6l12 12"></path></svg>',
     cadeado: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10" width="16" height="10" rx="2.4"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
     check: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>',
+    lapisPequeno: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"></path></svg>',
+    lixeira: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 13h10l1-13"></path><path d="M9 7V4h6v3"></path></svg>',
   };
 
   const NOME_CANAL = { whatsapp: 'WhatsApp', telegram: 'Telegram', widget: 'Chat do site' };
+  // Cores das marcas, usadas no selo do canal ao lado do avatar do cliente.
+  const COR_CANAL = { whatsapp: '#25D366', telegram: '#229ED9', widget: '#1D6FA5' };
 
   /* ================================================================
    * Utilidades
@@ -333,6 +338,90 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     }
   }
 
+  // Botão que ainda não faz nada: fica desligado, com o aviso no título.
+  function desligar(botao, aviso) {
+    if (!botao) return null;
+    botao.disabled = true;
+    botao.classList.add('desligado');
+    botao.classList.remove('hov');
+    botao.title = aviso;
+    return botao;
+  }
+
+  /* ------------------------ notas internas ------------------------ */
+  // `editando` guarda qual nota está aberta para edição e em que lugar da tela
+  // (no chat ou na ficha do cliente), para não abrir dois campos ao mesmo tempo.
+  const nota = { editando: null, onde: null };
+
+  function podeMexerNaNota(m) {
+    const u = estado.resumo?.usuario;
+    return Boolean(u && (m.autor?.id === u.id || u.papel === 'admin'));
+  }
+
+  function editarNota(id, onde) {
+    nota.editando = id;
+    nota.onde = onde;
+    aplicarConversa(estado.conversa);
+    const campo = document.querySelector('.nota-edicao textarea');
+    if (campo) { campo.focus(); campo.setSelectionRange(campo.value.length, campo.value.length); }
+  }
+
+  function fecharEdicaoNota() {
+    nota.editando = null;
+    nota.onde = null;
+    aplicarConversa(estado.conversa);
+  }
+
+  const editandoAqui = (m, onde) => nota.editando === m.id && nota.onde === onde;
+
+  async function salvarNotaEditada(id, texto) {
+    const limpo = String(texto || '').trim();
+    if (!limpo) return toast('Escreva a nota antes de salvar.');
+    try {
+      const r = await api(`/notas/${id}`, { method: 'PATCH', body: { texto: limpo } });
+      const c = estado.conversa;
+      const posicao = c.mensagens.findIndex((m) => m.id === id);
+      if (posicao >= 0) c.mensagens[posicao] = r.mensagem;
+      nota.editando = null;
+      nota.onde = null;
+      aplicarConversa(c);
+    } catch (e) {
+      toast(e.message, 5000);
+    }
+  }
+
+  async function apagarNota(id) {
+    if (!window.confirm('Apagar esta nota interna? Ela some para toda a equipe.')) return;
+    try {
+      await api(`/notas/${id}`, { method: 'DELETE' });
+      const c = estado.conversa;
+      const posicao = c.mensagens.findIndex((m) => m.id === id);
+      if (posicao >= 0) c.mensagens.splice(posicao, 1);
+      if (nota.editando === id) { nota.editando = null; nota.onde = null; }
+      aplicarConversa(c);
+      toast('Nota apagada.');
+    } catch (e) {
+      toast(e.message, 5000);
+    }
+  }
+
+  // Os dois botõezinhos (lápis e lixeira) que aparecem em cada nota.
+  function acoesDaNota(m, onde, classe = 'nota-acoes') {
+    if (!podeMexerNaNota(m)) return null;
+    return el('span', { class: classe },
+      el('button', { type: 'button', class: 'btn-nota hov', title: 'Editar nota', onclick: () => editarNota(m.id, onde) }, svg(ICONE.lapisPequeno)),
+      el('button', { type: 'button', class: 'btn-nota hov', title: 'Apagar nota', onclick: () => apagarNota(m.id) }, svg(ICONE.lixeira)));
+  }
+
+  // A nota vira um campo de texto enquanto está sendo editada.
+  function edicaoDaNota(m) {
+    const campo = el('textarea', { class: 'area', rows: '3', maxlength: '4000', lang: 'pt-BR', spellcheck: 'true' }, m.texto);
+    return el('div', { class: 'nota-edicao' }, campo,
+      el('div', { class: 'rodape' },
+        el('button', { type: 'button', class: 'btn-suave hov', onclick: fecharEdicaoNota }, 'Cancelar'),
+        el('button', { type: 'button', class: 'btn-escuro', onclick: () => salvarNotaEditada(m.id, campo.value) }, 'Salvar nota')));
+  }
+
   /* ---------------------------- anexos ---------------------------- */
   const TAMANHO_MAXIMO_ANEXO = 20 * 1024 * 1024;
 
@@ -507,7 +596,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       el('span', { class: 'separador' }),
       el('div', { class: 'linha-rotulo' },
         el('span', { class: 'rotulo' }, 'Equipes'),
-        el('button', { type: 'button', class: 'btn-mini hov', title: 'Nova equipe', onclick: () => toast('Cadastro de equipes: em breve.') }, icone('mais', ICONE.mais))),
+        desligar(el('button', { type: 'button', class: 'btn-mini' }, icone('mais', ICONE.mais)), 'Cadastro de equipes: em breve')),
       el('div', { class: 'lista-nav' },
         ...r.equipes.map((e) => navItem({ cor: e.cor, nome: e.nome, cont: e.abertas, ativo: estado.equipeId === e.id, onclick: () => selecionarEquipe(e.id) }))),
       el('span', { class: 'separador' }),
@@ -519,7 +608,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
             el('span', { class: 'membro-nome' }, m.nomeCurto),
             el('span', { class: `membro-status${m.presenca === 'online' ? ' online' : ''}` }, `${m.presenca} · ${m.ativas ? `${m.ativas} ativa${m.ativas === 1 ? '' : 's'}` : 'livre'}`)))),
         membros.length ? null : el('div', { class: 'vazio' }, 'Nenhum atendente nesta equipe.')),
-      el('button', { type: 'button', class: 'btn-tracejado hov', onclick: () => toast('Gestão de membros: em breve.') }, icone('mais', ICONE.mais), 'Adicionar à equipe'),
+      desligar(el('button', { type: 'button', class: 'btn-tracejado' }, icone('mais', ICONE.mais), 'Adicionar à equipe'), 'Gestão de membros: em breve'),
     );
   }
 
@@ -541,7 +630,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   function itemConversa(c) {
     const ativa = c.id === estado.conversaId;
     const corAvatar = ativa ? 'verde' : (c.canal === 'telegram' ? 'azul' : 'cinza');
-    const corCanal = { telegram: '#4FA3DA', widget: '#1D6FA5' }[c.canal] || '#12B85C';
+    const corCanal = COR_CANAL[c.canal] || COR_CANAL.whatsapp;
 
     let tag = null;
     if (c.status === 'resolvida') tag = ['Resolvida', ''];
@@ -555,7 +644,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     return el('button', { type: 'button', class: `conversa${ativa ? ' ativa' : ''}`, onclick: () => abrirConversa(c.id) },
       el('span', { class: 'avatar-wrap' },
         avatarCliente(c, `avatar m ${corAvatar}`),
-        el('span', { class: 'canal-badge', html: ICONE[c.canal]?.(10, corCanal, 2.6) || '' })),
+        el('span', { class: 'canal-badge', style: `background:${corCanal}`, html: ICONE[c.canal]?.(11, '#FFFFFF') || '' })),
       el('div', { class: 'conversa-corpo' },
         el('div', { class: 'conversa-linha' },
           el('span', { class: 'conversa-nome', title: c.contato.nome }, encurtar(c.contato.nome, 14)),
@@ -814,10 +903,22 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     const compositor = chat?.querySelector('.compositor');
     const alturaCompositor = compositor ? compositor.offsetHeight + 8 : 16;
     painel.style.bottom = `${alturaCompositor}px`;
-    painel.style.maxHeight = `calc(90% - ${alturaCompositor}px)`;
+    // Altura fixa: o painel ocupa o chat todo, tenha uma resposta salva ou vinte.
+    painel.style.height = `calc(90% - ${alturaCompositor}px)`;
     if (antigo) antigo.replaceWith(painel); else (chat || document.body).append(painel);
     // Aberto pelo botão: o cursor vai para a busca. Aberto pela barra: fica na mensagem.
     if (!f && !antigo && rapidas.origem === 'botao') busca.focus();
+  }
+
+  // A primeira letra que o atendente digita já sai maiúscula.
+  function maiuscularInicio(campo) {
+    const texto = campo.value;
+    if (texto.length !== 1) return;
+    const maiuscula = texto.toUpperCase();
+    if (maiuscula === texto) return;
+    const fim = campo.selectionStart;
+    campo.value = maiuscula;
+    campo.setSelectionRange(fim, fim);
   }
 
   /* ---------------- acentuação automática ---------------- */
@@ -929,8 +1030,9 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       if (m.tipo === 'nota') {
         nos.push(el('div', { class: 'nota' }, icone('nota', ICONE.lapis),
           el('div', { class: 'nota-corpo' },
-            el('span', { class: 'nota-texto' }, el('strong', {}, 'Nota interna'), ' — ', m.texto),
-            el('span', { class: 'nota-meta' }, `${m.autor?.nomeCurto || 'Equipe'} · ${horaCurta(m.criadaEm)} · visível só para a equipe`))));
+            editandoAqui(m, 'chat') ? edicaoDaNota(m) : el('span', { class: 'nota-texto' }, el('strong', {}, 'Nota interna'), ' — ', m.texto),
+            el('span', { class: 'nota-meta' }, `${m.autor?.nomeCurto || 'Equipe'} · ${horaCurta(m.criadaEm)}${m.editadaEm ? ' · editada' : ''} · visível só para a equipe`)),
+          editandoAqui(m, 'chat') ? null : acoesDaNota(m, 'chat')));
       } else if (m.tipo === 'atendente') {
         nos.push(el('div', { class: 'msg saida' },
           balaoMensagem(m),
@@ -960,7 +1062,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       el('button', { type: 'button', onclick: () => { fecharMenus(); mudarStatus(c.status === 'resolvida' ? 'aberta' : 'resolvida'); } },
         c.status === 'resolvida' ? 'Reabrir conversa' : 'Marcar como resolvida'),
       el('button', { type: 'button', onclick: () => { fecharMenus(); atualizarConversa({ atendenteId: estado.resumo.usuario.id }); } }, 'Assumir esta conversa'),
-      el('button', { type: 'button', onclick: () => { fecharMenus(); toast('Transferência entre canais: em breve.'); } }, 'Transferir canal'));
+      desligar(el('button', { type: 'button' }, 'Transferir canal'), 'Transferência entre canais: em breve'));
     botao.parentElement.append(menu);
   }
 
@@ -998,7 +1100,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         if (escolhidas.length) usarResposta(escolhidas[0]);
         else enviar();
       },
-      oninput: () => { corrigirEnquantoDigita(textarea); ajustarAltura(textarea); atalhoBarra(textarea); },
+      oninput: () => { maiuscularInicio(textarea); corrigirEnquantoDigita(textarea); ajustarAltura(textarea); atalhoBarra(textarea); },
       onpaste: () => setTimeout(() => { if (acentosLigados) textarea.value = corrigirTexto(textarea.value); ajustarAltura(textarea); }, 0),
     });
     const enviar = () => enviarMensagem(acentosLigados ? corrigirTexto(textarea.value) : textarea.value, modoNota ? 'nota' : 'resposta', textarea);
@@ -1224,7 +1326,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     const textareaNota = el('textarea', {
       id: 'texto-nota', rows: '2', maxlength: '4000', placeholder: 'Escreva uma nota para a equipe…',
       'aria-label': 'Nova nota interna', lang: 'pt-BR', spellcheck: 'true',
-      oninput: () => corrigirEnquantoDigita(textareaNota),
+      oninput: () => { maiuscularInicio(textareaNota); corrigirEnquantoDigita(textareaNota); },
     });
     const salvarNota = () => enviarMensagem(acentosLigados ? corrigirTexto(textareaNota.value) : textareaNota.value, 'nota', textareaNota);
 
@@ -1234,7 +1336,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         el('div', { class: 'membro-info' },
           el('span', { class: 'painel-nome' }, ct.empresa || 'Ficha do cliente'),
           el('span', { class: 'painel-sub' }, ct.cnpj || ct.telefone || (ct.telegramUsuario ? `@${ct.telegramUsuario}` : ''))),
-        el('button', { type: 'button', class: 'link-btn', onclick: () => toast('Abrir conta do cliente: em breve.') }, 'Abrir conta')),
+        desligar(el('button', { type: 'button', class: 'link-btn' }, 'Abrir conta'), 'Abrir conta do cliente: em breve')),
       el('div', { class: 'rolagem painel-corpo' },
         blocoPin(c),
         ct.dados?.length ? secao('Conta do cliente',
@@ -1248,8 +1350,10 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
               el('span', { class: 'dica' }, 'Só a equipe vê.'),
               el('button', { type: 'button', class: 'btn-escuro', onclick: salvarNota }, 'Salvar nota'))),
           ...notas.map((n) => el('div', { class: 'nota-item' },
-            el('span', { class: 't' }, n.texto),
-            el('span', { class: 'm' }, `${n.autor?.nomeCurto || 'Equipe'} · ${horaLista(n.criadaEm) === horaCurta(n.criadaEm) ? horaCurta(n.criadaEm) : `${horaLista(n.criadaEm)} ${horaCurta(n.criadaEm)}`}`))),
+            editandoAqui(n, 'ficha') ? edicaoDaNota(n) : el('span', { class: 't' }, n.texto),
+            el('div', { class: 'nota-item-pe' },
+              el('span', { class: 'm' }, `${n.autor?.nomeCurto || 'Equipe'} · ${horaLista(n.criadaEm) === horaCurta(n.criadaEm) ? horaCurta(n.criadaEm) : `${horaLista(n.criadaEm)} ${horaCurta(n.criadaEm)}`}${n.editadaEm ? ' · editada' : ''}`),
+              editandoAqui(n, 'ficha') ? null : acoesDaNota(n, 'ficha', 'nota-acoes linha')))),
           notas.length ? null : el('span', { class: 'dica', style: 'font-size:12px;color:#4C6355' }, 'Nenhuma nota ainda.'))));
   }
 
@@ -1546,11 +1650,9 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       }, 250);
     });
 
-    $('#btn-filtros').addEventListener('click', () => toast('Filtros avançados: em breve.'));
-
-    document.querySelectorAll('.rail-btn[data-modulo]').forEach((b) => {
-      b.addEventListener('click', () => toast(`Módulo ${b.dataset.modulo}: em breve.`));
-    });
+    // O que ainda não funciona fica desligado, sem responder ao clique.
+    desligar($('#btn-filtros'), 'Filtros avançados: em breve');
+    document.querySelectorAll('.rail-btn[data-modulo]').forEach((b) => desligar(b, `${b.dataset.modulo}: em breve`));
 
     const menuUsuario = $('#menu-usuario');
     $('#btn-conectar').addEventListener('click', () => { menuUsuario.hidden = true; abrirModalCanais(); });

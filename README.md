@@ -260,6 +260,7 @@ npm run usuario -- --listar
   - marcar conversa como resolvida ou reabrir;
   - painel do cliente com PIN, dados da conta, alertas e notas.
 - Envio de anexos pelo atendente (foto, vídeo, áudio e documento até 20 MB), entregues no WhatsApp e no Telegram do cliente.
+- Notas internas que podem ser editadas e apagadas por quem escreveu (ou por um administrador), no chat ou na ficha do cliente.
 - Chat do site (estilo Intercom) para o cliente conversar pelo painel dele, com a conversa caindo na mesma caixa de entrada.
 - Dados de exemplo opcionais (`DADOS_EXEMPLO=true`) para testar a tela.
 - Testes automáticos (`npm test`).
