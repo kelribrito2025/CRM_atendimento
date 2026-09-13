@@ -191,7 +191,7 @@ npm run usuario -- --listar
 
 Botões que mostram um aviso e ainda não fazem nada: **Entrar com Google Workspace**, **Anexo**, **Respostas rápidas**, **Estornar**, **Ver faturas**, **Abrir conta**, **Nova equipe**, **Adicionar à equipe**, **Filtros** e os outros módulos do menu lateral.
 
-No Telegram, a foto de perfil do cliente aparece no avatar (o CRM confere uma vez por dia se mudou). Fotos, áudios, vídeos e documentos aparecem dentro da conversa (o CRM baixa o arquivo com o token do bot, que nunca vai para o navegador). No WhatsApp, mídias ainda aparecem só como texto, por exemplo "[Imagem]".
+No Telegram, a foto de perfil do cliente aparece no avatar (o CRM confere uma vez por dia se mudou). No WhatsApp, a foto aparece quando o servidor do uazapi manda o endereço dela no aviso da mensagem; a API oficial deles não tem um jeito de pedir a foto de um contato. Fotos, áudios, vídeos e documentos aparecem dentro da conversa (o CRM baixa o arquivo com o token do bot, que nunca vai para o navegador). No WhatsApp, mídias ainda aparecem só como texto, por exemplo "[Imagem]".
 
 ## Configurações (opcional)
 

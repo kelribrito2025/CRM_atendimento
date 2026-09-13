@@ -68,6 +68,9 @@ function extrairMensagem(dados) {
   if (!texto && !['text', 'conversation', 'extendedtextmessage', 'chat'].includes(tipoMsg)) texto = `[${tipoMsg}]`;
 
   const nome = String(m.senderName || m.pushName || m.notifyName || chat.name || chat.wa_contactName || chat.wa_name || dados?.pushName || '').trim();
+  // Alguns servidores do WhatsApp mandam o endereço da foto do contato.
+  const fotoUrl = [chat.imagePreview, chat.image, chat.profilePicUrl, chat.wa_profilePicUrl, m.profilePicUrl, dados?.profilePicUrl]
+    .find((v) => typeof v === 'string' && /^https?:\/\//.test(v)) || null;
   const ts = Number(m.messageTimestamp || m.timestamp || m.t || 0);
   const criadaEm = ts > 0 ? (ts > 1e12 ? ts : ts * 1000) : Date.now();
 
@@ -79,6 +82,7 @@ function extrairMensagem(dados) {
     texto,
     nome,
     criadaEm,
+    fotoUrl,
     grupo: ehGrupo(chatid) || Boolean(chat.wa_isGroup || m.isGroup),
     status: m.status || dados?.status || null,
   };
@@ -166,6 +170,10 @@ async function processarEvento(db, canal, corpo) {
       contato = { id, nome: m.nome || telefone };
     } else if (m.nome && !m.fromMe && (!contato.nome || contato.nome === contato.telefone || contato.nome.startsWith('+'))) {
       await db.prepare('UPDATE contatos SET nome = ? WHERE id = ?').run(m.nome, contato.id);
+    }
+    if (m.fotoUrl && m.fotoUrl !== contato.wa_foto_url) {
+      await db.prepare('UPDATE contatos SET wa_foto_url = ? WHERE id = ?').run(m.fotoUrl, contato.id);
+      contato.wa_foto_url = m.fotoUrl;
     }
 
     return await guardarMensagem(db, canal, contato, m, 'whatsapp');

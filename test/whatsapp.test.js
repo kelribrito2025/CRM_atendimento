@@ -89,6 +89,25 @@ test('uazapi: interpretação de status e eventos', () => {
   assert.equal(canais.interpretarEntrega('DELIVERY_ACK'), 'entregue');
 });
 
+test('whatsapp: foto do contato é guardada quando o servidor manda o endereço', async () => {
+  const s = await subirServidor();
+  try {
+    const criado = await s.chamar('/api/canais', 'POST', { nome: 'WhatsApp principal' });
+    const canal = await s.db.prepare('SELECT * FROM canais WHERE id = ?').get(criado.dados.canal.id);
+    await canais.processarEvento(s.db, canal, {
+      EventType: 'messages',
+      message: { messageid: 'A1', chatid: '5531988887777@s.whatsapp.net', fromMe: false, text: 'oi', senderName: 'Carla', messageTimestamp: Date.now() },
+      chat: { wa_chatid: '5531988887777@s.whatsapp.net', imagePreview: 'https://exemplo.com/foto.jpg' },
+    });
+    const contato = await s.db.prepare("SELECT * FROM contatos WHERE wa_id = '5531988887777'").get();
+    assert.equal(contato.wa_foto_url, 'https://exemplo.com/foto.jpg');
+    const conversa = (await s.chamar('/api/conversas')).dados.conversas.find((c) => c.contato.id === contato.id);
+    assert.equal(conversa.contato.foto, `/api/contatos/${contato.id}/foto`);
+  } finally {
+    await s.fechar();
+  }
+});
+
 test('whatsapp: criar canal, conectar por QR e por número, receber e responder mensagens', async () => {
   const s = await subirServidor();
   try {

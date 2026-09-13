@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS contatos (
   pin_validado_em BIGINT,
   pin_validado_por BIGINT,
   wa_id VARCHAR(64),
+  wa_foto_url TEXT,
   tg_id VARCHAR(64),
   tg_usuario VARCHAR(191),
   tg_foto_id VARCHAR(255),
@@ -208,6 +209,7 @@ async function migrar(db) {
   await garantirColuna(db, 'contatos', 'wa_id', 'VARCHAR(64)');
   await garantirColuna(db, 'contatos', 'tg_id', 'VARCHAR(64)');
   await garantirColuna(db, 'contatos', 'tg_usuario', 'VARCHAR(191)');
+  await garantirColuna(db, 'contatos', 'wa_foto_url', 'TEXT');
   await garantirColuna(db, 'contatos', 'tg_foto_id', 'VARCHAR(255)');
   await garantirColuna(db, 'contatos', 'tg_foto_em', 'BIGINT');
   for (const [nome, tabela, colunas] of INDICES) await db.criarIndice(nome, tabela, colunas);

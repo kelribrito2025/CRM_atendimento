@@ -201,7 +201,11 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .balao { width: fit-content; max-width: 100%; background: var(--verde); border: 1px solid var(--verde); border-radius: 16px 16px 16px 6px; padding: 12px 14px; font-size: 13.5px; line-height: 1.55; color: #fff; white-space: pre-wrap; word-break: break-word; }
 .msg.saida .balao { background: var(--rail); color: #fff; border: 0; border-radius: 16px 16px 6px 16px; }
 .balao.midia { padding: 4px; display: inline-flex; flex-direction: column; gap: 4px; }
-.balao.midia.imagem, .balao.midia.video { padding: 4px; }
+/* Foto, vídeo e áudio aparecem sem o balão colorido em volta. */
+.balao.midia.imagem, .balao.midia.video, .balao.midia.audio { background: none; border: 0; padding: 0; }
+.balao.midia.imagem .midia-legenda, .balao.midia.video .midia-legenda { color: var(--texto); padding: 0 2px 2px; }
+.msg.saida .balao.midia.imagem, .msg.saida .balao.midia.video, .msg.saida .balao.midia.audio { background: none; }
+.msg.saida .balao.midia.imagem .midia-legenda, .msg.saida .balao.midia.video .midia-legenda { color: var(--texto); }
 .midia-abrir { display: block; line-height: 0; }
 .midia-imagem { max-width: 320px; max-height: 340px; width: auto; height: auto; object-fit: contain; border-radius: 12px; display: block; cursor: zoom-in; }
 .midia-video { max-width: 320px; width: 100%; border-radius: 12px; display: block; background: #000; }
