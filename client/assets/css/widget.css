@@ -76,6 +76,23 @@ body {
 .msg.saida .balao { background: var(--verde); border-color: var(--verde); color: #fff; border-radius: 16px 16px 6px 16px; }
 .meta { font-size: 10.5px; color: var(--texto-suave); padding: 0 4px; }
 
+/* ===== Arquivos no chat ===== */
+.balao.com-arquivo { padding: 5px; }
+.arquivo-imagem {
+  display: block; max-width: 240px; max-height: 260px; width: auto; height: auto;
+  border-radius: 12px; background: var(--fundo); min-width: 120px; min-height: 60px;
+}
+.arquivo-linha {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 9px; border: 0; border-radius: 12px;
+  background: none; color: inherit; font: inherit; font-size: 13px; text-align: left;
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.arquivo-linha span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arquivo-linha svg { flex-shrink: 0; }
+.msg.entrada .arquivo-linha:hover { background: var(--fundo); }
+.msg.saida .arquivo-linha:hover { background: rgba(255, 255, 255, .16); }
+
 .carregando { margin: auto; text-align: center; font-size: 12.5px; color: var(--texto-suave); line-height: 1.7; padding: 0 18px; white-space: pre-line; }
 
 /* ===== Campo de escrever ===== */
@@ -107,6 +124,11 @@ body {
 }
 .compositor button:hover:not(:disabled) { background: var(--verde-escuro); }
 .compositor button:disabled { background: #C9D6CE; cursor: default; }
+
+/* O clipe é discreto: quem manda no visual é o botão verde de enviar. */
+.compositor button.anexar { background: none; color: var(--texto-suave); }
+.compositor button.anexar:hover:not(:disabled) { background: var(--fundo); color: var(--texto); }
+.compositor button.anexar:disabled { background: none; color: #C9D6CE; }
 
 /* Telas pequenas: o quadro ocupa a tela toda */
 @media (max-width: 420px) {

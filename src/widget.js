@@ -11,6 +11,7 @@
 
 const crypto = require('node:crypto');
 const { proximoProtocolo } = require('./canais');
+const { TAMANHO_MAXIMO_ANEXO, ROTULO_MIDIA, tipoDoArquivo } = require('./util');
 
 const VALIDADE_SESSAO_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
 const TAMANHO_MAXIMO_MENSAGEM = 4000;
@@ -40,7 +41,7 @@ function limpar(valor, tamanho = 191) {
   return String(valor ?? '').trim().slice(0, tamanho);
 }
 
-function criarWidget(db, { segredo = '', equipePadraoId = null } = {}) {
+function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null } = {}) {
   // Encontra (ou cria) o cliente e a conversa dele, e devolve uma chave de acesso.
   async function abrirSessao({ id, nome, email, empresa, pin }) {
     const externo = limpar(id, 120);
@@ -98,9 +99,12 @@ function criarWidget(db, { segredo = '', equipePadraoId = null } = {}) {
   }
 
   // Só as mensagens daquela conversa, sem as notas internas da equipe.
+  // O arquivo vai como um endereço do próprio CRM (/widget/midia/123): assim o
+  // link do S3 nunca aparece no navegador do cliente.
   async function listarMensagens(sessao, desde = 0) {
     const linhas = await db.prepare(`
-      SELECT m.id, m.tipo, m.texto, m.criada_em, m.entrega, u.nome AS autor_nome
+      SELECT m.id, m.tipo, m.texto, m.criada_em, m.entrega, m.midia_tipo, m.midia_nome, m.midia_mime, m.midia_chave, m.midia_id,
+             u.nome AS autor_nome
       FROM mensagens m LEFT JOIN usuarios u ON u.id = m.autor_id
       WHERE m.conversa_id = ? AND m.tipo != 'nota' AND m.id > ?
       ORDER BY m.id`).all(sessao.conversa_id, Number(desde) || 0);
@@ -110,7 +114,44 @@ function criarWidget(db, { segredo = '', equipePadraoId = null } = {}) {
       texto: m.texto,
       criadaEm: m.criada_em,
       autor: m.tipo === 'cliente' ? null : (m.autor_nome ? String(m.autor_nome).split(' ')[0] : 'Atendimento'),
+      midia: (m.midia_chave || m.midia_id)
+        ? { tipo: m.midia_tipo || 'documento', nome: m.midia_nome || null, mime: m.midia_mime || null, url: `/widget/midia/${m.id}` }
+        : null,
     }));
+  }
+
+  // O arquivo que o cliente anexa no chat do site. Ele vai direto do navegador
+  // do cliente para o nosso servidor, e daqui para o nosso S3 — o site onde o
+  // chat está embutido não vê o arquivo nem guarda nada.
+  async function enviarArquivo(sessao, { bytes, nome, mime }) {
+    if (!arquivos?.configurado) throw new Error('Envio de arquivos indisponível no momento.');
+    if (!bytes?.length) throw new Error('Nenhum arquivo recebido.');
+    if (bytes.length > TAMANHO_MAXIMO_ANEXO) throw new Error('Arquivo muito grande (o limite é 20 MB).');
+
+    const tipo = tipoDoArquivo(mime, nome);
+    const guardado = await arquivos.enviar(bytes, { nome, tipo: mime, pasta: `conversa-${sessao.conversa_id}` });
+
+    const agora = Date.now();
+    const texto = ROTULO_MIDIA[tipo] || '[Arquivo]';
+    const info = await db.prepare(`
+      INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, criada_em, midia_tipo, midia_nome, midia_mime, midia_chave, midia_tamanho)
+      VALUES (?, 'cliente', NULL, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(sessao.conversa_id, texto, agora, tipo, nome, mime, guardado.chave, guardado.tamanho);
+    await db.prepare("UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + 1, status = 'aberta' WHERE id = ?")
+      .run(agora, sessao.conversa_id);
+
+    const id = Number(info.lastInsertRowid);
+    return {
+      id, de: 'voce', texto, criadaEm: agora, autor: null,
+      midia: { tipo, nome, mime, url: `/widget/midia/${id}` },
+    };
+  }
+
+  // Só devolve o arquivo se ele for mesmo da conversa daquele visitante.
+  async function arquivoDaSessao(sessao, mensagemId) {
+    const m = await db.prepare('SELECT * FROM mensagens WHERE id = ? AND conversa_id = ? AND tipo != ?')
+      .get(Number(mensagemId) || 0, sessao.conversa_id, 'nota');
+    return m && (m.midia_chave || m.midia_id) ? m : null;
   }
 
   async function enviarMensagem(sessao, texto) {
@@ -135,6 +176,9 @@ function criarWidget(db, { segredo = '', equipePadraoId = null } = {}) {
     sessaoDoToken,
     listarMensagens,
     enviarMensagem,
+    enviarArquivo,
+    arquivoDaSessao,
+    anexosAtivos: Boolean(arquivos?.configurado),
     limparSessoesExpiradas,
   };
 }

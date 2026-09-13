@@ -2,7 +2,7 @@
 
 const express = require('express');
 const crypto = require('node:crypto');
-const { iniciais, nomeCurto } = require('./util');
+const { iniciais, nomeCurto, TAMANHO_MAXIMO_ANEXO, ROTULO_MIDIA, tipoDoArquivo, nomeDoCabecalho } = require('./util');
 const canais = require('./canais');
 const { tokenValido } = require('./telegram');
 const { normalizarPin } = require('./saldo');
@@ -20,35 +20,7 @@ const TAMANHO_MAXIMO_MENSAGEM = 4000;
 // A conversa abre com as últimas mensagens; as antigas chegam conforme a pessoa
 // sobe a rolagem, para um histórico grande não deixar a tela pesada.
 const PAGINA_MENSAGENS = 40;
-const TAMANHO_MAXIMO_ANEXO = 20 * 1024 * 1024; // 20 MB: é o limite que o Telegram aceita de um bot
 const VALIDADE_LINK_ANEXO_S = 15 * 60; // o WhatsApp/Telegram busca o arquivo neste prazo
-
-// Como o arquivo aparece na lista de conversas quando vai sem legenda.
-const ROTULO_MIDIA = { imagem: '[Imagem]', video: '[Vídeo]', audio: '[Áudio]', documento: '[Documento]' };
-
-// De que tipo é o arquivo, para o chat mostrar imagem, vídeo, áudio ou documento.
-function tipoDoArquivo(mime, nome = '') {
-  const m = String(mime || '').toLowerCase();
-  if (m.startsWith('image/')) return 'imagem';
-  if (m.startsWith('video/')) return 'video';
-  if (m.startsWith('audio/')) return 'audio';
-  if (/\.(jpe?g|png|gif|webp|bmp)$/i.test(nome)) return 'imagem';
-  if (/\.(mp4|mov|webm|mkv)$/i.test(nome)) return 'video';
-  if (/\.(mp3|ogg|oga|m4a|wav|opus)$/i.test(nome)) return 'audio';
-  return 'documento';
-}
-
-// O nome do arquivo chega codificado no cabeçalho (acentos não passam em cabeçalho puro).
-function nomeDoCabecalho(valor, padrao = 'arquivo') {
-  let nome = '';
-  try {
-    nome = decodeURIComponent(String(valor || ''));
-  } catch {
-    nome = String(valor || '');
-  }
-  nome = nome.replace(/[\r\n"\\/]+/g, ' ').trim().slice(0, 120);
-  return nome || padrao;
-}
 
 function lerJson(texto, padrao = null) {
   if (!texto) return padrao;

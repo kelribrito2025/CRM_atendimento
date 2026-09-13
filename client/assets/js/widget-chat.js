@@ -40,18 +40,73 @@ function limparEstado() {
   $('#estado')?.remove();
 }
 
+// O arquivo não vem por link direto do S3: a gente busca com a chave da conversa
+// e mostra o conteúdo aqui dentro. Assim o endereço do arquivo não vaza.
+async function baixarArquivo(midia) {
+  const resposta = await fetch(midia.url, { headers: { 'x-widget-token': estado.token || '' } });
+  if (!resposta.ok) throw new Error('Não foi possível abrir o arquivo.');
+  return URL.createObjectURL(await resposta.blob());
+}
+
+function iconeArquivo() {
+  return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"></path><path d="M14 3v5h5"></path></svg>';
+}
+
+function desenharArquivo(balao, m) {
+  const midia = m.midia;
+  balao.classList.add('com-arquivo');
+  if (midia.tipo === 'imagem') {
+    const imagem = document.createElement('img');
+    imagem.className = 'arquivo-imagem';
+    imagem.alt = midia.nome || 'Imagem enviada';
+    // Só dá para rolar até o fim depois que a imagem ocupa o espaço dela.
+    imagem.addEventListener('load', rolarParaFim);
+    balao.append(imagem);
+    baixarArquivo(midia).then((url) => { imagem.src = url; }).catch(() => { balao.textContent = 'Não foi possível abrir a imagem.'; });
+    return;
+  }
+  const botao = document.createElement('button');
+  botao.type = 'button';
+  botao.className = 'arquivo-linha';
+  botao.innerHTML = `${iconeArquivo()}<span></span>`;
+  botao.querySelector('span').textContent = midia.nome || m.texto;
+  botao.addEventListener('click', async () => {
+    try {
+      const url = await baixarArquivo(midia);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = midia.nome || 'arquivo';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch {
+      mostrarEstado('Não foi possível baixar o arquivo.');
+    }
+  });
+  balao.append(botao);
+}
+
+// Enquanto o quadro está fechado ele não tem altura, e mandar rolar não faz
+// efeito: por isso a rolagem é repetida no quadro seguinte, quando o chat abre.
+function rolarParaFim() {
+  const caixa = $('#mensagens');
+  caixa.scrollTop = caixa.scrollHeight;
+  requestAnimationFrame(() => { caixa.scrollTop = caixa.scrollHeight; });
+}
+
 function desenharMensagem(m) {
   const linha = document.createElement('div');
   linha.className = `msg ${m.de === 'voce' ? 'saida' : 'entrada'}`;
   const balao = document.createElement('div');
   balao.className = 'balao';
-  balao.textContent = m.texto;
+  if (m.midia) desenharArquivo(balao, m);
+  else balao.textContent = m.texto;
   const meta = document.createElement('span');
   meta.className = 'meta';
   meta.textContent = [m.de === 'voce' ? 'Você' : (m.autor || 'Atendimento'), hora(m.criadaEm)].join(' · ');
   linha.append(balao, meta);
   $('#mensagens').append(linha);
-  $('#mensagens').scrollTop = $('#mensagens').scrollHeight;
+  rolarParaFim();
 }
 
 async function chamar(caminho, opcoes = {}) {
@@ -84,6 +139,7 @@ async function identificar(dados) {
 function liberarEnvio(pode) {
   $('#texto').disabled = !pode;
   $('#enviar').disabled = !pode;
+  $('#btn-anexar').disabled = !pode;
 }
 
 async function buscarMensagens(primeira = false) {
@@ -139,6 +195,39 @@ async function enviar() {
   }
 }
 
+const TAMANHO_MAXIMO = 20 * 1024 * 1024;
+
+// O arquivo vai do navegador do cliente direto para o nosso servidor, que guarda
+// no nosso S3 e mostra a mensagem no CRM como qualquer outra.
+async function enviarArquivo(arquivo) {
+  if (!arquivo || estado.enviando || !estado.token) return;
+  if (arquivo.size > TAMANHO_MAXIMO) { mostrarEstado('Esse arquivo passa de 20 MB. Envie um menor.'); return; }
+  estado.enviando = true;
+  liberarEnvio(false);
+  mostrarEstado(`Enviando ${arquivo.name}…`);
+  try {
+    const resposta = await fetch('/widget/anexos', {
+      method: 'POST',
+      headers: {
+        'Content-Type': arquivo.type || 'application/octet-stream',
+        'x-nome-arquivo': encodeURIComponent(arquivo.name),
+        'x-widget-token': estado.token || '',
+      },
+      body: arquivo,
+    });
+    const dados = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível enviar o arquivo.');
+    limparEstado();
+    desenharMensagem(dados.mensagem);
+    estado.ultimaId = Math.max(estado.ultimaId, dados.mensagem.id);
+  } catch (e) {
+    mostrarEstado(e.message);
+  } finally {
+    estado.enviando = false;
+    liberarEnvio(true);
+  }
+}
+
 function ajustarAltura() {
   const campo = $('#texto');
   campo.style.height = 'auto';
@@ -150,7 +239,13 @@ window.addEventListener('message', (evento) => {
   const dados = evento.data;
   if (!dados || typeof dados !== 'object') return;
   if (dados.tipo === 'identificar') identificar(dados.dados || {});
-  else if (dados.tipo === 'abrir') { estado.naoLidas = 0; avisarSite({ tipo: 'nao-lidas', quantidade: 0 }); buscarMensagens(); $('#texto')?.focus(); }
+  else if (dados.tipo === 'abrir') {
+    estado.naoLidas = 0;
+    avisarSite({ tipo: 'nao-lidas', quantidade: 0 });
+    rolarParaFim();
+    buscarMensagens().then(rolarParaFim);
+    $('#texto')?.focus();
+  }
   else if (dados.tipo === 'sair') { guardarToken(null); pararSondagem(); $('#mensagens').replaceChildren(); liberarEnvio(false); }
 });
 
@@ -160,13 +255,19 @@ $('#texto').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); }
 });
 $('#btn-fechar').addEventListener('click', () => avisarSite({ tipo: 'fechar' }));
+$('#btn-anexar').addEventListener('click', () => $('#arquivo').click());
+$('#arquivo').addEventListener('change', (e) => {
+  const arquivo = e.target.files?.[0];
+  e.target.value = '';
+  enviarArquivo(arquivo);
+});
 
 // Conversa anterior neste navegador continua de onde parou.
 const guardado = lerToken();
 if (guardado) {
   estado.token = guardado;
   liberarEnvio(true);
-  buscarMensagens(true).then(iniciarSondagem);
+  buscarMensagens(true).then(() => { rolarParaFim(); iniciarSondagem(); });
 } else {
   mostrarEstado('Aguardando os dados do seu login…');
 }

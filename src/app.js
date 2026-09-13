@@ -10,6 +10,7 @@ const { LimitadorTentativas } = require('./limitador');
 const { criarEnviador } = require('./email');
 const { criarRotasApi } = require('./rotas-api');
 const canais = require('./canais');
+const { nomeDoCabecalho } = require('./util');
 
 const RAIZ = path.join(__dirname, '..');
 const COOKIE_VERIFICACAO = 'crm_verificacao';
@@ -385,6 +386,37 @@ function criarApp(db, opcoes = {}) {
         res.status(201).json({ mensagem });
       } catch (erro) {
         res.status(400).json({ erro: erro.message });
+      }
+    });
+
+    // Arquivo que o cliente anexa no chat: sai do navegador dele, passa por aqui
+    // e fica guardado no nosso S3. O site que hospeda o chat não toca no arquivo.
+    app.post('/widget/anexos', express.raw({ type: () => true, limit: '20mb' }), comSessaoWidget, async (req, res) => {
+      const bytes = Buffer.isBuffer(req.body) ? req.body : null;
+      const nome = nomeDoCabecalho(req.get('x-nome-arquivo'));
+      const mime = String(req.get('content-type') || 'application/octet-stream').split(';')[0].trim();
+      try {
+        const mensagem = await widget.enviarArquivo(req.sessaoWidget, { bytes, nome, mime });
+        res.status(201).json({ mensagem });
+      } catch (erro) {
+        console.error('Anexo do chat do site não foi guardado:', erro.message);
+        res.status(/muito grande/i.test(erro.message) ? 413 : 400).json({ erro: erro.message });
+      }
+    });
+
+    // O arquivo volta para o cliente pelo nosso servidor: o endereço do S3 nunca
+    // chega ao navegador, e só quem tem a chave daquela conversa consegue abrir.
+    app.get('/widget/midia/:id', comSessaoWidget, async (req, res) => {
+      const m = await widget.arquivoDaSessao(req.sessaoWidget, req.params.id);
+      if (!m?.midia_chave || !opcoes.arquivos?.configurado) return res.status(404).json({ erro: 'Arquivo não encontrado.' });
+      try {
+        const { bytes, tipo } = await opcoes.arquivos.baixar(m.midia_chave);
+        res.setHeader('Content-Type', m.midia_mime || tipo || 'application/octet-stream');
+        res.setHeader('Cache-Control', 'private, max-age=600');
+        res.send(bytes);
+      } catch (erro) {
+        console.error('Arquivo do chat do site indisponível:', erro.message);
+        res.status(502).json({ erro: 'Não foi possível abrir o arquivo.' });
       }
     });
   }

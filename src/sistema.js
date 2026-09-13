@@ -83,7 +83,7 @@ async function montarSistema(extras = {}) {
     accessKeyId: config.s3Chave,
     secretAccessKey: config.s3Segredo,
   });
-  const widget = criarWidget(db, { segredo: config.widgetSegredo, equipePadraoId: config.widgetEquipeId });
+  const widget = criarWidget(db, { segredo: config.widgetSegredo, equipePadraoId: config.widgetEquipeId, arquivos });
   const abrirConta = criarAbrirConta({ url: config.abrirContaUrl, token: config.abrirContaToken });
   const app = criarApp(db, {
     uazapi,

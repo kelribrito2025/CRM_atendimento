@@ -105,13 +105,42 @@ Três endereços públicos, e só estes:
 | `GET /widget` | A página que roda dentro do quadro (iframe). |
 | `POST /widget/sessao` | Recebe `id`, `nome`, `email`, `empresa`, `pin`, `assinatura` e devolve a chave da conversa. |
 
-As mensagens (`/widget/mensagens`) só respondem com a chave da conversa no cabeçalho
+As mensagens (`/widget/mensagens`), os anexos (`/widget/anexos`) e os arquivos
+(`/widget/midia/:id`) só respondem com a chave da conversa no cabeçalho
 `x-widget-token`, e cada chave enxerga **apenas** a conversa daquele cliente. As notas
 internas da equipe nunca saem para o chat do cliente.
 
 ---
 
-## 4. Como testar antes de publicar
+## 4. Anexos (foto, PDF, comprovante)
+
+**Não há nada para implementar do lado de vocês.** O clipe já vem no chat.
+
+O caminho do arquivo é este:
+
+```
+navegador do cliente  ->  servidor do CRM  ->  bucket S3 do CRM (privado)
+```
+
+O arquivo não passa pelo servidor de vocês, não é gravado no site e o endereço do
+bucket nunca aparece no navegador: para mostrar a imagem, o chat pede o arquivo ao
+CRM usando a chave daquela conversa. Uma chave só abre os arquivos da própria
+conversa.
+
+O que vale saber:
+
+- **Limite de 20 MB** por arquivo. Acima disso o cliente recebe um aviso no chat.
+- **Qualquer formato** (imagem, PDF, planilha, áudio). Imagem aparece na hora dentro
+  do balão; o resto vira um link com o nome do arquivo.
+- Se a dashboard de vocês usar **Content-Security-Policy**, o chat já precisa de
+  `frame-src` e `connect-src` liberados para o endereço do CRM — é a mesma liberação
+  que as mensagens de texto usam, o anexo não pede nada novo.
+- No CRM o anexo chega como qualquer outra mensagem, e o atendente também pode
+  responder com arquivo.
+
+---
+
+## 5. Como testar antes de publicar
 
 1. Abra a dashboard logado e confira se o botão redondo aparece.
 2. Escreva uma mensagem. Ela deve aparecer na hora, em verde, do lado direito.
@@ -137,5 +166,6 @@ chave e os dois veem a mesma conversa.
 **O chat aparece para quem não está logado?** Só se vocês chamarem o `identificar()`
 fora da área logada. O recomendado é carregar o script apenas nas páginas logadas.
 
-**Onde ficam as imagens e os arquivos?** Nesta primeira versão o chat do site troca
-**texto**. Fotos e documentos continuam pelo WhatsApp e Telegram.
+**Onde ficam as imagens e os arquivos?** No S3 privado do CRM, junto com os anexos do
+WhatsApp e do Telegram. O site de vocês não guarda nada e não precisa de credencial
+nenhuma do bucket (veja o item 4).
