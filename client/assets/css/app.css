@@ -61,7 +61,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
   display: flex; gap: 20px; padding: 16px 20px; position: relative;
   background: var(--shell);
 }
-.conteudo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.conteudo { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
 .area { flex: 1; min-height: 0; display: flex; gap: 14px; align-items: stretch; position: relative; }
 .cartao { background: var(--superficie); border-radius: 20px; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 .rolagem { overflow: auto; min-height: 0; }
@@ -644,7 +644,11 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 :root[data-tema="escuro"] .selo-equipe, :root[data-tema="escuro"] .escolha-equipe { background: var(--superficie); }
 
 /* ===== Barra de navegação no topo ===== */
+/* A barra vira uma faixa no topo. O conteúdo continua preso à altura da
+   janela (min-height: 0) — sem isso ele cresce do tamanho de todas as
+   mensagens e a página inteira ganha barra de rolagem. */
 .shell.barra-topo { flex-direction: column; }
+.shell.barra-topo .conteudo { min-height: 0; }
 .shell.barra-topo .rail {
   width: auto; height: 60px; flex-direction: row; align-items: center;
   padding: 0 14px; gap: 10px; border-radius: 18px;
