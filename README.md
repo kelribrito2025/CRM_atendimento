@@ -114,6 +114,14 @@ DATABASE_URL=mysql://usuario:senha@servidor:3306/nome_do_banco
 
 O sistema cria as tabelas sozinho na primeira vez, nos dois casos. Para rodar os testes contra um MySQL de verdade: `BANCO_TESTE=mysql://... npm run test:mysql`.
 
+## Acentuação automática
+
+Na caixa de escrever, o CRM acentua sozinho as palavras mais comuns do atendimento assim que o atendente termina de escrevê-las: "nao" vira "não", "informacao" vira "informação", "cartao" vira "cartão", "usuario" vira "usuário".
+
+O botão **Á**, ao lado das respostas rápidas, liga e desliga a correção, e cada pessoa mantém a sua escolha no próprio navegador. O corretor do navegador também está ligado, sublinhando o que estiver errado.
+
+Palavras que mudam de sentido com o acento ficam de fora de propósito: "esta/está", "e/é", "a/à", "de/dê". Para acertar essas seria preciso entender a frase inteira, e um palpite errado mudaria o que a pessoa quis dizer.
+
 ## Consulta de saldo pelo PIN
 
 No card **PIN do cliente** (painel da direita), o atendente digita o PIN nos quadradinhos e clica em **Consultar saldo**. Aparecem o saldo, o nome, quantas recargas o cliente tem e avisos de conta bloqueada ou desativada. Quando a consulta dá certo, o PIN fica guardado naquele cliente e o card marca **Conferido**, com a hora e quem conferiu.

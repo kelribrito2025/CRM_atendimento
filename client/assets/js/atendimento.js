@@ -1,5 +1,6 @@
 import { icone, montarIcones } from './icones.js';
 import { detectarNovasMensagens } from './alerta-mensagem.mjs';
+import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 
 (() => {
   'use strict';
@@ -522,6 +523,36 @@ import { detectarNovasMensagens } from './alerta-mensagem.mjs';
       el('div', { class: 'chat-vazio-texto' }, el('strong', {}, titulo), texto));
   }
 
+  /* ---------------- acentuação automática ---------------- */
+  const CHAVE_ACENTOS = 'crm_acentos';
+  let acentosLigados = true;
+  try { acentosLigados = localStorage.getItem(CHAVE_ACENTOS) !== 'off'; } catch { /* navegador sem armazenamento */ }
+
+  function alternarAcentos() {
+    acentosLigados = !acentosLigados;
+    try { localStorage.setItem(CHAVE_ACENTOS, acentosLigados ? 'on' : 'off'); } catch { /* tudo bem */ }
+    toast(acentosLigados ? 'Acentuação automática ligada.' : 'Acentuação automática desligada.');
+    renderChat();
+  }
+
+  // Corrige a palavra que acabou de ser fechada por espaço, ponto, vírgula…
+  function corrigirEnquantoDigita(campo) {
+    if (!acentosLigados || !campo) return;
+    const fim = campo.selectionStart;
+    if (fim !== campo.selectionEnd || fim < 2) return;
+    const antes = campo.value.slice(0, fim);
+    const separador = /[\s.,;:!?)\]}"'…]$/.test(antes);
+    if (!separador) return;
+    const m = /([A-Za-z]+)([\s.,;:!?)\]}"'…])$/.exec(antes);
+    if (!m) return;
+    const corrigida = corrigirPalavra(m[1]);
+    if (!corrigida) return;
+    const inicio = fim - m[0].length;
+    campo.value = campo.value.slice(0, inicio) + corrigida + m[2] + campo.value.slice(fim);
+    const novoFim = inicio + corrigida.length + m[2].length;
+    campo.setSelectionRange(novoFim, novoFim);
+  }
+
   let visor = null;
 
   function fecharVisor() {
@@ -641,10 +672,12 @@ import { detectarNovasMensagens } from './alerta-mensagem.mjs';
     const textarea = el('textarea', {
       id: 'texto-msg', rows: '2', maxlength: '4000',
       placeholder: modoNota ? 'Escreva uma nota interna para a equipe…' : `Escreva para ${primeiroNome} pelo ${canalNome}…`,
+      lang: 'pt-BR', spellcheck: 'true',
       onkeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } },
-      oninput: () => ajustarAltura(textarea),
+      oninput: () => { corrigirEnquantoDigita(textarea); ajustarAltura(textarea); },
+      onpaste: () => setTimeout(() => { if (acentosLigados) textarea.value = corrigirTexto(textarea.value); ajustarAltura(textarea); }, 0),
     });
-    const enviar = () => enviarMensagem(textarea.value, modoNota ? 'nota' : 'resposta', textarea);
+    const enviar = () => enviarMensagem(acentosLigados ? corrigirTexto(textarea.value) : textarea.value, modoNota ? 'nota' : 'resposta', textarea);
 
     const compositor = el('div', { class: 'compositor' },
       el('div', { class: `caixa-texto${modoNota ? ' modo-nota' : ''}` },
@@ -652,6 +685,12 @@ import { detectarNovasMensagens } from './alerta-mensagem.mjs';
         el('div', { class: 'compositor-acoes' },
           el('button', { type: 'button', class: 'btn-icone hov', title: 'Anexo', onclick: () => toast('Envio de anexos: em breve.') }, icone('anexo', ICONE.clipe)),
           el('button', { type: 'button', class: 'btn-icone hov', title: 'Respostas rápidas', onclick: () => toast('Respostas rápidas: em breve.') }, icone('raio', ICONE.raio)),
+          el('button', {
+            type: 'button', class: `btn-icone hov acentos-toggle${acentosLigados ? ' ativo' : ''}`,
+            title: acentosLigados ? 'Acentuação automática ligada (clique para desligar)' : 'Acentuação automática desligada (clique para ligar)',
+            'aria-pressed': acentosLigados ? 'true' : 'false',
+            onclick: alternarAcentos,
+          }, 'Á'),
           el('button', {
             type: 'button', class: `btn-icone hov nota-toggle${modoNota ? ' ativo' : ''}`,
             title: modoNota ? 'Voltar a responder o cliente' : 'Escrever nota interna (só a equipe vê)',
@@ -853,8 +892,12 @@ import { detectarNovasMensagens } from './alerta-mensagem.mjs';
     const ct = c.contato;
     const notas = c.mensagens.filter((m) => m.tipo === 'nota').slice().reverse();
 
-    const textareaNota = el('textarea', { id: 'texto-nota', rows: '2', maxlength: '4000', placeholder: 'Escreva uma nota para a equipe…', 'aria-label': 'Nova nota interna' });
-    const salvarNota = () => enviarMensagem(textareaNota.value, 'nota', textareaNota);
+    const textareaNota = el('textarea', {
+      id: 'texto-nota', rows: '2', maxlength: '4000', placeholder: 'Escreva uma nota para a equipe…',
+      'aria-label': 'Nova nota interna', lang: 'pt-BR', spellcheck: 'true',
+      oninput: () => corrigirEnquantoDigita(textareaNota),
+    });
+    const salvarNota = () => enviarMensagem(acentosLigados ? corrigirTexto(textareaNota.value) : textareaNota.value, 'nota', textareaNota);
 
     painel.replaceChildren(
       el('div', { class: 'painel-topo' },
