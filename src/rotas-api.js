@@ -55,7 +55,7 @@ function formatarPrimeiraResposta(ms) {
 const SQL_CONVERSAS = `
   SELECT c.id, c.protocolo, c.canal, c.status, c.alerta, c.nao_lidas, c.criada_em, c.atualizada_em,
          c.equipe_id, c.atendente_id, c.canal_id, c.wa_chatid,
-         ct.id AS contato_id, ct.nome AS contato_nome, ct.empresa, ct.cnpj, ct.telefone, ct.tg_usuario, ct.tg_id, ct.tg_foto_id, ct.wa_foto_url, ct.site_id,
+         ct.id AS contato_id, ct.nome AS contato_nome, ct.empresa, ct.cnpj, ct.telefone, ct.email, ct.tg_usuario, ct.tg_id, ct.tg_foto_id, ct.wa_foto_url, ct.site_id,
          u.nome AS atendente_nome,
          e.nome AS equipe_nome, e.cor AS equipe_cor,
          um.tipo AS ultima_tipo, um.texto AS ultima_texto, um.criada_em AS ultima_em,
@@ -162,6 +162,7 @@ function criarRotasApi(db, opcoes = {}) {
         empresa: row.empresa,
         cnpj: row.cnpj,
         telefone: row.telefone,
+        email: row.email || null,
         telegramUsuario: row.tg_usuario || null,
         telegramId: row.tg_id || null,
         siteId: row.site_id || null,
@@ -957,6 +958,8 @@ function criarRotasApi(db, opcoes = {}) {
       if (linha) {
         await db.prepare('UPDATE contatos SET pin = ?, pin_validado_em = ?, pin_validado_por = ? WHERE id = ?')
           .run(String(pin), Date.now(), req.usuario.id, linha.contato.id);
+        const emailDoSite = linha.canal === 'widget' ? String(cliente.email || '').trim().toLowerCase().slice(0, 191) : '';
+        if (emailDoSite) await db.prepare('UPDATE contatos SET email = ? WHERE id = ?').run(emailDoSite, linha.contato.id);
         conversa = await detalharConversa(await buscarConversa(id));
       }
       res.json({ cliente, conversa });

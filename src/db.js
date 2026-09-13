@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS contatos (
   empresa TEXT,
   cnpj VARCHAR(32),
   telefone VARCHAR(32),
+  email VARCHAR(191),
   dados_conta TEXT,
   pin VARCHAR(32),
   pin_validado_em BIGINT,
@@ -294,6 +295,7 @@ async function migrar(db) {
   await garantirColuna(db, 'contatos', 'tg_id', 'VARCHAR(64)');
   await garantirColuna(db, 'contatos', 'tg_usuario', 'VARCHAR(191)');
   await garantirColuna(db, 'contatos', 'site_id', 'VARCHAR(191)');
+  await garantirColuna(db, 'contatos', 'email', 'VARCHAR(191)');
   await garantirColuna(db, 'mensagens', 'editada_em', 'BIGINT');
   await garantirColuna(db, 'contatos', 'wa_foto_url', 'TEXT');
   await garantirColuna(db, 'contatos', 'tg_foto_id', 'VARCHAR(255)');

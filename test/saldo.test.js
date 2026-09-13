@@ -51,7 +51,7 @@ async function subirServidor(opcoesSaldo = {}) {
     const r = await fetch(`${base}${caminho}`, { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
     return { status: r.status, dados: await r.json().catch(() => ({})) };
   };
-  return { base, chamar, cookie, registro, fechar: async () => { await new Promise((r) => servidor.close(r)); await db.fechar(); } };
+  return { db, base, chamar, cookie, registro, fechar: async () => { await new Promise((r) => servidor.close(r)); await db.fechar(); } };
 }
 
 test('saldo: PIN vira número e os valores saem em centavos e em reais', () => {
@@ -123,6 +123,26 @@ test('saldo: consulta em massa é barrada', async () => {
     }
     assert.ok(bloqueado, 'deveria bloquear depois de muitas consultas seguidas');
     assert.match(bloqueado.dados.erro, /Muitas consultas/);
+  } finally {
+    await s.fechar();
+  }
+});
+
+test('saldo: e-mail confirmado pelo PIN é guardado na conversa do Chat do site', async () => {
+  const s = await subirServidor();
+  try {
+    const contato = await s.db.prepare('INSERT INTO contatos (nome, site_id) VALUES (?, ?)').run('Pedro do site', 'site-pedro');
+    const agora = Date.now();
+    const conversa = await s.db.prepare(`
+      INSERT INTO conversas (protocolo, contato_id, canal, status, nao_lidas, criada_em, atualizada_em)
+      VALUES (?, ?, 'widget', 'aberta', 0, ?, ?)`)
+      .run('5998', Number(contato.lastInsertRowid), agora, agora);
+
+    const resposta = await s.chamar('/api/suporte/saldo', { pin: '5446', conversaId: Number(conversa.lastInsertRowid) });
+
+    assert.equal(resposta.status, 200, JSON.stringify(resposta.dados));
+    assert.equal(resposta.dados.conversa.contato.email, 'cliente@exemplo.com');
+    assert.equal((await s.db.prepare('SELECT email FROM contatos WHERE id = ?').get(Number(contato.lastInsertRowid))).email, 'cliente@exemplo.com');
   } finally {
     await s.fechar();
   }

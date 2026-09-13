@@ -1712,7 +1712,10 @@ import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notific
           : avatarCliente({ canal: c.canal, contato: { iniciais: iniciais(ct.empresa || ct.nome) } }, 'avatar-quadrado neutro'),
         el('div', { class: 'membro-info' },
           el('span', { class: 'painel-nome suave' }, ct.empresa || 'Ficha do cliente'),
-          el('span', { class: 'painel-sub' }, ct.cnpj || ct.telefone || (ct.telegramUsuario ? `@${ct.telegramUsuario}` : ''))),
+          el('span', { class: 'painel-sub' },
+            c.canal === 'widget' && (ct.email || (saldo.conversaId === c.id ? saldo.cliente?.email : null))
+              ? (ct.email || saldo.cliente.email)
+              : (ct.cnpj || ct.telefone || (ct.telegramUsuario ? `@${ct.telegramUsuario}` : '')))),
         botaoAbrirConta(c)),
       el('div', { class: 'rolagem painel-corpo' },
         blocoPin(c),
