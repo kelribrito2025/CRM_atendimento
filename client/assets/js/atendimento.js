@@ -2,6 +2,7 @@ import { icone, montarIcones } from './icones.js';
 import { detectarNovasMensagens } from './alerta-mensagem.mjs';
 import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 import { capturarCompositor, restaurarCompositor } from './foco-compositor.mjs';
+import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notificacoes.mjs';
 
 (() => {
   'use strict';
@@ -27,6 +28,7 @@ import { capturarCompositor, restaurarCompositor } from './foco-compositor.mjs';
   somNovaMensagem.preload = 'auto';
   somNovaMensagem.volume = 0.72;
   let somLiberado = false;
+  let somNotificacoesAtivo = lerSomAtivo();
   let alertasAtivos = false;
   let referenciasMensagens = new Map();
 
@@ -108,7 +110,7 @@ import { capturarCompositor, restaurarCompositor } from './foco-compositor.mjs';
   }
 
   async function liberarSom() {
-    if (somLiberado) return;
+    if (somLiberado || !somNotificacoesAtivo) return;
     const volume = somNovaMensagem.volume;
     somNovaMensagem.volume = 0;
     try {
@@ -132,7 +134,7 @@ import { capturarCompositor, restaurarCompositor } from './foco-compositor.mjs';
   function observarMensagens(conversas, avisar) {
     const resultado = detectarNovasMensagens(conversas, referenciasMensagens, avisar && alertasAtivos);
     referenciasMensagens = resultado.referencias;
-    if (resultado.recebeuMensagem) tocarSomNovaMensagem();
+    if (deveTocarNotificacao(resultado.recebeuMensagem, somNotificacoesAtivo)) tocarSomNovaMensagem();
   }
 
   function iniciais(nome) {
@@ -1346,6 +1348,39 @@ import { capturarCompositor, restaurarCompositor } from './foco-compositor.mjs';
 
   function fecharMenus() {
     document.querySelectorAll('.menu-flutuante').forEach((m) => m.remove());
+    $('#btn-filtros')?.setAttribute('aria-expanded', 'false');
+  }
+
+  function alternarSomNotificacoes(botao) {
+    somNotificacoesAtivo = gravarSomAtivo(!somNotificacoesAtivo);
+    if (somNotificacoesAtivo) liberarSom();
+    else {
+      somNovaMensagem.pause();
+      somNovaMensagem.currentTime = 0;
+    }
+    botao.setAttribute('aria-checked', somNotificacoesAtivo ? 'true' : 'false');
+    botao.querySelector('.som-status').textContent = somNotificacoesAtivo ? 'Ligado' : 'Mudo';
+    botao.querySelector('.interruptor').classList.toggle('ativo', somNotificacoesAtivo);
+    toast(somNotificacoesAtivo ? 'Som das notificações ligado.' : 'Som das notificações silenciado.');
+  }
+
+  function abrirMenuNotificacoes(evento) {
+    evento.stopPropagation();
+    const botaoMenu = evento.currentTarget;
+    if (botaoMenu.getAttribute('aria-expanded') === 'true') return fecharMenus();
+    fecharMenus();
+    botaoMenu.setAttribute('aria-expanded', 'true');
+    const botaoSom = el('button', {
+      type: 'button', class: 'menu-notificacao-item', role: 'menuitemcheckbox',
+      'aria-checked': somNotificacoesAtivo ? 'true' : 'false',
+      onclick: (e) => { e.stopPropagation(); alternarSomNotificacoes(e.currentTarget); },
+    },
+    el('span', { class: 'menu-notificacao-texto' },
+      el('strong', {}, 'Som das notificações'),
+      el('span', { class: 'som-status' }, somNotificacoesAtivo ? 'Ligado' : 'Mudo')),
+    el('span', { class: `interruptor${somNotificacoesAtivo ? ' ativo' : ''}`, 'aria-hidden': 'true' },
+      el('span', { class: 'interruptor-botao' })));
+    botaoMenu.parentElement.append(el('div', { class: 'menu-flutuante menu-notificacoes', role: 'menu' }, botaoSom));
   }
 
   function abrirMenuAcoes(botao) {
@@ -2472,8 +2507,8 @@ import { capturarCompositor, restaurarCompositor } from './foco-compositor.mjs';
       }, 250);
     });
 
+    $('#btn-filtros').addEventListener('click', abrirMenuNotificacoes);
     // O que ainda não funciona fica desligado, sem responder ao clique.
-    desligar($('#btn-filtros'), 'Filtros avançados: em breve');
     document.querySelectorAll('.rail-btn[data-modulo]').forEach((b) => desligar(b, `${b.dataset.modulo}: em breve`));
 
     $('#btn-config').addEventListener('click', () => (config.aberto ? fecharConfiguracoes() : abrirConfiguracoes()));

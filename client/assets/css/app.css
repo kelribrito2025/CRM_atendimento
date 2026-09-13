@@ -174,7 +174,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 /* ===== Lista de conversas ===== */
 .lista { width: 330px; flex-shrink: 0; }
 .lista-topo { padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid var(--borda); }
-.lista-cabecalho { display: flex; align-items: center; gap: 10px; }
+.lista-cabecalho { display: flex; align-items: center; gap: 10px; position: relative; }
 .lista-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .lista-titulo { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lista-sub { font-size: 12px; color: var(--texto-suave); }
@@ -238,6 +238,15 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 }
 .menu-flutuante button { border: 0; background: none; text-align: left; padding: 9px 11px; border-radius: 8px; font-size: 13px; color: var(--texto); }
 .menu-flutuante button:hover { background: var(--hover); }
+.menu-notificacoes { top: 40px; min-width: 238px; }
+.menu-flutuante button.menu-notificacao-item { width: 100%; display: flex; align-items: center; gap: 14px; cursor: pointer; }
+.menu-notificacao-texto { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+.menu-notificacao-texto strong { font-size: 12.5px; font-weight: 700; }
+.menu-notificacao-texto .som-status { font-size: 11px; color: var(--texto-suave); }
+.interruptor { width: 34px; height: 20px; padding: 3px; border-radius: 999px; background: var(--cinza); display: flex; align-items: center; flex-shrink: 0; transition: background .16s ease-out; }
+.interruptor-botao { width: 14px; height: 14px; border-radius: 50%; background: var(--superficie); box-shadow: 0 1px 3px rgba(11, 31, 20, .22); transform: translateX(0); transition: transform .16s ease-out; }
+.interruptor.ativo { background: var(--verde); }
+.interruptor.ativo .interruptor-botao { transform: translateX(14px); }
 .mensagens {
   flex: 1;
   padding: 20px;
