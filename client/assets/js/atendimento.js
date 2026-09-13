@@ -538,8 +538,48 @@ import { deveSalvarNota } from './nota-editor.mjs';
     }
   }
 
+  let modalConfirmacao = null;
+
+  function confirmarNoSite({ titulo, texto, rotuloConfirmar }) {
+    if (modalConfirmacao) modalConfirmacao.encerrar(false);
+    return new Promise((resolve) => {
+      const focoAnterior = document.activeElement;
+      let resolvido = false;
+      const tituloId = `confirmacao-${Date.now()}`;
+      const encerrar = (confirmado) => {
+        if (resolvido) return;
+        resolvido = true;
+        document.removeEventListener('keydown', aoTeclado);
+        fundo.remove();
+        modalConfirmacao = null;
+        focoAnterior?.focus?.();
+        resolve(confirmado);
+      };
+      const aoTeclado = (e) => { if (e.key === 'Escape') encerrar(false); };
+      const fundo = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === fundo) encerrar(false); } },
+        el('div', { class: 'modal confirmacao', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': tituloId },
+          el('div', { class: 'modal-corpo' },
+            el('div', { class: 'modal-cab' },
+              el('span', { class: 'modal-confirmacao-icone', 'aria-hidden': 'true' }, svg(ICONE.lixeira)),
+              el('div', {}, el('h2', { id: tituloId }, titulo), el('p', {}, texto)),
+              el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', 'aria-label': 'Fechar', onclick: () => encerrar(false) }, svg(ICONE.fechar))),
+            el('div', { class: 'modal-acoes' },
+              el('button', { type: 'button', class: 'btn-suave hov', id: 'confirmacao-cancelar', onclick: () => encerrar(false) }, 'Cancelar'),
+              el('button', { type: 'button', class: 'btn-perigo', id: 'confirmacao-aceitar', onclick: () => encerrar(true) }, rotuloConfirmar)))));
+      modalConfirmacao = { encerrar, fundo };
+      document.body.append(fundo);
+      document.addEventListener('keydown', aoTeclado);
+      $('#confirmacao-cancelar')?.focus();
+    });
+  }
+
   async function apagarNota(id) {
-    if (!window.confirm('Apagar esta nota interna? Ela some para toda a equipe.')) return;
+    const confirmado = await confirmarNoSite({
+      titulo: 'Apagar nota?',
+      texto: 'Esta nota interna será removida para toda a equipe. Essa ação não pode ser desfeita.',
+      rotuloConfirmar: 'Apagar nota',
+    });
+    if (!confirmado) return;
     try {
       await api(`/notas/${id}`, { method: 'DELETE' });
       const c = estado.conversa;

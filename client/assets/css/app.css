@@ -505,6 +505,15 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 .modal-cab > div { flex: 1; min-width: 0; }
 .modal-cab h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
 .modal-cab p { margin: 4px 0 0; font-size: 13px; color: var(--texto-suave); }
+.modal.confirmacao { max-width: 440px; }
+.modal.confirmacao .modal-corpo { gap: 20px; }
+.modal-confirmacao-icone { width: 42px; height: 42px; border-radius: 13px; background: var(--vermelho-claro); color: var(--vermelho); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.modal-confirmacao-icone svg { width: 20px; height: 20px; }
+.modal-acoes { display: flex; justify-content: flex-end; gap: 9px; }
+.modal-acoes .btn-suave, .modal-acoes .btn-perigo { height: 40px; padding: 0 16px; }
+.btn-perigo { border: 0; border-radius: 11px; background: var(--vermelho); color: #fff; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; transition: background .14s, transform .14s; }
+.btn-perigo:hover { background: #B9342E; }
+.btn-perigo:active { transform: scale(.97); }
 .canais-lista { display: flex; flex-direction: column; gap: 8px; }
 .canal-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--borda); border-radius: 14px; flex-wrap: wrap; }
 .canal-item .status-ponto { width: 10px; height: 10px; border-radius: 50%; background: #C9D4CD; flex-shrink: 0; }
