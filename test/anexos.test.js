@@ -1,0 +1,214 @@
+'use strict';
+
+// Anexo enviado pelo atendente, conversa resolvida que volta no mesmo histórico
+// e o nome do atendente que respondeu por último.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { semear } = require('../src/db');
+const { abrirBancoDeTeste } = require('./apoio');
+const { criarApp } = require('../src/app');
+const { criarEnviador } = require('../src/email');
+const canais = require('../src/canais');
+
+const ADMIN = { email: 'admin@teste.com', senha: 'segredo123' };
+const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6360000002000100ffff03000006000557bfabd40000000049454e44ae426082', 'hex');
+
+// Armazenamento de arquivos de mentira, no lugar do S3.
+function arquivosFalsos() {
+  const guardados = new Map();
+  return {
+    configurado: true,
+    guardados,
+    async enviar(bytes, { nome, tipo, pasta }) {
+      const chave = `chat-app-numeros/${pasta}/${guardados.size + 1}-${nome}`;
+      guardados.set(chave, { bytes, tipo });
+      return { chave, tamanho: bytes.length, tipo };
+    },
+    async baixar(chave) {
+      const g = guardados.get(chave);
+      if (!g) throw new Error('não existe');
+      return { bytes: g.bytes, tipo: g.tipo };
+    },
+    urlAssinada: (chave) => `https://exemplo-s3/${encodeURIComponent(chave)}?assinatura=abc`,
+  };
+}
+
+function uazapiFalso(chamadas) {
+  return {
+    configurado: true,
+    async enviarTexto(token, numero, texto) { chamadas.push(['texto', numero, texto]); return { messageid: `S-${chamadas.length}` }; },
+    async enviarMidia(token, numero, dados) { chamadas.push(['midia', numero, dados]); return { messageid: `S-${chamadas.length}` }; },
+  };
+}
+
+async function subirServidor({ arquivos = arquivosFalsos(), chamadas = [] } = {}) {
+  const db = await abrirBancoDeTeste();
+  await semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Kely Ribeiro', comDadosExemplo: false });
+  const uazapi = uazapiFalso(chamadas);
+  const app = criarApp(db, { enviador: criarEnviador({ modo: 'silencioso' }), uazapi, arquivos, baseUrl: 'https://crm.exemplo.com.br' });
+  const servidor = await new Promise((r) => { const s = app.listen(0, () => r(s)); });
+  const base = `http://127.0.0.1:${servidor.address().port}`;
+
+  const entrar = async (email, senha) => {
+    const r = await fetch(`${base}/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, senha }) });
+    return (r.headers.get('set-cookie') || '').split(';')[0];
+  };
+  const cookie = await entrar(ADMIN.email, ADMIN.senha);
+  const chamar = async (caminho, metodo = 'GET', corpo, ck = cookie) => {
+    const r = await fetch(`${base}${caminho}`, { method: metodo, headers: { Cookie: ck, 'Content-Type': 'application/json' }, body: corpo ? JSON.stringify(corpo) : undefined });
+    return { status: r.status, dados: await r.json().catch(() => ({})) };
+  };
+  const enviarArquivo = async (conversaId, { bytes = PNG, nome = 'comprovante.png', mime = 'image/png' } = {}, ck = cookie) => {
+    const r = await fetch(`${base}/api/conversas/${conversaId}/anexos`, {
+      method: 'POST',
+      headers: { Cookie: ck, 'Content-Type': mime, 'x-nome-arquivo': encodeURIComponent(nome) },
+      body: bytes,
+    });
+    return { status: r.status, dados: await r.json().catch(() => ({})) };
+  };
+
+  return { db, base, arquivos, chamadas, cookie, entrar, chamar, enviarArquivo, fechar: async () => { await new Promise((r) => servidor.close(r)); await db.fechar(); } };
+}
+
+// Cria um canal e faz o cliente mandar a primeira mensagem.
+async function conversaDeWhatsapp(s, { nome = 'Cliente Teste', numero = '5531988887777' } = {}) {
+  const agora = Date.now();
+  await s.db.prepare("INSERT INTO canais (tipo, nome, instancia_id, instancia_token, status, webhook_segredo, criado_em, atualizado_em) VALUES ('whatsapp', 'Bigteck', 'i1', 'tok', 'connected', ?, ?, ?)")
+    .run(`${Math.random().toString(16).slice(2)}`.padEnd(32, '0').slice(0, 32), agora, agora);
+  const canal = await s.db.prepare('SELECT * FROM canais ORDER BY id DESC LIMIT 1').get();
+  // `quando` deixa a ordem previsível no teste (o WhatsApp manda a hora em segundos).
+  const evento = (texto, id, quando = Date.now()) => canais.processarEvento(s.db, canal, {
+    EventType: 'messages',
+    message: { messageid: id, chatid: `${numero}@s.whatsapp.net`, fromMe: false, messageType: 'text', text: texto, senderName: nome, messageTimestamp: Math.floor(quando / 1000) },
+  });
+  await evento('Oi, preciso de ajuda', 'E1', Date.now() - 60_000);
+  const lista = await s.chamar(`/api/conversas?q=${encodeURIComponent(nome)}`);
+  return { canal, evento, conversa: lista.dados.conversas[0] };
+}
+
+test('anexo: o atendente envia um arquivo e o cliente recebe pelo canal', async () => {
+  const s = await subirServidor();
+  try {
+    const { conversa, canal } = await conversaDeWhatsapp(s);
+
+    const r = await s.enviarArquivo(conversa.id);
+    assert.equal(r.status, 201, JSON.stringify(r.dados));
+    assert.equal(r.dados.erroEnvio, null);
+    assert.equal(r.dados.mensagem.tipo, 'atendente');
+    assert.equal(r.dados.mensagem.entrega, 'enviada');
+    assert.deepEqual(
+      { tipo: r.dados.mensagem.midia.tipo, nome: r.dados.mensagem.midia.nome, url: r.dados.mensagem.midia.url },
+      { tipo: 'imagem', nome: 'comprovante.png', url: `/api/midia/${r.dados.mensagem.id}` },
+    );
+
+    // o arquivo foi guardado e o canal recebeu um endereço temporário, não o arquivo
+    assert.equal(s.arquivos.guardados.size, 1);
+    const envio = s.chamadas.find((c) => c[0] === 'midia');
+    assert.equal(envio[1], '5531988887777');
+    assert.equal(envio[2].tipo, 'image');
+    assert.match(envio[2].url, /^https:\/\/exemplo-s3\//);
+    assert.equal(envio[2].nome, 'comprovante.png');
+
+    // a tela busca o arquivo pela rota autenticada, sem ver o endereço do bucket
+    const midia = await fetch(`${s.base}${r.dados.mensagem.midia.url}`, { headers: { Cookie: s.cookie } });
+    assert.equal(midia.status, 200);
+    assert.equal(midia.headers.get('content-type'), 'image/png');
+    assert.equal(Buffer.from(await midia.arrayBuffer()).length, PNG.length);
+
+    // sem sessão ninguém baixa
+    assert.equal((await fetch(`${s.base}${r.dados.mensagem.midia.url}`)).status, 401);
+    void canal;
+  } finally { await s.fechar(); }
+});
+
+test('anexo: nome com acento, tipo pelo conteúdo e limites', async () => {
+  const s = await subirServidor();
+  try {
+    const { conversa } = await conversaDeWhatsapp(s);
+
+    const doc = await s.enviarArquivo(conversa.id, { bytes: Buffer.from('conteudo'), nome: 'Relatório de março.pdf', mime: 'application/pdf' });
+    assert.equal(doc.status, 201);
+    assert.equal(doc.dados.mensagem.midia.nome, 'Relatório de março.pdf');
+    assert.equal(doc.dados.mensagem.midia.tipo, 'documento');
+    assert.equal(s.chamadas.at(-1)[2].tipo, 'document');
+
+    // arquivo vazio não passa
+    const vazio = await fetch(`${s.base}/api/conversas/${conversa.id}/anexos`, {
+      method: 'POST', headers: { Cookie: s.cookie, 'Content-Type': 'image/png', 'x-nome-arquivo': 'v.png' }, body: Buffer.alloc(0),
+    });
+    assert.equal(vazio.status, 400);
+
+    // conversa que não existe
+    assert.equal((await s.enviarArquivo(999999)).status, 404);
+  } finally { await s.fechar(); }
+});
+
+test('anexo: sem armazenamento configurado, o CRM avisa em vez de falhar calado', async () => {
+  const s = await subirServidor({ arquivos: { configurado: false } });
+  try {
+    const { conversa } = await conversaDeWhatsapp(s);
+    const r = await s.enviarArquivo(conversa.id);
+    assert.equal(r.status, 400);
+    assert.match(r.dados.erro, /anexos indispon/i);
+    assert.equal((await s.chamar('/api/resumo')).dados.anexosAtivos, false);
+  } finally { await s.fechar(); }
+});
+
+test('conversa resolvida: nova mensagem do cliente volta no mesmo histórico', async () => {
+  const s = await subirServidor();
+  try {
+    const { conversa, evento } = await conversaDeWhatsapp(s);
+    await s.chamar(`/api/conversas/${conversa.id}/mensagens`, 'POST', { texto: 'Resolvido por aqui!' });
+    const resolvida = await s.chamar(`/api/conversas/${conversa.id}/status`, 'POST', { status: 'resolvida' });
+    assert.equal(resolvida.dados.conversa.status, 'resolvida');
+
+    // o mesmo cliente escreve de novo
+    await evento('Voltei, tenho outra dúvida', 'E2', Date.now() + 60_000);
+
+    const lista = await s.chamar('/api/conversas?q=Cliente%20Teste');
+    assert.equal(lista.dados.conversas.length, 1, 'não pode abrir uma segunda conversa para o mesmo cliente');
+    assert.equal(lista.dados.conversas[0].id, conversa.id, 'é a mesma conversa de antes');
+    assert.equal(lista.dados.conversas[0].status, 'aberta', 'a conversa reabre sozinha');
+
+    const detalhe = await s.chamar(`/api/conversas/${conversa.id}`);
+    assert.deepEqual(detalhe.dados.conversa.mensagens.map((m) => m.texto), [
+      'Oi, preciso de ajuda', 'Resolvido por aqui!', 'Voltei, tenho outra dúvida',
+    ], 'o histórico continua inteiro');
+    assert.equal((await s.db.prepare('SELECT COUNT(*) AS n FROM conversas').get()).n, 1);
+  } finally { await s.fechar(); }
+});
+
+test('atendente: o selo da conversa mostra quem respondeu por último', async () => {
+  const s = await subirServidor();
+  try {
+    const { conversa } = await conversaDeWhatsapp(s);
+    // segundo atendente
+    const senha = 'outrasenha123';
+    const { gerarHashSenha } = require('../src/senha');
+    await s.db.prepare('INSERT INTO usuarios (nome, email, senha_hash, papel, ativo, criado_em) VALUES (?, ?, ?, ?, 1, ?)')
+      .run('Bruno Alves', 'bruno@teste.com', gerarHashSenha(senha), 'atendente', Date.now());
+    const cookieBruno = await s.entrar('bruno@teste.com', senha);
+
+    await s.chamar(`/api/conversas/${conversa.id}/mensagens`, 'POST', { texto: 'Oi, sou a Kely' });
+    let lista = await s.chamar('/api/conversas?q=Cliente%20Teste');
+    assert.equal(lista.dados.conversas[0].atendente.nomeCurto, 'Kely R.');
+
+    // o outro atendente entra e responde: o selo passa a ser dele
+    await s.chamar(`/api/conversas/${conversa.id}/mensagens`, 'POST', { texto: 'Bom dia, sou o Bruno' }, cookieBruno);
+    lista = await s.chamar('/api/conversas?q=Cliente%20Teste');
+    assert.equal(lista.dados.conversas[0].atendente.nomeCurto, 'Bruno A.');
+
+    // e cada mensagem guarda o nome de quem escreveu
+    const detalhe = await s.chamar(`/api/conversas/${conversa.id}`);
+    assert.deepEqual(
+      detalhe.dados.conversa.mensagens.filter((m) => m.tipo === 'atendente').map((m) => m.autor.nomeCurto),
+      ['Kely R.', 'Bruno A.'],
+    );
+
+    // um anexo também passa a conversa para quem enviou
+    await s.enviarArquivo(conversa.id);
+    lista = await s.chamar('/api/conversas?q=Cliente%20Teste');
+    assert.equal(lista.dados.conversas[0].atendente.nomeCurto, 'Kely R.');
+  } finally { await s.fechar(); }
+});

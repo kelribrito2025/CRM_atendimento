@@ -182,12 +182,18 @@ async function processarEvento(db, canal, corpo) {
   return { resultado: 'ignorado', motivo: `evento ${tipo || 'desconhecido'}` };
 }
 
-// Guarda uma mensagem recebida na conversa aberta do contato neste canal (cria a conversa se preciso).
+// Guarda uma mensagem recebida na conversa do contato neste canal (cria a conversa só na primeira vez).
+// Se a conversa estava resolvida, ela reabre com todo o histórico: o mesmo cliente
+// nunca começa do zero.
 async function guardarMensagem(db, canal, contato, m, tipoCanal) {
   const agora = Date.now();
-  let conversa = await db.prepare("SELECT id, status FROM conversas WHERE contato_id = ? AND canal_id = ? AND status = 'aberta' ORDER BY id DESC LIMIT 1")
+  let conversa = await db.prepare('SELECT id, status FROM conversas WHERE contato_id = ? AND canal_id = ? ORDER BY id DESC LIMIT 1')
     .get(contato.id, canal.id);
   let nova = false;
+  if (conversa && conversa.status !== 'aberta' && !m.fromMe) {
+    await db.prepare("UPDATE conversas SET status = 'aberta' WHERE id = ?").run(conversa.id);
+    conversa.status = 'aberta';
+  }
   if (!conversa) {
     const id = Number((await db.prepare(`
       INSERT INTO conversas (protocolo, contato_id, equipe_id, atendente_id, canal, status, nao_lidas, criada_em, atualizada_em, canal_id, wa_chatid)

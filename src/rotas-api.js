@@ -12,6 +12,35 @@ const { interpretarStatus } = require('./uazapi');
 const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta']);
 const STATUS = new Set(['aberta', 'resolvida']);
 const TAMANHO_MAXIMO_MENSAGEM = 4000;
+const TAMANHO_MAXIMO_ANEXO = 20 * 1024 * 1024; // 20 MB: é o limite que o Telegram aceita de um bot
+const VALIDADE_LINK_ANEXO_S = 15 * 60; // o WhatsApp/Telegram busca o arquivo neste prazo
+
+// Como o arquivo aparece na lista de conversas quando vai sem legenda.
+const ROTULO_MIDIA = { imagem: '[Imagem]', video: '[Vídeo]', audio: '[Áudio]', documento: '[Documento]' };
+
+// De que tipo é o arquivo, para o chat mostrar imagem, vídeo, áudio ou documento.
+function tipoDoArquivo(mime, nome = '') {
+  const m = String(mime || '').toLowerCase();
+  if (m.startsWith('image/')) return 'imagem';
+  if (m.startsWith('video/')) return 'video';
+  if (m.startsWith('audio/')) return 'audio';
+  if (/\.(jpe?g|png|gif|webp|bmp)$/i.test(nome)) return 'imagem';
+  if (/\.(mp4|mov|webm|mkv)$/i.test(nome)) return 'video';
+  if (/\.(mp3|ogg|oga|m4a|wav|opus)$/i.test(nome)) return 'audio';
+  return 'documento';
+}
+
+// O nome do arquivo chega codificado no cabeçalho (acentos não passam em cabeçalho puro).
+function nomeDoCabecalho(valor, padrao = 'arquivo') {
+  let nome = '';
+  try {
+    nome = decodeURIComponent(String(valor || ''));
+  } catch {
+    nome = String(valor || '');
+  }
+  nome = nome.replace(/[\r\n"\\/]+/g, ' ').trim().slice(0, 120);
+  return nome || padrao;
+}
 
 function lerJson(texto, padrao = null) {
   if (!texto) return padrao;
@@ -107,6 +136,9 @@ function criarRotasApi(db, opcoes = {}) {
     inserirMensagem: db.prepare(`
       INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, entrega, criada_em)
       VALUES (?, ?, ?, ?, ?, ?)`),
+    inserirAnexo: db.prepare(`
+      INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, entrega, criada_em, midia_tipo, midia_nome, midia_mime, midia_chave, midia_tamanho)
+      VALUES (?, 'atendente', ?, ?, 'enviada', ?, ?, ?, ?, ?, ?)`),
     equipeExiste: db.prepare('SELECT 1 FROM equipes WHERE id = ?'),
     usuarioExiste: db.prepare('SELECT 1 FROM usuarios WHERE id = ? AND ativo = 1'),
   };
@@ -153,7 +185,7 @@ function criarRotasApi(db, opcoes = {}) {
       id: m.id,
       tipo: m.tipo,
       texto: m.texto,
-      midia: m.midia_id ? { tipo: m.midia_tipo || 'documento', nome: m.midia_nome || null, mime: m.midia_mime || null, url: `/api/midia/${m.id}` } : null,
+      midia: (m.midia_id || m.midia_chave) ? { tipo: m.midia_tipo || 'documento', nome: m.midia_nome || null, mime: m.midia_mime || null, url: `/api/midia/${m.id}` } : null,
       entrega: m.entrega,
       criadaEm: m.criada_em,
       autor: m.autor_id ? { id: m.autor_id, nome: m.autor_nome, nomeCurto: nomeCurto(m.autor_nome) } : null,
@@ -244,6 +276,7 @@ function criarRotasApi(db, opcoes = {}) {
       primeiraResposta: formatarPrimeiraResposta(media),
       canais: await resumoCanais(req),
       saldoAtivo: Boolean(saldo && saldo.configurado),
+      anexosAtivos: Boolean(arquivos && arquivos.configurado),
     });
   });
 
@@ -287,7 +320,9 @@ function criarRotasApi(db, opcoes = {}) {
     const campos = ['atualizada_em = ?'];
     const valores = [agora];
     if (tipo === 'atendente') {
-      if (!c.atendente) { campos.push('atendente_id = ?'); valores.push(req.usuario.id); }
+      // Quem respondeu por último passa a ser o atendente da conversa: é o nome que
+      // aparece no selo da lista, porque é quem está atendendo agora.
+      if (c.atendente?.id !== req.usuario.id) { campos.push('atendente_id = ?'); valores.push(req.usuario.id); }
       if (c.status === 'resolvida') { campos.push("status = 'aberta'"); }
     }
     valores.push(c.id);
@@ -322,6 +357,77 @@ function criarRotasApi(db, opcoes = {}) {
     }
 
     const mensagem = formatarMensagem(await sql.mensagemPorId.get(Number(info.lastInsertRowid)));
+    res.status(201).json({ mensagem, conversa: await buscarConversa(c.id), erroEnvio });
+  });
+
+  // Anexo enviado pelo atendente: o arquivo vai para o S3 e o canal do cliente
+  // recebe um endereço assinado (de poucos minutos) para buscar o arquivo lá.
+  r.post('/conversas/:id/anexos', express.raw({ type: () => true, limit: '20mb' }), comConversa, async (req, res) => {
+    const c = req.conversa;
+    if (!arquivos?.configurado) {
+      return res.status(400).json({ erro: 'Envio de anexos indisponível: configure o S3 no servidor (S3_ACCESS_KEY_ID e S3_SECRET_ACCESS_KEY).' });
+    }
+    const bytes = Buffer.isBuffer(req.body) ? req.body : null;
+    if (!bytes?.length) return res.status(400).json({ erro: 'Nenhum arquivo recebido.' });
+    if (bytes.length > TAMANHO_MAXIMO_ANEXO) {
+      return res.status(413).json({ erro: 'Arquivo muito grande (o limite é 20 MB).' });
+    }
+
+    const nome = nomeDoCabecalho(req.get('x-nome-arquivo'));
+    const mime = String(req.get('content-type') || 'application/octet-stream').split(';')[0].trim();
+    const legenda = nomeDoCabecalho(req.get('x-legenda'), '').slice(0, 1024);
+    const tipo = tipoDoArquivo(mime, nome);
+
+    let guardado;
+    try {
+      guardado = await arquivos.enviar(bytes, { nome, tipo: mime, pasta: `conversa-${c.id}` });
+    } catch (erro) {
+      console.error('Não foi possível guardar o anexo:', erro.message);
+      return res.status(502).json({ erro: 'Não foi possível guardar o arquivo. Tente de novo.' });
+    }
+
+    const agora = Date.now();
+    const texto = legenda || ROTULO_MIDIA[tipo] || '[Arquivo]';
+    const info = await sql.inserirAnexo.run(c.id, req.usuario.id, texto, agora, tipo, nome, mime, guardado.chave, guardado.tamanho);
+    const mensagemId = Number(info.lastInsertRowid);
+
+    const campos = ['atualizada_em = ?'];
+    const valores = [agora];
+    if (c.atendente?.id !== req.usuario.id) { campos.push('atendente_id = ?'); valores.push(req.usuario.id); }
+    if (c.status === 'resolvida') campos.push("status = 'aberta'");
+    valores.push(c.id);
+    await db.prepare(`UPDATE conversas SET ${campos.join(', ')} WHERE id = ?`).run(...valores);
+
+    // Entrega no canal do cliente (a conversa do chat do site não tem canal externo).
+    let erroEnvio = null;
+    if (c.canalId) {
+      const canalRow = await db.prepare('SELECT * FROM canais WHERE id = ?').get(c.canalId);
+      try {
+        if (!canalRow) throw new Error('O canal desta conversa não existe mais.');
+        const url = arquivos.urlAssinada(guardado.chave, VALIDADE_LINK_ANEXO_S);
+        let idExterno = null;
+        if (canalRow.tipo === 'telegram') {
+          if (!telegram?.enviarArquivo) throw new Error('Integração com Telegram indisponível.');
+          if (!c.waChatid) throw new Error('Conversa sem identificação do chat no Telegram.');
+          const r2 = await telegram.enviarArquivo(canalRow.instancia_token, c.waChatid, { url, tipo, legenda });
+          idExterno = r2?.messageId != null ? `tg:${c.waChatid}:${r2.messageId}` : null;
+        } else {
+          const numero = c.waChatid ? canais.numeroDoChat(c.waChatid) : canais.somenteDigitos(c.contato.telefone);
+          if (!uazapi?.configurado) throw new Error('Servidor do WhatsApp não configurado.');
+          if (!numero) throw new Error('Conversa sem canal ou número de WhatsApp.');
+          const r2 = await uazapi.enviarMidia(canalRow.instancia_token, numero, {
+            url, nome, legenda, tipo: { imagem: 'image', video: 'video', audio: 'audio', documento: 'document' }[tipo],
+          });
+          idExterno = r2?.messageid || r2?.id || r2?.key?.id || null;
+        }
+        if (idExterno) await db.prepare('UPDATE mensagens SET externo_id = ? WHERE id = ?').run(String(idExterno), mensagemId);
+      } catch (erro) {
+        erroEnvio = erro.message;
+        await db.prepare("UPDATE mensagens SET entrega = 'falhou' WHERE id = ?").run(mensagemId);
+      }
+    }
+
+    const mensagem = formatarMensagem(await sql.mensagemPorId.get(mensagemId));
     res.status(201).json({ mensagem, conversa: await buscarConversa(c.id), erroEnvio });
   });
 

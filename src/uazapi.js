@@ -72,6 +72,13 @@ function criarUazapi({ url, adminToken, fetchImpl = globalThis.fetch, timeoutMs 
       }
     },
     enviarTexto: (token, numero, texto) => chamar('POST', '/send/text', { token, corpo: { number: numero, text: texto } }),
+
+    // Envia um arquivo pelo endereço (URL assinada do S3): o servidor do uazapi
+    // busca o arquivo e entrega ao cliente no WhatsApp.
+    enviarMidia: (token, numero, { url, tipo = 'document', nome = '', legenda = '' } = {}) => chamar('POST', '/send/media', {
+      token,
+      corpo: { number: numero, type: tipo, file: url, text: legenda || '', docName: nome || undefined },
+    }),
   };
 }
 

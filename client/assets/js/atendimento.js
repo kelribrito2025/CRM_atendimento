@@ -51,6 +51,8 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     cadeadoGrande: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
     alerta: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8E1F16" stroke-width="2.2"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.3 3.9L2 19a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"></path></svg>',
     fechar: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18"></path><path d="M6 6l12 12"></path></svg>',
+    cadeado: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10" width="16" height="10" rx="2.4"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
+    check: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>',
   };
 
   const NOME_CANAL = { whatsapp: 'WhatsApp', telegram: 'Telegram', widget: 'Chat do site' };
@@ -327,6 +329,85 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       if (volta && !volta.value) { volta.value = textoAnterior || provisoria.texto; ajustarAltura(volta); }
       toast(e.message, 5000);
     } finally {
+      estado.enviando = false;
+    }
+  }
+
+  /* ---------------------------- anexos ---------------------------- */
+  const TAMANHO_MAXIMO_ANEXO = 20 * 1024 * 1024;
+
+  function tipoDoArquivo(arquivo) {
+    const m = String(arquivo.type || '').toLowerCase();
+    if (m.startsWith('image/')) return 'imagem';
+    if (m.startsWith('video/')) return 'video';
+    if (m.startsWith('audio/')) return 'audio';
+    return 'documento';
+  }
+
+  function escolherAnexo() {
+    if (!estado.conversa) return;
+    if (!estado.resumo?.anexosAtivos) {
+      return toast('Envio de anexos indisponível: peça ao responsável para configurar o armazenamento de arquivos no servidor.', 6000);
+    }
+    const seletor = el('input', { type: 'file', style: 'display:none', accept: '*/*' });
+    seletor.addEventListener('change', () => {
+      const arquivo = seletor.files?.[0];
+      seletor.remove();
+      if (arquivo) enviarAnexo(arquivo);
+    });
+    document.body.append(seletor);
+    seletor.click();
+  }
+
+  // O arquivo aparece na hora no chat, marcado como "enviando", e vai para o cliente.
+  async function enviarAnexo(arquivo) {
+    const c = estado.conversa;
+    if (!c || estado.enviando) return;
+    if (arquivo.size > TAMANHO_MAXIMO_ANEXO) return toast('Arquivo muito grande: o limite é 20 MB.', 5000);
+    estado.enviando = true;
+
+    const tipo = tipoDoArquivo(arquivo);
+    const previa = tipo === 'imagem' || tipo === 'video' ? URL.createObjectURL(arquivo) : null;
+    const provisoria = {
+      id: `tmp-${Date.now()}`,
+      tipo: 'atendente',
+      texto: '',
+      entrega: 'enviando',
+      criadaEm: Date.now(),
+      autor: { id: estado.resumo?.usuario?.id, nome: estado.resumo?.usuario?.nome, nomeCurto: estado.resumo?.usuario?.nomeCurto || 'Você' },
+      midia: { tipo, nome: arquivo.name, mime: arquivo.type || null, url: previa },
+      provisoria: true,
+    };
+    c.mensagens.push(provisoria);
+    aplicarConversa(c);
+
+    try {
+      const resposta = await fetch(`/api/conversas/${c.id}/anexos`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': arquivo.type || 'application/octet-stream',
+          'x-nome-arquivo': encodeURIComponent(arquivo.name || 'arquivo'),
+        },
+        body: arquivo,
+      });
+      if (resposta.status === 401) { location.href = `/login?next=${encodeURIComponent(location.pathname)}`; return; }
+      const r = await resposta.json().catch(() => ({}));
+      if (!resposta.ok) throw new Error(r.erro || `Erro ${resposta.status}`);
+      if (r.erroEnvio) toast(`Não foi possível enviar pelo ${NOME_CANAL[c.canal] || c.canal}: ${r.erroEnvio}`, 5000);
+      const posicao = c.mensagens.findIndex((m) => m.id === provisoria.id);
+      if (posicao >= 0) c.mensagens[posicao] = r.mensagem; else c.mensagens.push(r.mensagem);
+      Object.assign(c, { status: r.conversa.status, atendente: r.conversa.atendente, atualizadaEm: r.conversa.atualizadaEm });
+      aplicarConversa(c);
+      await Promise.all([carregarResumo(), carregarConversas()]);
+    } catch (e) {
+      const posicao = c.mensagens.findIndex((m) => m.id === provisoria.id);
+      if (posicao >= 0) c.mensagens.splice(posicao, 1);
+      aplicarConversa(c);
+      toast(e.message, 5000);
+    } finally {
+      if (previa) URL.revokeObjectURL(previa);
       estado.enviando = false;
     }
   }
@@ -793,6 +874,11 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 
     const legenda = String(m.texto || '').replace(/^\[[^\]]+\]\s*/, '').trim();
     let conteudo;
+    // Arquivo ainda subindo: mostra só o nome, sem link para lugar nenhum.
+    if (!a.url) {
+      conteudo = el('span', { class: 'midia-arquivo' }, icone('anexo', ICONE.clipe), el('span', {}, a.nome || 'Enviando arquivo…'));
+      return el('div', { class: 'balao midia documento' }, conteudo);
+    }
     if (a.tipo === 'imagem') {
       conteudo = el('img', {
         src: a.url, alt: legenda || 'Imagem enviada pelo cliente', class: 'midia-imagem', loading: 'lazy',
@@ -921,7 +1007,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       el('div', { class: `caixa-texto${modoNota ? ' modo-nota' : ''}` },
         textarea,
         el('div', { class: 'compositor-acoes' },
-          el('button', { type: 'button', class: 'btn-icone hov', title: 'Anexo', onclick: () => toast('Envio de anexos: em breve.') }, icone('anexo', ICONE.clipe)),
+          el('button', { type: 'button', class: 'btn-icone hov', title: 'Enviar arquivo (foto, vídeo, áudio ou documento)', onclick: escolherAnexo }, icone('anexo', ICONE.clipe)),
           el('button', {
             type: 'button', class: `btn-icone hov${rapidas.aberto ? ' ativo' : ''}`, title: 'Respostas rápidas',
             onclick: () => (rapidas.aberto ? fecharRapidas() : abrirRapidas()),
@@ -1065,27 +1151,49 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   function blocoPin(c) {
     const ct = c.contato;
     const validado = Boolean(ct.pin && ct.pinValidadoEm);
-    // No Telegram o cliente já chega identificado: o número dele preenche os
-    // quadradinhos quando ainda não há um PIN salvo. No WhatsApp fica vazio.
+    // No Telegram o cliente já chega identificado: o PIN dele vem preenchido.
+    // No WhatsApp começa vazio e o atendente digita o que o cliente informar.
     const doCanal = c.canal === 'telegram' ? (ct.telegramId || '') : '';
-    const valorInicial = saldo.pin || ct.pin || doCanal;
-    const { caixas, pinAtual } = camposPin(valorInicial);
+    const valorInicial = String(saldo.pin || ct.pin || doCanal || '').trim();
     const podeConsultar = Boolean(estado.resumo?.saldoAtivo);
+    const botaoSaldo = (ler) => (podeConsultar
+      ? el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => consultarSaldo(ler()) },
+        saldo.cliente || saldo.erro ? 'Consultar de novo' : 'Consultar saldo')
+      : null);
 
-    return el('div', { class: `bloco-pin${validado ? '' : ' pendente'}` },
+    // Já tem PIN: card enxuto, só com o número e o sinal de conferido.
+    if (valorInicial) {
+      // Verde quando o PIN veio do próprio cliente (Telegram) ou já foi conferido.
+      const confirmado = Boolean(ct.pin) || validado;
+      const campo = el('input', {
+        class: 'pin-valor', type: 'text', inputmode: 'numeric', maxlength: '12', value: valorInicial,
+        'aria-label': 'PIN do cliente', onfocus: () => campo.select(),
+      });
+      return el('div', { class: `bloco-pin${confirmado ? '' : ' pendente'} compacto` },
+        el('div', { class: 'pin-pronto' },
+          icone('pin', ICONE.cadeado),
+          campo,
+          el('span', {
+            class: `ok${confirmado ? '' : ' pendente'}`,
+            title: validado
+              ? `Conferido às ${horaCurta(ct.pinValidadoEm)} por ${ct.pinValidadoPor || 'equipe'}`
+              : (confirmado ? 'PIN informado pelo cliente' : 'Ainda não conferido'),
+            html: ICONE.check,
+          })),
+        botaoSaldo(() => campo.value),
+        blocoSaldo());
+    }
+
+    const { caixas, pinAtual } = camposPin('');
+    return el('div', { class: 'bloco-pin pendente' },
       el('div', { class: 'cab' },
         iconeCanal(c.canal, 16),
         el('span', { class: 'rotulo' }, 'PIN do cliente'),
-        el('span', { class: `selo${validado ? '' : ' pendente'}` }, validado ? 'Conferido' : 'Pendente')),
+        el('span', { class: 'selo pendente' }, 'Pendente')),
       el('div', { class: 'pin-digitos' }, ...caixas),
       el('div', { class: 'linha-pin' },
-        el('span', { class: 'pin-info' }, validado
-          ? `Conferido às ${horaCurta(ct.pinValidadoEm)} por ${ct.pinValidadoPor || 'equipe'}`
-          : 'Digite o PIN que o cliente informou.'),
-        podeConsultar
-          ? el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => consultarSaldo(pinAtual()) },
-            saldo.cliente || saldo.erro ? 'Consultar de novo' : 'Consultar saldo')
-          : null),
+        el('span', { class: 'pin-info' }, 'Digite o PIN que o cliente informou.'),
+        botaoSaldo(pinAtual)),
       blocoSaldo());
   }
 
@@ -1124,7 +1232,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       el('div', { class: 'painel-topo' },
         avatarCliente({ canal: c.canal, contato: { iniciais: iniciais(ct.empresa || ct.nome) } }, 'avatar-quadrado'),
         el('div', { class: 'membro-info' },
-          el('span', { class: 'painel-nome' }, ct.empresa || ct.nome),
+          el('span', { class: 'painel-nome' }, ct.empresa || 'Ficha do cliente'),
           el('span', { class: 'painel-sub' }, ct.cnpj || ct.telefone || (ct.telegramUsuario ? `@${ct.telegramUsuario}` : ''))),
         el('button', { type: 'button', class: 'link-btn', onclick: () => toast('Abrir conta do cliente: em breve.') }, 'Abrir conta')),
       el('div', { class: 'rolagem painel-corpo' },
@@ -1134,7 +1242,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
             el('span', { class: 'k' }, k), el('span', { class: `v${cor ? ` ${cor}` : ''}` }, v))))) : null,
         c.alerta ? el('div', { class: 'alerta' }, icone('alerta', ICONE.alerta),
           el('span', {}, el('strong', {}, `${c.alerta.titulo} `), c.alerta.texto)) : null,
-        secao('Notas internas',
+        el('div', { class: 'secao' },
           el('div', { class: 'caixa-nota' }, textareaNota,
             el('div', { class: 'rodape' },
               el('span', { class: 'dica' }, 'Só a equipe vê.'),
@@ -1142,10 +1250,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
           ...notas.map((n) => el('div', { class: 'nota-item' },
             el('span', { class: 't' }, n.texto),
             el('span', { class: 'm' }, `${n.autor?.nomeCurto || 'Equipe'} · ${horaLista(n.criadaEm) === horaCurta(n.criadaEm) ? horaCurta(n.criadaEm) : `${horaLista(n.criadaEm)} ${horaCurta(n.criadaEm)}`}`))),
-          notas.length ? null : el('span', { class: 'dica', style: 'font-size:12px;color:#4C6355' }, 'Nenhuma nota ainda.')),
-        el('div', { class: 'acoes-grid' },
-          el('button', { type: 'button', class: 'btn-primario pequeno', onclick: () => toast('Estorno pelo CRM: em breve.') }, 'Estornar'),
-          el('button', { type: 'button', class: 'btn-branco pequeno hov', onclick: () => toast('Faturas do cliente: em breve.') }, 'Ver faturas'))));
+          notas.length ? null : el('span', { class: 'dica', style: 'font-size:12px;color:#4C6355' }, 'Nenhuma nota ainda.'))));
   }
 
 

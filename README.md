@@ -137,6 +137,12 @@ Clicando na resposta, o texto entra no campo de mensagem e o painel fecha. O ate
 
 Ao criar, escolha quem enxerga: **todas as equipes**, **uma equipe** ou **só eu**. Cada pessoa só vê o que lhe cabe, e só quem criou (ou um administrador) pode alterar e excluir. O CRM conta quantas vezes cada atalho foi usado e mostra as mais usadas primeiro.
 
+## Enviar arquivos para o cliente
+
+O botão do clipe, ao lado do campo de escrever, envia foto, vídeo, áudio ou documento (até 20 MB). O arquivo é guardado no S3 e o WhatsApp ou o Telegram do cliente recebe um endereço temporário (15 minutos) para buscá-lo — o endereço do bucket nunca aparece na tela nem para o cliente.
+
+Precisa do S3 configurado (veja a seção abaixo). Sem ele, o botão avisa em vez de falhar calado.
+
 ## Chat do site (estilo Intercom)
 
 O cliente conversa pelo painel dele, no site da empresa, e a conversa cai na mesma caixa de entrada do CRM — com o selo **Chat do site** ao lado do nome.
@@ -253,13 +259,14 @@ npm run usuario -- --listar
   - chat com histórico, envio de resposta, nota interna e troca de equipe/atendente;
   - marcar conversa como resolvida ou reabrir;
   - painel do cliente com PIN, dados da conta, alertas e notas.
+- Envio de anexos pelo atendente (foto, vídeo, áudio e documento até 20 MB), entregues no WhatsApp e no Telegram do cliente.
 - Chat do site (estilo Intercom) para o cliente conversar pelo painel dele, com a conversa caindo na mesma caixa de entrada.
 - Dados de exemplo opcionais (`DADOS_EXEMPLO=true`) para testar a tela.
 - Testes automáticos (`npm test`).
 
 ## O que ainda é só visual ("em breve")
 
-Botões que mostram um aviso e ainda não fazem nada: **Entrar com Google Workspace**, **Anexo**, **Respostas rápidas**, **Estornar**, **Ver faturas**, **Abrir conta**, **Nova equipe**, **Adicionar à equipe**, **Filtros** e os outros módulos do menu lateral.
+Botões que mostram um aviso e ainda não fazem nada: **Entrar com Google**, **Abrir conta**, **Nova equipe**, **Adicionar à equipe**, **Filtros** e os outros módulos do menu lateral.
 
 No Telegram, a foto de perfil do cliente aparece no avatar (o CRM confere uma vez por dia se mudou). No WhatsApp, a foto aparece quando o servidor do uazapi manda o endereço dela no aviso da mensagem; a API oficial deles não tem um jeito de pedir a foto de um contato. Fotos, áudios, vídeos e documentos aparecem dentro da conversa (o CRM baixa o arquivo com o token do bot, que nunca vai para o navegador). No WhatsApp, mídias ainda aparecem só como texto, por exemplo "[Imagem]".
 

@@ -98,6 +98,24 @@ function criarTelegram({ fetchImpl = globalThis.fetch, base = 'https://api.teleg
     return { messageId: r?.message_id ?? null, chatId: r?.chat?.id ?? chatId };
   }
 
+  // Envia um arquivo para o cliente. O Telegram busca sozinho pelo endereço
+  // (URL assinada do S3, que vale poucos minutos), então nada trafega duas vezes.
+  const METODO_POR_TIPO = {
+    imagem: ['sendPhoto', 'photo'],
+    video: ['sendVideo', 'video'],
+    audio: ['sendAudio', 'audio'],
+    documento: ['sendDocument', 'document'],
+  };
+
+  async function enviarArquivo(token, chatId, { url, tipo = 'documento', legenda = '' } = {}) {
+    if (!url) throw new ErroTelegram('Sem endereço do arquivo para enviar.');
+    const [metodo, campo] = METODO_POR_TIPO[tipo] || METODO_POR_TIPO.documento;
+    const corpo = { chat_id: chatId, [campo]: String(url) };
+    if (legenda) corpo.caption = String(legenda).slice(0, 1024);
+    const r = await chamar(token, metodo, corpo);
+    return { messageId: r?.message_id ?? null, chatId: r?.chat?.id ?? chatId };
+  }
+
   // Onde o arquivo está guardado no Telegram (vale ~1 hora).
   async function obterArquivo(token, fileId) {
     const r = await chamar(token, 'getFile', { file_id: String(fileId) });
@@ -199,7 +217,7 @@ function criarTelegram({ fetchImpl = globalThis.fetch, base = 'https://api.teleg
     },
   };
 
-  return { base, validarToken, removerWebhook, enviarTexto, obterArquivo, baixarArquivo, obterFotoPerfil, obterUpdates, sondagem };
+  return { base, validarToken, removerWebhook, enviarTexto, enviarArquivo, obterArquivo, baixarArquivo, obterFotoPerfil, obterUpdates, sondagem };
 }
 
 module.exports = { criarTelegram, tokenValido, traduzirErro, ErroTelegram };

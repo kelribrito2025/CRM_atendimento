@@ -59,7 +59,8 @@ function criarWidget(db, { segredo = '', equipePadraoId = null } = {}) {
       if (pinNovo && pinNovo !== contato.pin && !contato.pin_validado_em) await db.prepare('UPDATE contatos SET pin = ? WHERE id = ?').run(pinNovo, contato.id);
     }
 
-    let conversa = await db.prepare("SELECT * FROM conversas WHERE contato_id = ? AND canal = 'widget' AND status = 'aberta' ORDER BY id DESC LIMIT 1").get(contato.id);
+    // Sempre a mesma conversa deste cliente: se estava resolvida, ela reabre com o histórico.
+    let conversa = await db.prepare("SELECT * FROM conversas WHERE contato_id = ? AND canal = 'widget' ORDER BY id DESC LIMIT 1").get(contato.id);
     if (!conversa) {
       const agora = Date.now();
       const nova = await db.prepare(`
