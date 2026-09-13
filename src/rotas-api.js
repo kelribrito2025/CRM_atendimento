@@ -323,8 +323,10 @@ function criarRotasApi(db, opcoes = {}) {
     // conversa sai delas e passa para a caixa "Encerradas".
     if (caixa === 'minhas') lista = lista.filter((c) => c.atendente?.id === req.usuario.id);
     if (caixa === 'sem_resposta') lista = lista.filter((c) => c.semResposta);
+    // Conversa encerrada sai de todas as listas e fica guardada em "Encerradas".
+    // Na busca ela continua aparecendo, para achar o histórico de um cliente.
     if (caixa === 'encerradas') lista = lista.filter((c) => c.status === 'resolvida');
-    else if (caixa !== 'todas') lista = lista.filter((c) => c.status === 'aberta');
+    else if (!busca) lista = lista.filter((c) => c.status === 'aberta');
     if (busca) {
       lista = lista.filter((c) => [
         c.contato.nome, c.contato.empresa, c.contato.cnpj, c.contato.telefone, c.protocolo, c.ultimaTexto,

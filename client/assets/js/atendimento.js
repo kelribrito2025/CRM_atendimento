@@ -223,6 +223,24 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     }
   }
 
+  // A atualização automática traz só as últimas mensagens. Se a pessoa já tinha
+  // subido a rolagem e carregado o histórico antigo, ele é preservado aqui.
+  function juntarHistorico(atual, conversa) {
+    if (!atual) return conversa;
+    const porId = new Map(conversa.mensagens.map((m) => [m.id, m]));
+    const antigas = atual.mensagens
+      .filter((m) => !m.provisoria && !conversa.mensagens.some((n) => n.id === m.id))
+      .map((m) => porId.get(m.id) || m);
+    const atualizadas = atual.mensagens
+      .filter((m) => !m.provisoria && porId.has(m.id))
+      .map((m) => porId.get(m.id));
+    const novas = conversa.mensagens.filter((m) => !atual.mensagens.some((n) => n.id === m.id));
+    conversa.mensagens = [...antigas, ...atualizadas, ...novas];
+    // Se o histórico inteiro já estava na tela, não volta a pedir de novo.
+    if (atual.temMaisMensagens === false) conversa.temMaisMensagens = false;
+    return conversa;
+  }
+
   async function abrirConversa(id) {
     estado.conversaId = id;
     // O saldo consultado vale só para a conversa em que foi pedido.
@@ -252,14 +270,17 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       renderLista();
       if (!estado.conversaId) return;
       const { conversa } = await api(`/conversas/${estado.conversaId}`);
-      const atual = estado.conversa;
+      if (estado.conversaId !== conversa.id) return; // trocou de conversa enquanto buscava
+      const atual = estado.conversa?.id === conversa.id ? estado.conversa : null;
+      const ultimaNova = conversa.mensagens.at(-1)?.id ?? null;
+      const ultimaAtual = atual?.mensagens.filter((m) => !m.provisoria).at(-1)?.id ?? null;
       const mudou = !atual
-        || conversa.mensagens.length !== atual.mensagens.length
+        || ultimaNova !== ultimaAtual
         || conversa.status !== atual.status
         || conversa.atendente?.id !== atual.atendente?.id
         || conversa.equipe?.id !== atual.equipe?.id
         || conversa.contato.pinValidadoEm !== atual.contato.pinValidadoEm;
-      if (mudou) aplicarConversa(conversa);
+      if (mudou) aplicarConversa(juntarHistorico(atual, conversa));
     } catch {
       /* silencioso: tenta de novo no próximo ciclo */
     }

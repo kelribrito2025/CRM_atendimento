@@ -82,7 +82,7 @@ async function conversaDeWhatsapp(s, { nome = 'Cliente Teste', numero = '5531988
     EventType: 'messages',
     message: { messageid: id, chatid: `${numero}@s.whatsapp.net`, fromMe: false, messageType: 'text', text: texto, senderName: nome, messageTimestamp: Math.floor(quando / 1000) },
   });
-  await evento('Oi, preciso de ajuda', 'E1', Date.now() - 60_000);
+  await evento('Oi, preciso de ajuda', `E1-${numero}`, Date.now() - 60_000);
   const lista = await s.chamar(`/api/conversas?q=${encodeURIComponent(nome)}`);
   return { canal, evento, conversa: lista.dados.conversas[0] };
 }
@@ -352,8 +352,11 @@ test('encerrar pelo card: a conversa sai de Minhas e volta com o histórico', as
     assert.equal(encerrada.dados.conversa.status, 'resolvida');
     assert.deepEqual((await s.chamar('/api/conversas?caixa=minhas')).dados.conversas, [], 'some da lista Minhas');
     assert.equal((await s.chamar('/api/resumo')).dados.caixas.minhas, 0);
-    // mas continua em Todas, para achar depois
-    assert.equal((await s.chamar('/api/conversas')).dados.conversas.filter((c) => c.id === conversa.id).length, 1);
+    // também sai de "Todas": encerrada fica guardada em "Encerradas"
+    assert.deepEqual((await s.chamar('/api/conversas')).dados.conversas, [], 'some também de Todas');
+    assert.equal((await s.chamar('/api/conversas?caixa=encerradas')).dados.conversas.length, 1);
+    // mas a busca continua achando, para ver o histórico do cliente
+    assert.equal((await s.chamar('/api/conversas?q=Cliente%20Teste')).dados.conversas.length, 1);
 
     // o mesmo cliente volta: mesma conversa, histórico inteiro
     await evento('Voltei!', 'E9', Date.now() + 60_000);
@@ -385,5 +388,28 @@ test('caixa Encerradas: guarda o que foi encerrado e tira das outras caixas', as
     await s.chamar(`/api/conversas/${conversa.id}/status`, 'POST', { status: 'aberta' });
     assert.deepEqual((await s.chamar('/api/conversas?caixa=encerradas')).dados.conversas, []);
     assert.equal((await s.chamar('/api/conversas?caixa=minhas')).dados.conversas.length, 1);
+  } finally { await s.fechar(); }
+});
+
+test('conversa encerrada sai de "Todas" e só a busca ainda encontra', async () => {
+  const s = await subirServidor();
+  try {
+    const { conversa } = await conversaDeWhatsapp(s, { nome: 'Ana Prado', numero: '5531977776666' });
+    const outra = await conversaDeWhatsapp(s, { nome: 'Beto Lima', numero: '5531955554444' });
+
+    assert.equal((await s.chamar('/api/conversas')).dados.conversas.length, 2);
+    await s.chamar(`/api/conversas/${conversa.id}/status`, 'POST', { status: 'resolvida' });
+
+    const todas = await s.chamar('/api/conversas');
+    assert.deepEqual(todas.dados.conversas.map((c) => c.id), [outra.conversa.id], 'só a que ficou aberta');
+    assert.equal((await s.chamar('/api/resumo')).dados.caixas.todas, 1);
+
+    // a busca pelo nome ainda traz a encerrada
+    const busca = await s.chamar('/api/conversas?q=Ana');
+    assert.deepEqual(busca.dados.conversas.map((c) => c.status), ['resolvida']);
+
+    // reabrindo, volta para Todas
+    await s.chamar(`/api/conversas/${conversa.id}/status`, 'POST', { status: 'aberta' });
+    assert.equal((await s.chamar('/api/conversas')).dados.conversas.length, 2);
   } finally { await s.fechar(); }
 });
