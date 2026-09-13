@@ -54,6 +54,11 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     cadeadoGrande: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
     alerta: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8E1F16" stroke-width="2.2"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.3 3.9L2 19a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"></path></svg>',
     fechar: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18"></path><path d="M6 6l12 12"></path></svg>',
+    pessoas: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 00-3-3.9"></path></svg>',
+    elo: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.5.5l2-2a5 5 0 00-7-7l-1 1"></path><path d="M14 11a5 5 0 00-7.5-.5l-2 2a5 5 0 007 7l1-1"></path></svg>',
+    tela: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8"></path><path d="M12 16v4"></path></svg>',
+    sino: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 01-3.4 0"></path></svg>',
+    engrenagem: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 00.3 1.9 2 2 0 11-2.8 2.8 1.7 1.7 0 00-2.9 1.2 2 2 0 11-4 0 1.7 1.7 0 00-2.9-1.2 2 2 0 11-2.8-2.8A1.7 1.7 0 002.6 14a2 2 0 110-4 1.7 1.7 0 001.2-2.9 2 2 0 112.8-2.8A1.7 1.7 0 0010 2.6a2 2 0 114 0 1.7 1.7 0 002.9 1.2 2 2 0 112.8 2.8A1.7 1.7 0 0021.4 10a2 2 0 110 4 1.7 1.7 0 00-2 1z"></path></svg>',
     cadeado: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10" width="16" height="10" rx="2.4"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
     checkCaixa: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4C6355" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M8.2 12.3l2.6 2.6 5-5.2"></path></svg>',
     check: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>',
@@ -1617,6 +1622,292 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 
 
   /* ================================================================
+   * Configurações
+   * ============================================================== */
+  const config = { aberto: false, secao: 'equipe', dados: null, carregando: false, erro: null, convite: null, formConvite: null };
+
+  const SECOES_CONFIG = [
+    { grupo: 'Atendimento' },
+    { id: 'equipe', nome: 'Equipe', icone: 'pessoas', soAdmin: true },
+    { id: 'canais', nome: 'Canais', icone: 'elo', soAdmin: true },
+    { id: 'respostas', nome: 'Respostas rápidas', icone: 'raio' },
+    { grupo: 'Preferências' },
+    { id: 'aparencia', nome: 'Aparência', icone: 'tela', embreve: true },
+    { id: 'notificacoes', nome: 'Notificações', icone: 'sino', embreve: true },
+    { id: 'conta', nome: 'Conta', icone: 'engrenagem', embreve: true },
+  ];
+
+  function abrirConfiguracoes(secao) {
+    config.aberto = true;
+    if (secao) config.secao = secao;
+    $('#area-config').hidden = false;
+    document.querySelector('.area:not(.config)').hidden = true;
+    $('#btn-config').classList.add('ativo');
+    document.querySelector('.rail-btn[title="Atendimento"]')?.classList.remove('ativo');
+    renderConfig();
+    if (config.secao === 'equipe') carregarEquipe();
+  }
+
+  function fecharConfiguracoes() {
+    config.aberto = false;
+    $('#area-config').hidden = true;
+    document.querySelector('.area:not(.config)').hidden = false;
+    $('#btn-config').classList.remove('ativo');
+    document.querySelector('.rail-btn[title="Atendimento"]')?.classList.add('ativo');
+  }
+
+  function escolherSecao(id) {
+    config.secao = id;
+    config.convite = null;
+    renderConfig();
+    if (id === 'equipe') carregarEquipe();
+    if (id === 'respostas') carregarRapidas().then(renderConfig).catch(() => {});
+  }
+
+  async function carregarEquipe() {
+    config.carregando = true;
+    config.erro = null;
+    renderConfig();
+    try {
+      config.dados = await api('/equipe');
+    } catch (e) {
+      config.erro = e.message;
+    } finally {
+      config.carregando = false;
+      renderConfig();
+    }
+  }
+
+  function renderConfig() {
+    if (!config.aberto) return;
+    const admin = estado.resumo?.usuario?.papel === 'admin';
+
+    $('#config-menu').replaceChildren(
+      el('h2', {}, 'Configurações'),
+      ...SECOES_CONFIG.map((item) => {
+        if (item.grupo) return el('span', { class: 'rotulo' }, item.grupo);
+        const bloqueado = item.embreve || (item.soAdmin && !admin);
+        const botao = el('button', { type: 'button', class: `config-item${config.secao === item.id ? ' ativo' : ''}`, onclick: () => escolherSecao(item.id) },
+          icone(item.id, ICONE[item.icone]),
+          el('span', { class: 'nome' }, item.nome));
+        return bloqueado
+          ? desligar(botao, item.embreve ? `${item.nome}: em breve` : 'Só um administrador vê esta parte')
+          : botao;
+      }));
+
+    const secao = SECOES_CONFIG.find((i) => i.id === config.secao) || SECOES_CONFIG[1];
+    const corpo = { equipe: corpoEquipe, canais: corpoCanaisConfig, respostas: corpoRespostasConfig }[config.secao];
+    $('#config-painel').replaceChildren(
+      el('div', { class: 'config-topo' },
+        el('div', { class: 'titulo' },
+          el('h3', {}, secao.nome),
+          el('span', { class: 'sub' }, subtituloSecao())),
+        el('button', { type: 'button', class: 'btn-branco hov', onclick: fecharConfiguracoes }, 'Voltar ao atendimento')),
+      el('div', { class: 'config-corpo' }, ...(corpo ? corpo() : [el('div', { class: 'config-vazio' }, 'Em breve.')])));
+  }
+
+  function subtituloSecao() {
+    if (config.secao === 'equipe') {
+      const d = config.dados;
+      if (!d) return 'Carregando…';
+      const ativos = d.usuarios.filter((u) => u.ativo).length;
+      const convites = d.convites.length;
+      return `${ativos} atendente${ativos === 1 ? '' : 's'} ativo${ativos === 1 ? '' : 's'}${convites ? ` · ${convites} convite${convites === 1 ? '' : 's'} pendente${convites === 1 ? '' : 's'}` : ''}`;
+    }
+    if (config.secao === 'canais') return 'WhatsApp, Telegram e o chat do site.';
+    if (config.secao === 'respostas') return 'Mensagens prontas para a equipe usar no chat.';
+    return '';
+  }
+
+  /* ---------------- Configurações › Equipe ---------------- */
+  function corpoEquipe() {
+    if (config.carregando && !config.dados) return [el('div', { class: 'config-vazio' }, 'Carregando…')];
+    if (config.erro) return [el('div', { class: 'aviso erro' }, config.erro)];
+    const d = config.dados;
+    if (!d) return [el('div', { class: 'config-vazio' }, 'Nada por aqui.')];
+
+    const partes = [el('div', { class: 'config-bloco' },
+      el('div', { class: 'cabeca' },
+        el('span', { class: 'rotulo' }, 'Atendentes'),
+        el('span', { class: 'dica' }, 'Cada pessoa vê as caixas das equipes em que está.')),
+      el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, ...d.usuarios.map((u) => linhaPessoa(u, d.equipes))))];
+
+    if (d.convites.length) {
+      partes.push(el('div', { class: 'config-bloco' },
+        el('div', { class: 'cabeca' },
+          el('span', { class: 'rotulo' }, 'Convites pendentes'),
+          el('span', { class: 'dica' }, 'Ainda não criaram a senha. O link vale sete dias.')),
+        el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, ...d.convites.map((c) => linhaConvite(c, d.equipes)))));
+    }
+
+    partes.push(formConvite(d.equipes));
+    return partes;
+  }
+
+  function linhaPessoa(u, equipes) {
+    const eu = u.id === estado.resumo?.usuario?.id;
+    const presenca = u.ativo ? (u.presenca || 'offline') : 'bloqueado';
+    const classePresenca = !u.ativo ? 'aviso' : (u.presenca === 'online' ? '' : 'cinza');
+    return el('div', { class: `pessoa${u.ativo ? '' : ' inativa'}` },
+      el('span', { class: 'avatar p' }, u.iniciais),
+      el('div', { class: 'dados' },
+        el('span', { class: 'nome' }, u.nome, eu ? ' (você)' : ''),
+        el('span', { class: 'email' }, u.email)),
+      el('div', { class: 'equipes' }, ...(u.equipes.length
+        ? u.equipes.map((e) => el('span', { class: 'selo-equipe' }, el('span', { class: 'ponto', style: `background:${e.cor}` }), e.nome))
+        : [el('span', { class: 'dica' }, 'sem equipe')])),
+      el('select', {
+        class: 'papel', 'aria-label': `Papel de ${u.nome}`, disabled: eu ? 'disabled' : null,
+        onchange: (ev) => salvarPessoa(u.id, { papel: ev.target.value }),
+      }, ...['atendente', 'admin'].map((v) => el('option', { value: v, selected: u.papel === v ? 'selected' : null }, v === 'admin' ? 'Administrador' : 'Atendente'))),
+      el('span', { class: `selo-presenca ${classePresenca}`.trim() }, presenca),
+      el('button', {
+        type: 'button', class: 'btn-icone hov', title: u.ativo ? 'Bloquear o acesso' : 'Liberar o acesso',
+        disabled: eu ? 'disabled' : null,
+        onclick: () => salvarPessoa(u.id, { ativo: !u.ativo }),
+      }, svg(u.ativo ? ICONE.cadeado : ICONE.check)),
+      el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => editarEquipesDe(u, equipes) }, 'Equipes'));
+  }
+
+  function linhaConvite(c, equipes) {
+    const nomes = c.equipeIds.map((id) => equipes.find((e) => e.id === id)).filter(Boolean);
+    return el('div', { class: 'pessoa' },
+      el('span', { class: 'avatar p' }, '@'),
+      el('div', { class: 'dados' },
+        el('span', { class: 'nome' }, c.email),
+        el('span', { class: 'email' }, `convidado por ${c.convidadoPor || 'equipe'} · expira ${horaLista(c.expiraEm)}`)),
+      el('div', { class: 'equipes' }, ...nomes.map((e) => el('span', { class: 'selo-equipe' }, el('span', { class: 'ponto', style: `background:${e.cor}` }), e.nome))),
+      el('span', { class: 'papel' }, c.papel === 'admin' ? 'Administrador' : 'Atendente'),
+      el('span', { class: 'selo-presenca aviso' }, 'convite'),
+      el('button', { type: 'button', class: 'btn-suave hov', onclick: () => cancelarConvite(c.id) }, 'Cancelar'));
+  }
+
+  function formConvite(equipes) {
+    const f = config.formConvite || (config.formConvite = { email: '', papel: 'atendente', equipeIds: [] });
+    const campoEmail = el('input', { type: 'email', placeholder: 'nome@empresa.com.br', value: f.email, oninput: () => { f.email = campoEmail.value; } });
+    const campoPapel = el('select', { onchange: () => { f.papel = campoPapel.value; } },
+      ...['atendente', 'admin'].map((v) => el('option', { value: v, selected: f.papel === v ? 'selected' : null }, v === 'admin' ? 'Administrador' : 'Atendente')));
+
+    return el('div', { class: 'config-bloco' },
+      el('div', { class: 'cabeca' },
+        el('span', { class: 'rotulo' }, 'Convidar alguém'),
+        el('span', { class: 'dica' }, 'A pessoa recebe um link para criar a própria senha.')),
+      el('div', { class: 'config-form' },
+        el('div', { class: 'config-linha' },
+          el('label', { class: 'config-campo' }, el('span', {}, 'E-mail'), campoEmail),
+          el('label', { class: 'config-campo', style: 'max-width:200px' }, el('span', {}, 'Papel'), campoPapel)),
+        el('div', { class: 'config-campo' },
+          el('span', {}, 'Equipes'),
+          el('div', { class: 'escolha-equipes' }, ...equipes.map((e) => {
+            const marcada = f.equipeIds.includes(e.id);
+            return el('button', {
+              type: 'button', class: `escolha-equipe${marcada ? ' marcada' : ''}`,
+              onclick: () => {
+                f.equipeIds = marcada ? f.equipeIds.filter((id) => id !== e.id) : [...f.equipeIds, e.id];
+                renderConfig();
+              },
+            }, el('span', { class: 'ponto', style: `background:${e.cor};width:7px;height:7px;border-radius:50%` }), e.nome);
+          }))),
+        el('div', { style: 'display:flex;justify-content:flex-end' },
+          el('button', { type: 'button', class: 'btn-primario', onclick: () => enviarConvite(f) }, 'Enviar convite')),
+        config.convite ? el('div', { class: 'convite-link' },
+          el('span', { class: 'dica', style: 'color:inherit;font-weight:700' }, config.convite.porEmail ? 'Convite enviado por e-mail.' : 'Copie e mande o link:'),
+          el('code', {}, config.convite.link),
+          el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => copiar(config.convite.link) }, 'Copiar')) : null));
+  }
+
+  function copiar(texto) {
+    navigator.clipboard?.writeText(texto).then(() => toast('Link copiado.')).catch(() => toast('Copie o link com Ctrl+C.'));
+  }
+
+  async function salvarPessoa(id, mudanca) {
+    try {
+      await api(`/equipe/usuarios/${id}`, { method: 'PATCH', body: mudanca });
+      await carregarEquipe();
+      await carregarResumo();
+      toast('Pronto.');
+    } catch (e) {
+      toast(e.message, 5000);
+      renderConfig();
+    }
+  }
+
+  function editarEquipesDe(u, equipes) {
+    const atuais = new Set(u.equipes.map((e) => e.id));
+    const caixa = el('div', { class: 'escolha-equipes' }, ...equipes.map((e) => {
+      const botao = el('button', { type: 'button', class: `escolha-equipe${atuais.has(e.id) ? ' marcada' : ''}` },
+        el('span', { class: 'ponto', style: `background:${e.cor};width:7px;height:7px;border-radius:50%` }), e.nome);
+      botao.addEventListener('click', () => {
+        if (atuais.has(e.id)) atuais.delete(e.id); else atuais.add(e.id);
+        botao.classList.toggle('marcada');
+      });
+      return botao;
+    }));
+    const fundo = el('div', { class: 'modal-fundo', onclick: (ev) => { if (ev.target === fundo) fundo.remove(); } },
+      el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true' },
+        el('div', { class: 'modal-corpo' },
+          el('div', { class: 'modal-cab' },
+            el('div', {}, el('h2', {}, `Equipes de ${u.nomeCurto || u.nome}`), el('p', {}, 'A pessoa vê as caixas das equipes marcadas.')),
+            el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: () => fundo.remove() }, svg(ICONE.fechar))),
+          caixa,
+          el('div', { style: 'display:flex;justify-content:flex-end;gap:8px;margin-top:16px' },
+            el('button', { type: 'button', class: 'btn-suave hov', onclick: () => fundo.remove() }, 'Cancelar'),
+            el('button', {
+              type: 'button', class: 'btn-primario',
+              onclick: () => { fundo.remove(); salvarPessoa(u.id, { equipeIds: [...atuais] }); },
+            }, 'Salvar')))));
+    document.body.append(fundo);
+  }
+
+  async function enviarConvite(f) {
+    if (!f.email.trim()) return toast('Digite o e-mail de quem você quer convidar.');
+    try {
+      config.convite = await api('/equipe/convites', { method: 'POST', body: { email: f.email.trim(), papel: f.papel, equipeIds: f.equipeIds } });
+      config.formConvite = { email: '', papel: 'atendente', equipeIds: [] };
+      await carregarEquipe();
+      toast(config.convite.porEmail ? 'Convite enviado.' : 'Convite criado. Copie o link e mande para a pessoa.', 5000);
+    } catch (e) {
+      toast(e.message, 5000);
+    }
+  }
+
+  async function cancelarConvite(id) {
+    if (!window.confirm('Cancelar este convite? O link para de funcionar.')) return;
+    try {
+      await api(`/equipe/convites/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await carregarEquipe();
+      toast('Convite cancelado.');
+    } catch (e) {
+      toast(e.message, 5000);
+    }
+  }
+
+  /* ---------------- Configurações › Canais e Respostas ---------------- */
+  function corpoCanaisConfig() {
+    return [el('div', { class: 'config-bloco' },
+      el('div', { class: 'cabeca' },
+        el('span', { class: 'rotulo' }, 'Canais de mensagem'),
+        el('span', { class: 'dica' }, 'WhatsApp e Telegram podem ficar ligados ao mesmo tempo: as conversas chegam na mesma caixa, com o selo do canal no avatar.')),
+      el('button', { type: 'button', class: 'btn-primario', style: 'align-self:flex-start', onclick: abrirModalCanais }, 'Abrir os canais'))];
+  }
+
+  function corpoRespostasConfig() {
+    const lista = rapidas.lista || [];
+    return [el('div', { class: 'config-bloco' },
+      el('div', { class: 'cabeca' },
+        el('span', { class: 'rotulo' }, `Atalhos salvos · ${lista.length}`),
+        el('span', { class: 'dica' }, 'No chat, digite / ou use o botão do raio para inserir a mensagem pronta.')),
+      ...(lista.length
+        ? lista.map((rr) => el('div', { class: 'pessoa' },
+          el('span', { class: 'rapida-atalho' }, `/${rr.atalho}`),
+          el('div', { class: 'dados' },
+            el('span', { class: 'nome' }, rr.titulo),
+            el('span', { class: 'email' }, rr.texto)),
+          el('span', { class: 'selo-presenca cinza' }, `${rr.usos} uso${rr.usos === 1 ? '' : 's'}`)))
+        : [el('div', { class: 'config-vazio' }, 'Nenhuma resposta rápida criada ainda. Crie pelo botão do raio no chat.')]))];
+  }
+
+  /* ================================================================
    * Canais (WhatsApp via uazapi)
    * ============================================================== */
   let modalCanais = null;
@@ -1911,6 +2202,9 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     // O que ainda não funciona fica desligado, sem responder ao clique.
     desligar($('#btn-filtros'), 'Filtros avançados: em breve');
     document.querySelectorAll('.rail-btn[data-modulo]').forEach((b) => desligar(b, `${b.dataset.modulo}: em breve`));
+
+    $('#btn-config').addEventListener('click', () => (config.aberto ? fecharConfiguracoes() : abrirConfiguracoes()));
+    document.querySelector('.rail-btn[title="Atendimento"]')?.addEventListener('click', fecharConfiguracoes);
 
     const menuUsuario = $('#menu-usuario');
     $('#btn-conectar').addEventListener('click', () => { menuUsuario.hidden = true; abrirModalCanais(); });

@@ -104,7 +104,7 @@ async function usarConvite(db, token, { nome, senha }) {
 
 async function listarConvitesPendentes(db) {
   return await db.prepare(`
-    SELECT c.email, c.papel, c.equipes, c.criado_em, c.expira_em, u.nome AS convidante
+    SELECT c.token_hash, c.email, c.papel, c.equipes, c.criado_em, c.expira_em, u.nome AS convidante
     FROM convites c LEFT JOIN usuarios u ON u.id = c.criado_por
     WHERE c.usado_em IS NULL AND c.expira_em > ?
     ORDER BY c.criado_em DESC`).all(Date.now());

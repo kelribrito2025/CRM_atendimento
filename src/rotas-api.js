@@ -8,6 +8,7 @@ const { tokenValido } = require('./telegram');
 const { normalizarPin } = require('./saldo');
 const { LimitadorTentativas } = require('./limitador');
 const { interpretarStatus } = require('./uazapi');
+const acesso = require('./acesso');
 
 const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta', 'encerradas']);
 // Por onde o cliente escreve: dá para ver a caixa de cada canal separada.
@@ -109,6 +110,7 @@ function criarRotasApi(db, opcoes = {}) {
   const arquivos = opcoes.arquivos || null;
   const uazapi = opcoes.uazapi || null;
   const urlBase = typeof opcoes.urlBase === 'function' ? opcoes.urlBase : () => '';
+  const enviador = opcoes.enviador || { modo: 'silencioso', async enviar() {} };
   const r = express.Router();
 
   r.use((req, res, next) => {
@@ -268,6 +270,135 @@ function criarRotasApi(db, opcoes = {}) {
   }
 
   /* -------------------- rotas -------------------- */
+
+  // Configurações › Equipe: só administrador mexe.
+  function soAdmin(req, res, next) {
+    if (req.usuario.papel !== 'admin') {
+      return res.status(403).json({ erro: 'Só um administrador pode mexer nas configurações da equipe.' });
+    }
+    next();
+  }
+
+  async function equipesDeCadaUm() {
+    const membros = await sql.membros.all();
+    const equipes = await sql.equipes.all();
+    return (usuarioId) => membros
+      .filter((m) => Number(m.usuario_id) === Number(usuarioId))
+      .map((m) => equipes.find((e) => Number(e.id) === Number(m.equipe_id)))
+      .filter(Boolean);
+  }
+
+  r.get('/equipe', soAdmin, async (req, res) => {
+    const daPessoa = await equipesDeCadaUm();
+    const usuarios = (await db.prepare('SELECT id, nome, email, papel, presenca, ativo, criado_em FROM usuarios ORDER BY ativo DESC, nome').all())
+      .map((u) => ({ ...formatarUsuario(u), ativo: Number(u.ativo) === 1, equipes: daPessoa(u.id) }));
+    const convites = (await acesso.listarConvitesPendentes(db)).map((c) => ({
+      id: c.token_hash,
+      email: c.email,
+      papel: c.papel,
+      equipeIds: lerJson(c.equipes, []),
+      criadoEm: c.criado_em,
+      expiraEm: c.expira_em,
+      convidadoPor: c.convidante ? nomeCurto(c.convidante) : null,
+    }));
+    res.json({ usuarios, convites, equipes: await sql.equipes.all() });
+  });
+
+  // Convida alguém por e-mail. O link também volta na resposta, porque enquanto
+  // não houver serviço de e-mail configurado é ele que o administrador repassa.
+  r.post('/equipe/convites', soAdmin, async (req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const papel = req.body?.papel === 'admin' ? 'admin' : 'atendente';
+    const equipeIds = Array.isArray(req.body?.equipeIds) ? req.body.equipeIds.map(Number).filter(Number.isInteger) : [];
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ erro: 'Digite um e-mail válido.' });
+
+    const jaTem = await db.prepare('SELECT id, ativo FROM usuarios WHERE email = ?').get(email);
+    if (jaTem) return res.status(409).json({ erro: 'Já existe uma conta com esse e-mail.' });
+    for (const id of equipeIds) {
+      if (!await sql.equipeExiste.get(id)) return res.status(400).json({ erro: 'Equipe não encontrada.' });
+    }
+
+    const { token, expira } = await acesso.criarConvite(db, { email, papel, equipeIds, criadoPor: req.usuario.id });
+    const link = `${urlBase(req)}/convite?token=${token}`;
+    try {
+      await enviador.enviar({
+        para: email,
+        assunto: 'Convite para o CRM de atendimento',
+        texto: [
+          `${req.usuario.nome} convidou você para o CRM de atendimento.`,
+          '',
+          `Crie sua senha por aqui: ${link}`,
+          `O link vale até ${new Date(expira).toLocaleString('pt-BR')}.`,
+        ].join('\n'),
+      });
+    } catch (erro) {
+      console.error('Não foi possível enviar o e-mail do convite:', erro.message);
+    }
+    res.status(201).json({ link, expiraEm: expira, porEmail: enviador.modo === 'real' });
+  });
+
+  r.delete('/equipe/convites/:id', soAdmin, async (req, res) => {
+    const id = String(req.params.id || '');
+    const info = await db.prepare('DELETE FROM convites WHERE token_hash = ? AND usado_em IS NULL').run(id);
+    if (!Number(info.changes)) return res.status(404).json({ erro: 'Convite não encontrado.' });
+    res.json({ ok: true });
+  });
+
+  // Papel, acesso e equipes de um atendente.
+  r.patch('/equipe/usuarios/:id', soAdmin, async (req, res) => {
+    const id = idDaRota(req);
+    const alvo = id ? await db.prepare('SELECT * FROM usuarios WHERE id = ?').get(id) : null;
+    if (!alvo) return res.status(404).json({ erro: 'Atendente não encontrado.' });
+    const corpo = req.body || {};
+    const euMesmo = Number(alvo.id) === Number(req.usuario.id);
+
+    const campos = [];
+    const valores = [];
+    if ('papel' in corpo) {
+      const papel = corpo.papel === 'admin' ? 'admin' : 'atendente';
+      if (euMesmo && papel !== 'admin') return res.status(400).json({ erro: 'Você não pode tirar o seu próprio acesso de administrador.' });
+      if (papel !== 'admin' && !await outroAdminAtivo(alvo.id)) {
+        return res.status(400).json({ erro: 'Precisa sobrar pelo menos um administrador ativo.' });
+      }
+      campos.push('papel = ?');
+      valores.push(papel);
+    }
+    if ('ativo' in corpo) {
+      const ativo = corpo.ativo ? 1 : 0;
+      if (euMesmo && !ativo) return res.status(400).json({ erro: 'Você não pode bloquear o seu próprio acesso.' });
+      if (!ativo && alvo.papel === 'admin' && !await outroAdminAtivo(alvo.id)) {
+        return res.status(400).json({ erro: 'Precisa sobrar pelo menos um administrador ativo.' });
+      }
+      campos.push('ativo = ?');
+      valores.push(ativo);
+    }
+    if (campos.length) {
+      valores.push(alvo.id);
+      await db.prepare(`UPDATE usuarios SET ${campos.join(', ')} WHERE id = ?`).run(...valores);
+      if ('ativo' in corpo && !corpo.ativo) await db.prepare('DELETE FROM sessoes WHERE usuario_id = ?').run(alvo.id);
+    }
+
+    if (Array.isArray(corpo.equipeIds)) {
+      const ids = corpo.equipeIds.map(Number).filter(Number.isInteger);
+      for (const eid of ids) {
+        if (!await sql.equipeExiste.get(eid)) return res.status(400).json({ erro: 'Equipe não encontrada.' });
+      }
+      await db.prepare('DELETE FROM equipe_membros WHERE usuario_id = ?').run(alvo.id);
+      for (const eid of ids) {
+        await db.prepare('INSERT OR IGNORE INTO equipe_membros (equipe_id, usuario_id) VALUES (?, ?)').run(eid, alvo.id);
+      }
+    }
+
+    const daPessoa = await equipesDeCadaUm();
+    const atualizado = await db.prepare('SELECT id, nome, email, papel, presenca, ativo FROM usuarios WHERE id = ?').get(alvo.id);
+    res.json({ usuario: { ...formatarUsuario(atualizado), ativo: Number(atualizado.ativo) === 1, equipes: daPessoa(alvo.id) } });
+  });
+
+  async function outroAdminAtivo(exceto) {
+    const r2 = await db.prepare("SELECT COUNT(*) AS n FROM usuarios WHERE papel = 'admin' AND ativo = 1 AND id != ?").get(exceto);
+    return Number(r2.n) > 0;
+  }
+
 
   r.get('/me', (req, res) => res.json({ usuario: formatarUsuario(req.usuario) }));
 

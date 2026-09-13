@@ -266,8 +266,21 @@ npm run usuario -- --listar
 - Inbox por canal: caixas separadas de Chat do site, Telegram e WhatsApp, ao lado das equipes.
 - Histórico carregado aos poucos: a conversa abre com as últimas 40 mensagens e busca as anteriores conforme a rolagem sobe.
 - Chat do site (estilo Intercom) para o cliente conversar pelo painel dele, com a conversa caindo na mesma caixa de entrada.
+- Tela de configurações com a gestão da equipe: convite por e-mail, papel, bloqueio de acesso e equipes.
 - Dados de exemplo opcionais (`DADOS_EXEMPLO=true`) para testar a tela.
 - Testes automáticos (`npm test`).
+
+## Configurações
+
+O botão da engrenagem, no menu lateral, abre a tela de configurações. Hoje ela tem:
+
+- **Equipe** (só administrador): quem trabalha no CRM, com papel, equipes e presença. Dá para convidar alguém por e-mail, mudar de atendente para administrador, bloquear o acesso e escolher em quais equipes a pessoa está. O convite gera um link de sete dias; enquanto não houver serviço de e-mail configurado, o link aparece na própria tela para ser copiado.
+- **Canais**: abre a janela de conexão do WhatsApp e do Telegram.
+- **Respostas rápidas**: lista os atalhos salvos e quantas vezes cada um foi usado.
+
+Aparência (tema claro/escuro), Notificações e Conta ainda não funcionam — aparecem apagados no menu.
+
+Ninguém consegue se trancar do lado de fora: você não pode tirar o seu próprio acesso de administrador nem bloquear a si mesma, e o CRM sempre mantém pelo menos um administrador ativo.
 
 ## O que ainda é só visual ("em breve")
 
@@ -275,7 +288,7 @@ Botões que mostram um aviso e ainda não fazem nada: **Entrar com Google**, **A
 
 No Telegram, a foto de perfil do cliente aparece no avatar (o CRM confere uma vez por dia se mudou). No WhatsApp, a foto aparece quando o servidor do uazapi manda o endereço dela no aviso da mensagem; a API oficial deles não tem um jeito de pedir a foto de um contato. Fotos, áudios, vídeos e documentos aparecem dentro da conversa (o CRM baixa o arquivo com o token do bot, que nunca vai para o navegador). No WhatsApp, mídias ainda aparecem só como texto, por exemplo "[Imagem]".
 
-## Configurações (opcional)
+## Variáveis de ambiente (opcional)
 
 Copie `.env.example` para `.env` e ajuste:
 
