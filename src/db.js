@@ -141,6 +141,20 @@ function garantirColuna(db, tabela, coluna, definicao) {
   if (!existentes.includes(coluna)) db.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${definicao}`);
 }
 
+// Apaga equipes pelo nome; as conversas e canais ligados a elas ficam "sem equipe".
+function removerEquipes(db, nomes) {
+  const marcadores = nomes.map(() => '?').join(', ');
+  const ids = db.prepare(`SELECT id FROM equipes WHERE nome IN (${marcadores})`).all(...nomes).map((e) => Number(e.id));
+  if (!ids.length) return 0;
+  const lista = ids.join(', ');
+  db.exec(`
+    UPDATE conversas SET equipe_id = NULL WHERE equipe_id IN (${lista});
+    UPDATE canais SET equipe_padrao_id = NULL WHERE equipe_padrao_id IN (${lista});
+    DELETE FROM equipes WHERE id IN (${lista});
+  `);
+  return ids.length;
+}
+
 // Renomeia uma equipe já existente (bancos criados antes da mudança de nome).
 function renomearEquipe(db, de, para) {
   const jaExiste = db.prepare('SELECT id FROM equipes WHERE nome = ?').get(para);
@@ -156,6 +170,11 @@ function migrar(db) {
   db.exec('CREATE INDEX IF NOT EXISTS idx_contatos_wa ON contatos(wa_id);');
   db.exec('CREATE INDEX IF NOT EXISTS idx_conversas_canal ON conversas(canal_id, status);');
   renomearEquipe(db, 'Cobrança', 'Admin');
+  // Equipes padrão antigas que deixaram de existir (removidas uma única vez).
+  if (lerAjuste(db, 'equipes_padrao') !== '2') {
+    removerEquipes(db, ['Suporte técnico', 'Onboarding']);
+    gravarAjuste(db, 'equipes_padrao', '2');
+  }
 }
 
 function abrirBanco(caminho = ':memory:') {
@@ -184,8 +203,6 @@ function inserirUsuario(db, { nome, email, senha, papel = 'atendente', presenca 
 const EQUIPES_PADRAO = [
   ['Reembolso', '#12B85C'],
   ['Admin', '#1D6FA5'],
-  ['Suporte técnico', '#B3261E'],
-  ['Onboarding', '#4C6355'],
 ];
 
 const USUARIOS_EXEMPLO = ['marina@bigteck.com.br', 'rafael@bigteck.com.br'];

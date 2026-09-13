@@ -44,7 +44,7 @@ Para gerar a versão compilada (opcional): `npm run build` cria a pasta `dist/`,
 | E-mail | `admin@bigteck.com.br` |
 | Senha  | `admin123`             |
 
-Troque essa senha logo depois (veja abaixo). O CRM começa vazio, com as equipes Reembolso, Admin, Suporte técnico e Onboarding. Para uma demonstração com conversas de exemplo, defina `DADOS_EXEMPLO=true` no `.env` (os usuários de exemplo `marina@bigteck.com.br` e `rafael@bigteck.com.br` usam a mesma senha inicial; ao voltar para `false`, os exemplos são apagados).
+Troque essa senha logo depois (veja abaixo). O CRM começa vazio, com as equipes Reembolso e Admin. Para uma demonstração com conversas de exemplo, defina `DADOS_EXEMPLO=true` no `.env` (os usuários de exemplo `marina@bigteck.com.br` e `rafael@bigteck.com.br` usam a mesma senha inicial; ao voltar para `false`, os exemplos são apagados).
 
 ## Telas de acesso
 
