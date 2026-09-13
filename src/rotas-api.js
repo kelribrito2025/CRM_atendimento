@@ -83,7 +83,7 @@ function formatarPrimeiraResposta(ms) {
 const SQL_CONVERSAS = `
   SELECT c.id, c.protocolo, c.canal, c.status, c.alerta, c.nao_lidas, c.criada_em, c.atualizada_em,
          c.equipe_id, c.atendente_id, c.canal_id, c.wa_chatid,
-         ct.id AS contato_id, ct.nome AS contato_nome, ct.empresa, ct.cnpj, ct.telefone, ct.tg_usuario, ct.tg_id, ct.tg_foto_id, ct.wa_foto_url,
+         ct.id AS contato_id, ct.nome AS contato_nome, ct.empresa, ct.cnpj, ct.telefone, ct.tg_usuario, ct.tg_id, ct.tg_foto_id, ct.wa_foto_url, ct.site_id,
          u.nome AS atendente_nome,
          e.nome AS equipe_nome, e.cor AS equipe_cor,
          um.tipo AS ultima_tipo, um.texto AS ultima_texto, um.criada_em AS ultima_em,
@@ -190,6 +190,7 @@ function criarRotasApi(db, opcoes = {}) {
         telefone: row.telefone,
         telegramUsuario: row.tg_usuario || null,
         telegramId: row.tg_id || null,
+        siteId: row.site_id || null,
         foto: (row.tg_foto_id || row.wa_foto_url) ? `/api/contatos/${row.contato_id}/foto` : null,
         iniciais: iniciais(row.contato_nome),
       },
@@ -211,6 +212,14 @@ function criarRotasApi(db, opcoes = {}) {
       autor: m.autor_id ? { id: m.autor_id, nome: m.autor_nome, nomeCurto: nomeCurto(m.autor_nome) } : null,
       editadaEm: m.editada_em || null,
     };
+  }
+
+  // Contatos cujo PIN começa pelos números digitados (o PIN é curto: 5 dígitos).
+  async function pinsQueCombinam(digitos) {
+    const linhas = await db.prepare('SELECT id, pin FROM contatos WHERE pin IS NOT NULL').all();
+    return new Set(linhas
+      .filter((ct) => String(ct.pin).replace(/\D/g, '').includes(digitos))
+      .map((ct) => ct.id));
   }
 
   async function todasConversas() {
@@ -442,6 +451,8 @@ function criarRotasApi(db, opcoes = {}) {
       primeiraResposta: formatarPrimeiraResposta(media),
       canais: await resumoCanais(req),
       saldoAtivo: Boolean(saldo && saldo.configurado),
+      // Endereço que abre a conta do cliente no site já logada (impersonação).
+      abrirContaUrl: opcoes.abrirContaUrl || '',
       anexosAtivos: Boolean(arquivos && arquivos.configurado),
     });
   });
@@ -464,10 +475,18 @@ function criarRotasApi(db, opcoes = {}) {
     // Na busca ela continua aparecendo, para achar o histórico de um cliente.
     if (caixa === 'encerradas') lista = lista.filter((c) => c.status === 'resolvida');
     else if (!busca) lista = lista.filter((c) => c.status === 'aberta');
+    // Busca por nome, celular ou PIN do cliente. Quando a pessoa digita só
+    // números, o telefone é comparado sem a formatação (+55 31 98888-7777).
     if (busca) {
-      lista = lista.filter((c) => [
-        c.contato.nome, c.contato.empresa, c.contato.cnpj, c.contato.telefone, c.protocolo, c.ultimaTexto,
-      ].some((v) => v && String(v).toLowerCase().includes(busca)));
+      const digitos = busca.replace(/\D/g, '');
+      const pins = digitos ? await pinsQueCombinam(digitos) : new Set();
+      lista = lista.filter((c) => {
+        if (String(c.contato.nome || '').toLowerCase().includes(busca)) return true;
+        if (String(c.contato.empresa || '').toLowerCase().includes(busca)) return true;
+        if (!digitos) return false;
+        if (String(c.contato.telefone || '').replace(/\D/g, '').includes(digitos)) return true;
+        return pins.has(c.contato.id);
+      });
     }
     res.json({ conversas: lista });
   });

@@ -43,6 +43,7 @@ function lerConfig() {
     s3Chave: process.env.S3_ACCESS_KEY_ID || '',
     s3Segredo: process.env.S3_SECRET_ACCESS_KEY || '',
     widgetSegredo: process.env.WIDGET_SEGREDO || '',
+    abrirContaUrl: process.env.ABRIR_CONTA_URL || '',
     widgetEquipeId: Number(process.env.WIDGET_EQUIPE_ID || 0) || null,
   };
 }
@@ -87,6 +88,7 @@ async function montarSistema(extras = {}) {
     saldo,
     arquivos,
     widget,
+    abrirContaUrl: config.abrirContaUrl,
     cookieSeguro: config.cookieSeguro,
     trustProxy: config.trustProxy,
     doisFatores: config.doisFatores,

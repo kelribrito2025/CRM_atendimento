@@ -59,6 +59,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     tela: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8"></path><path d="M12 16v4"></path></svg>',
     sino: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 01-3.4 0"></path></svg>',
     engrenagem: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 00.3 1.9 2 2 0 11-2.8 2.8 1.7 1.7 0 00-2.9 1.2 2 2 0 11-4 0 1.7 1.7 0 00-2.9-1.2 2 2 0 11-2.8-2.8A1.7 1.7 0 002.6 14a2 2 0 110-4 1.7 1.7 0 001.2-2.9 2 2 0 112.8-2.8A1.7 1.7 0 0010 2.6a2 2 0 114 0 1.7 1.7 0 002.9 1.2 2 2 0 112.8 2.8A1.7 1.7 0 0021.4 10a2 2 0 110 4 1.7 1.7 0 00-2 1z"></path></svg>',
+    olho: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>',
     cadeado: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10" width="16" height="10" rx="2.4"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
     checkCaixa: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4C6355" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M8.2 12.3l2.6 2.6 5-5.2"></path></svg>',
     check: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>',
@@ -939,7 +940,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     let texto;
     if (estado.busca && !estado.conversas.length) {
       titulo = 'Nada encontrado';
-      texto = el('span', {}, 'Nenhuma conversa corresponde à busca. Tente outro nome, CNPJ ou protocolo.');
+      texto = el('span', {}, 'Nenhuma conversa corresponde à busca. Tente outro nome, o celular ou o PIN do cliente.');
     } else if (!estado.conversas.length) {
       titulo = 'Tudo limpo por aqui';
       texto = estado.equipeId
@@ -1453,9 +1454,12 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   }
 
   // Os quadradinhos do PIN: o atendente digita ali o PIN informado pelo cliente.
+  // O PIN do cliente tem 5 dígitos; quem tiver mais ganha os quadradinhos extras.
+  const TAMANHO_PIN = 5;
+
   function camposPin(valorInicial) {
     const caixas = [];
-    const quantidade = Math.min(Math.max(6, String(valorInicial || '').length), 12);
+    const quantidade = Math.min(Math.max(TAMANHO_PIN, String(valorInicial || '').length), 12);
     const pinAtual = () => caixas.map((i) => i.value).join('').replace(/\D/g, '');
     const foco = (i) => { const alvo = caixas[i]; if (alvo) { alvo.focus(); alvo.select(); } };
     for (let i = 0; i < quantidade; i += 1) {
@@ -1526,7 +1530,10 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         'aria-label': 'PIN do cliente', onfocus: () => campo.select(),
       });
       return el('div', { class: `bloco-pin${confirmado ? '' : ' pendente'} compacto` },
-        el('div', { class: 'pin-pronto' },
+        el('div', {
+          class: 'pin-pronto copiavel', title: 'Clique para copiar o PIN',
+          onclick: (e) => { if (e.target !== campo) copiarPin(campo.value); },
+        },
           icone('pin', ICONE.cadeado),
           campo,
           el('span', {
@@ -1551,6 +1558,24 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         el('span', { class: 'pin-info' }, 'Digite o PIN que o cliente informou.'),
         botaoSaldo(pinAtual)),
       blocoSaldo());
+  }
+
+  // "Abrir conta": entra na conta do cliente no site, já logada. Só existe para
+  // quem chegou pelo chat do site, que é de onde vem o id do cliente lá.
+  function botaoAbrirConta(c) {
+    const id = c.contato.siteId;
+    const modelo = estado.resumo?.abrirContaUrl || '';
+    if (!id || !modelo) {
+      return desligar(el('button', { type: 'button', class: 'link-btn' }, 'Abrir conta'),
+        id ? 'Abrir conta do cliente: falta configurar o endereço do site' : 'Abrir conta: só para clientes que chegam pelo chat do site');
+    }
+    const endereco = modelo.includes('{id}')
+      ? modelo.replace('{id}', encodeURIComponent(id))
+      : `${modelo.replace(/\/$/, '')}/${encodeURIComponent(id)}`;
+    return el('a', {
+      class: 'link-btn com-olho', href: endereco, target: '_blank', rel: 'noopener',
+      title: `Entrar na conta de ${c.contato.nome} no site`,
+    }, svg(ICONE.olho), 'Abrir conta');
   }
 
   function renderPainel() {
@@ -1592,7 +1617,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         el('div', { class: 'membro-info' },
           el('span', { class: 'painel-nome suave' }, ct.empresa || 'Ficha do cliente'),
           el('span', { class: 'painel-sub' }, ct.cnpj || ct.telefone || (ct.telegramUsuario ? `@${ct.telegramUsuario}` : ''))),
-        desligar(el('button', { type: 'button', class: 'link-btn' }, 'Abrir conta'), 'Abrir conta do cliente: em breve')),
+        botaoAbrirConta(c)),
       el('div', { class: 'rolagem painel-corpo' },
         blocoPin(c),
         ct.dados?.length ? secao('Conta do cliente',
@@ -1807,6 +1832,15 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
           el('span', { class: 'dica', style: 'color:inherit;font-weight:700' }, config.convite.porEmail ? 'Convite enviado por e-mail.' : 'Copie e mande o link:'),
           el('code', {}, config.convite.link),
           el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => copiar(config.convite.link) }, 'Copiar')) : null));
+  }
+
+  // Copia o PIN e avisa, para o atendente colar onde precisar.
+  function copiarPin(valor) {
+    const pin = String(valor || '').trim();
+    if (!pin) return;
+    navigator.clipboard?.writeText(pin)
+      .then(() => toast(`PIN ${pin} copiado.`))
+      .catch(() => toast('Não consegui copiar. Selecione o número e use Ctrl+C.'));
   }
 
   function copiar(texto) {

@@ -267,6 +267,7 @@ npm run usuario -- --listar
 - Histórico carregado aos poucos: a conversa abre com as últimas 40 mensagens e busca as anteriores conforme a rolagem sobe.
 - Chat do site (estilo Intercom) para o cliente conversar pelo painel dele, com a conversa caindo na mesma caixa de entrada.
 - Tela de configurações com a gestão da equipe: convite por e-mail, papel, bloqueio de acesso e equipes.
+- Busca de conversas por nome, celular ou PIN do cliente.
 - Dados de exemplo opcionais (`DADOS_EXEMPLO=true`) para testar a tela.
 - Testes automáticos (`npm test`).
 
@@ -281,6 +282,18 @@ O botão da engrenagem, no menu lateral, abre a tela de configurações. Hoje el
 Aparência (tema claro/escuro), Notificações e Conta ainda não funcionam — aparecem apagados no menu.
 
 Ninguém consegue se trancar do lado de fora: você não pode tirar o seu próprio acesso de administrador nem bloquear a si mesma, e o CRM sempre mantém pelo menos um administrador ativo.
+
+## Abrir a conta do cliente no site
+
+Na ficha do cliente, o botão **Abrir conta** (com o ícone de olho) entra na conta da pessoa no site, já logada — o mesmo que o painel administrativo do site faz. Aparece só para quem chegou pelo chat do site, que é de onde vem o id do cliente.
+
+Preencha no `.env` o endereço que o site expõe, com `{id}` no lugar do id do cliente:
+
+```
+ABRIR_CONTA_URL=https://SEU-SITE.com.br/admin/impersonar/{id}
+```
+
+Sem essa variável, o botão fica apagado.
 
 ## O que ainda é só visual ("em breve")
 

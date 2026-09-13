@@ -157,3 +157,30 @@ test('equipe: atendente comum não entra nas configurações da equipe', async (
     assert.equal((await fetch(`${s.base}/api/equipe`)).status, 401);
   } finally { await s.fechar(); }
 });
+
+test('busca: encontra o cliente pelo nome, pelo celular e pelo PIN', async () => {
+  const s = await subirServidor();
+  try {
+    const agora = Date.now();
+    const pessoas = [
+      ['Andressa Lima', '+55 31 98888-7777', '11535'],
+      ['Bruno Cardoso', '+55 11 97777-6666', '40210'],
+    ];
+    for (const [nome, telefone, pin] of pessoas) {
+      await s.db.prepare('INSERT INTO contatos (nome, telefone, pin) VALUES (?, ?, ?)').run(nome, telefone, pin);
+      const ct = await s.db.prepare('SELECT id FROM contatos ORDER BY id DESC LIMIT 1').get();
+      await s.db.prepare("INSERT INTO conversas (protocolo, contato_id, canal, status, nao_lidas, criada_em, atualizada_em) VALUES (?, ?, 'whatsapp', 'aberta', 0, ?, ?)")
+        .run(`#50${ct.id}`, ct.id, agora, agora);
+    }
+    const buscar = async (q) => (await s.chamar(`/api/conversas?q=${encodeURIComponent(q)}`)).dados.conversas.map((c) => c.contato.nome);
+
+    assert.deepEqual(await buscar('andressa'), ['Andressa Lima'], 'pelo nome, sem ligar para maiúscula');
+    assert.deepEqual(await buscar('Lima'), ['Andressa Lima'], 'pelo sobrenome');
+    assert.deepEqual(await buscar('11535'), ['Andressa Lima'], 'pelo PIN');
+    assert.deepEqual(await buscar('40210'), ['Bruno Cardoso'], 'pelo PIN do outro');
+    assert.deepEqual(await buscar('98888-7777'), ['Andressa Lima'], 'pelo celular como está escrito');
+    assert.deepEqual(await buscar('31988887777'), ['Andressa Lima'], 'pelo celular só com números');
+    assert.deepEqual(await buscar('988887777'), ['Andressa Lima'], 'sem o DDD');
+    assert.deepEqual(await buscar('99999'), [], 'o que não existe não traz nada');
+  } finally { await s.fechar(); }
+});
