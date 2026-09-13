@@ -1533,17 +1533,21 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     if (valorInicial) {
       // Verde quando o PIN veio do próprio cliente (Telegram) ou já foi conferido.
       const confirmado = Boolean(ct.pin) || validado;
-      const campo = el('input', {
-        class: 'pin-valor', type: 'text', inputmode: 'numeric', maxlength: '12', value: valorInicial,
-        'aria-label': 'PIN do cliente', onfocus: () => campo.select(),
-      });
+      const copiar = () => copiarPin(valorInicial);
       return el('div', { class: `bloco-pin${confirmado ? '' : ' pendente'} compacto` },
         el('div', {
           class: 'pin-pronto copiavel', title: 'Clique para copiar o PIN',
-          onclick: (e) => { if (e.target !== campo) copiarPin(campo.value); },
+          role: 'button', tabindex: '0', 'aria-label': `Copiar PIN ${valorInicial}`,
+          onclick: copiar,
+          onkeydown: (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              copiar();
+            }
+          },
         },
           icone('pin', ICONE.cadeado),
-          campo,
+          el('span', { class: 'pin-valor' }, valorInicial),
           el('span', {
             class: `ok${confirmado ? '' : ' pendente'}`,
             title: validado
@@ -1551,7 +1555,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
               : (confirmado ? 'PIN informado pelo cliente' : 'Ainda não conferido'),
             html: ICONE.check,
           })),
-        botaoSaldo(() => campo.value),
+        botaoSaldo(() => valorInicial),
         blocoSaldo());
     }
 
