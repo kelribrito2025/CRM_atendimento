@@ -320,7 +320,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .ic.suave { color: var(--texto-suave); }
 .ic.vermelho { color: var(--vermelho); }
 .ic.branco { color: #fff; }
-.rail-btn .ic { --ic: 18px; }
+.rail-btn .ic { --ic: 22px; }
 .nav-item .ic { color: var(--texto-suave); }
 .nav-item.ativo .ic { color: var(--verde-texto); }
 .nav-item .ic.vermelho { color: var(--vermelho); }
