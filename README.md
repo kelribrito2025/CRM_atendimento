@@ -287,7 +287,7 @@ Ninguém consegue se trancar do lado de fora: você não pode tirar o seu própr
 
 Na ficha do cliente, o botão **Abrir conta** (com o ícone de olho) entra na conta da pessoa no site, já logada. Aparece só para quem chegou pelo chat do site, que é de onde vem o id do cliente.
 
-Antes de abrir, o CRM pede o **motivo** ao atendente. Então o servidor do CRM pede ao site um link de uso único, mandando junto **quem** está abrindo (vindo da sessão, nunca do navegador) e **por quê**. O site registra isso, e o CRM guarda o mesmo motivo como nota interna na conversa.
+Num clique só: o servidor do CRM pede ao site um link de uso único, mandando junto **quem** está abrindo (vindo da sessão, nunca do navegador) e de **qual conversa**. O site registra isso, e o CRM deixa uma nota interna na conversa dizendo quem abriu a conta.
 
 No `.env`:
 

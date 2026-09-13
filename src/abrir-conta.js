@@ -7,7 +7,6 @@
 // A identidade do atendente vem da sessão do CRM, nunca do navegador.
 
 const URL_PADRAO = 'https://app.numero-virtual.com/api/agents/impersonar';
-const TAMANHO_MINIMO_MOTIVO = 10;
 
 class ErroAbrirConta extends Error {
   constructor(mensagem, { status = 502 } = {}) {
@@ -27,9 +26,7 @@ function criarAbrirConta({ url = URL_PADRAO, token = '', fetchImpl = globalThis.
     const razao = String(motivo ?? '').trim();
     if (!configurado) throw new ErroAbrirConta('Abrir conta não está configurado. Preencha ABRIR_CONTA_TOKEN no .env.', { status: 400 });
     if (!cliente) throw new ErroAbrirConta('Este cliente não veio do chat do site, então não dá para abrir a conta dele.', { status: 400 });
-    if (razao.length < TAMANHO_MINIMO_MOTIVO) {
-      throw new ErroAbrirConta(`Escreva o motivo com pelo menos ${TAMANHO_MINIMO_MOTIVO} caracteres. Ele fica registrado.`, { status: 400 });
-    }
+    if (!razao) throw new ErroAbrirConta('Falta dizer ao site por que a conta está sendo aberta.', { status: 400 });
 
     const controle = new AbortController();
     const temporizador = setTimeout(() => controle.abort(), timeoutMs);
@@ -74,4 +71,4 @@ function criarAbrirConta({ url = URL_PADRAO, token = '', fetchImpl = globalThis.
   return { configurado, pedirLink };
 }
 
-module.exports = { criarAbrirConta, ErroAbrirConta, URL_PADRAO, TAMANHO_MINIMO_MOTIVO };
+module.exports = { criarAbrirConta, ErroAbrirConta, URL_PADRAO };
