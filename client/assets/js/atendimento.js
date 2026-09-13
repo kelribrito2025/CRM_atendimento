@@ -1588,7 +1588,9 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 
     painel.replaceChildren(
       el('div', { class: 'painel-topo' },
-        avatarCliente({ canal: c.canal, contato: { iniciais: iniciais(ct.empresa || ct.nome) } }, 'avatar-quadrado neutro'),
+        c.canal === 'telegram'
+          ? el('span', { class: 'avatar-quadrado neutro' }, iconeCanal('telegram', 15))
+          : avatarCliente({ canal: c.canal, contato: { iniciais: iniciais(ct.empresa || ct.nome) } }, 'avatar-quadrado neutro'),
         el('div', { class: 'membro-info' },
           el('span', { class: 'painel-nome suave' }, ct.empresa || 'Ficha do cliente'),
           el('span', { class: 'painel-sub' }, ct.cnpj || ct.telefone || (ct.telegramUsuario ? `@${ct.telegramUsuario}` : ''))),
