@@ -5,6 +5,8 @@ const crypto = require('node:crypto');
 const { iniciais, nomeCurto } = require('./util');
 const canais = require('./canais');
 const { tokenValido } = require('./telegram');
+const { normalizarPin } = require('./saldo');
+const { LimitadorTentativas } = require('./limitador');
 const { interpretarStatus } = require('./uazapi');
 
 const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta']);
@@ -62,6 +64,7 @@ const SQL_CONVERSAS = `
 
 function criarRotasApi(db, opcoes = {}) {
   const telegram = opcoes.telegram || null;
+  const saldo = opcoes.saldo || null;
   const uazapi = opcoes.uazapi || null;
   const urlBase = typeof opcoes.urlBase === 'function' ? opcoes.urlBase : () => '';
   const r = express.Router();
@@ -228,6 +231,7 @@ function criarRotasApi(db, opcoes = {}) {
       atendentes,
       primeiraResposta: formatarPrimeiraResposta(media),
       canais: resumoCanais(req),
+      saldoAtivo: Boolean(saldo && saldo.configurado),
     });
   });
 
@@ -361,6 +365,34 @@ function criarRotasApi(db, opcoes = {}) {
       return res.status(400).json({ erro: 'Ação inválida.' });
     }
     res.json({ conversa: detalharConversa(buscarConversa(req.conversa.id)) });
+  });
+
+  /* -------------------- consulta de saldo pelo PIN -------------------- */
+
+  // A chave do agente fica só aqui no servidor. O navegador manda apenas o PIN.
+  // Limite por atendente para evitar consulta em massa (tudo fica registrado do outro lado).
+  const limitadorSaldo = new LimitadorTentativas({ maximo: 60, janelaMs: 5 * 60 * 1000 });
+
+  r.post('/suporte/saldo', async (req, res) => {
+    if (!saldo || !saldo.configurado) {
+      return res.status(400).json({ erro: 'Consulta de saldo não configurada. Preencha SALDO_TOKEN no arquivo .env e reinicie o sistema.' });
+    }
+    const pin = normalizarPin(req.body?.pin);
+    if (pin === null) return res.status(400).json({ erro: 'Digite o PIN do cliente (só números).' });
+
+    const chave = `saldo:${req.usuario.id}`;
+    const bloqueio = limitadorSaldo.bloqueadoPor(chave);
+    if (bloqueio > 0) {
+      return res.status(429).json({ erro: `Muitas consultas seguidas. Tente de novo em ${Math.ceil(bloqueio / 60000)} minuto(s).` });
+    }
+    limitadorSaldo.registrarFalha(chave);
+
+    try {
+      res.json({ cliente: await saldo.consultarPorPin(pin) });
+    } catch (erro) {
+      const status = erro.naoEncontrado ? 404 : (erro.status === 400 ? 400 : 502);
+      res.status(status).json({ erro: erro.message, naoEncontrado: Boolean(erro.naoEncontrado) });
+    }
   });
 
   /* -------------------- canais (WhatsApp via uazapi e Telegram) -------------------- */

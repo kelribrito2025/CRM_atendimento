@@ -13,6 +13,7 @@ const { limparSessoesExpiradas } = require('./sessoes');
 const { limparAcessosExpirados } = require('./acesso');
 const { criarUazapi } = require('./uazapi');
 const { criarTelegram } = require('./telegram');
+const { criarSaldo, URL_PADRAO: SALDO_URL_PADRAO } = require('./saldo');
 const canais = require('./canais');
 
 const RAIZ = path.join(__dirname, '..');
@@ -32,6 +33,8 @@ function lerConfig() {
     trustProxy: process.env.TRUST_PROXY === 'true' ? 1 : false,
     uazapiUrl: process.env.UAZAPI_URL || '',
     uazapiAdminToken: process.env.UAZAPI_ADMIN_TOKEN || '',
+    saldoUrl: process.env.SALDO_URL || SALDO_URL_PADRAO,
+    saldoToken: process.env.SALDO_TOKEN || '',
   };
 }
 
@@ -60,9 +63,11 @@ function montarSistema(extras = {}) {
   const enviador = criarEnviador();
   const uazapi = criarUazapi({ url: config.uazapiUrl, adminToken: config.uazapiAdminToken });
   const telegram = criarTelegram();
+  const saldo = criarSaldo({ url: config.saldoUrl, token: config.saldoToken });
   const app = criarApp(db, {
     uazapi,
     telegram,
+    saldo,
     cookieSeguro: config.cookieSeguro,
     trustProxy: config.trustProxy,
     doisFatores: config.doisFatores,
@@ -82,7 +87,7 @@ function montarSistema(extras = {}) {
   // Religa os bots do Telegram que já estavam conectados.
   resultado.botsTelegram = canais.ligarTelegramTodos(db, telegram);
 
-  return { app, db, config, resultado, enviador, uazapi, telegram };
+  return { app, db, config, resultado, enviador, uazapi, telegram, saldo };
 }
 
 function mostrarBoasVindas({ config, resultado }, endereco) {
@@ -107,6 +112,9 @@ function mostrarBoasVindas({ config, resultado }, endereco) {
   console.log(resultado.botsTelegram
     ? `✈️  Telegram: ${resultado.botsTelegram} bot(s) recebendo mensagens.`
     : '✈️  Telegram: conecte um bot pelo menu da conta (avatar) › Conectar canal. Só precisa do token do @BotFather.');
+  console.log(config.saldoToken
+    ? '💰 Consulta de saldo por PIN: configurada.'
+    : '💰 Consulta de saldo por PIN: desligada. Preencha SALDO_TOKEN no .env (a chave fica só no servidor).');
   if (!config.baseUrl) console.log('🌐 BASE_URL não definida: o WhatsApp só consegue entregar mensagens quando o CRM tiver um endereço público.');
   console.log('');
 }

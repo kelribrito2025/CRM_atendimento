@@ -170,6 +170,7 @@ import { icone, montarIcones } from './icones.js';
       else {
         estado.conversaId = null;
         estado.conversa = null;
+        limparSaldo(null);
         renderChat();
         renderPainel();
       }
@@ -178,6 +179,8 @@ import { icone, montarIcones } from './icones.js';
 
   async function abrirConversa(id) {
     estado.conversaId = id;
+    // O saldo consultado vale só para a conversa em que foi pedido.
+    if (id !== saldo.conversaId) limparSaldo(id);
     renderLista();
     const { conversa } = await api(`/conversas/${id}`);
     if (estado.conversaId !== id) return; // usuário já clicou em outra
@@ -216,6 +219,8 @@ import { icone, montarIcones } from './icones.js';
   function aplicarConversa(conversa) {
     const textoMsg = $('#texto-msg')?.value;
     const textoNota = $('#texto-nota')?.value;
+    // O saldo consultado vale só para a conversa em que foi pedido.
+    if (conversa?.id !== saldo.conversaId) limparSaldo(conversa?.id ?? null);
     estado.conversa = conversa;
     renderChat();
     renderPainel();
@@ -607,6 +612,61 @@ import { icone, montarIcones } from './icones.js';
       el('span', { class: 'pin-canal-id' }, identificacaoCanal(c)));
   }
 
+  /* ---------------- consulta de saldo pelo PIN ---------------- */
+  const saldo = { conversaId: null, pin: '', carregando: false, cliente: null, erro: null };
+
+  function limparSaldo(conversaId) {
+    Object.assign(saldo, { conversaId, pin: '', carregando: false, cliente: null, erro: null });
+  }
+
+  async function consultarSaldo(pinDigitado) {
+    const c = estado.conversa;
+    if (!c || saldo.carregando) return;
+    const pin = String(pinDigitado || '').replace(/\D/g, '');
+    if (!pin) return toast('Digite o PIN do cliente para consultar o saldo.');
+    Object.assign(saldo, { conversaId: c.id, pin, carregando: true, cliente: null, erro: null });
+    renderPainel();
+    try {
+      const r = await api('/suporte/saldo', { method: 'POST', body: { pin } });
+      Object.assign(saldo, { carregando: false, cliente: r.cliente });
+    } catch (e) {
+      Object.assign(saldo, { carregando: false, erro: e.message });
+    }
+    renderPainel();
+  }
+
+  // Resultado da consulta, mostrado dentro do card do PIN.
+  function blocoSaldo() {
+    if (saldo.carregando) return el('div', { class: 'saldo-resultado' }, el('span', { class: 'saldo-aguarde' }, 'Consultando saldo…'));
+    if (saldo.erro) return el('div', { class: 'saldo-resultado erro' }, saldo.erro);
+    const cli = saldo.cliente;
+    if (!cli) return null;
+    const avisos = [];
+    if (cli.bloqueada) avisos.push('conta bloqueada');
+    if (cli.status && cli.status !== 'active') avisos.push(`conta ${cli.statusTexto}`);
+    return el('div', { class: 'saldo-resultado' },
+      el('div', { class: 'saldo-linha' },
+        el('span', { class: 'saldo-valor' }, cli.saldo),
+        el('span', { class: 'saldo-nome' }, [cli.nome, cli.pin ? `PIN ${cli.pin}` : null].filter(Boolean).join(' · '))),
+      cli.email ? el('span', { class: 'saldo-info' }, cli.email) : null,
+      el('span', { class: 'saldo-info' }, `${cli.totalRecargas} recarga${cli.totalRecargas === 1 ? '' : 's'}${cli.ultimaRecarga ? ` · última de ${cli.ultimaRecarga.valor}` : ''}`),
+      avisos.length ? el('span', { class: 'saldo-alerta' }, `Atenção: ${avisos.join(' e ')}.`) : null);
+  }
+
+  // Botão (e campo, quando não há PIN salvo) para consultar o saldo.
+  function acoesSaldo(c) {
+    if (!estado.resumo?.saldoAtivo) return null;
+    const pinSalvo = c.contato.pin || '';
+    const entrada = el('input', {
+      type: 'text', inputmode: 'numeric', maxlength: '12', class: 'saldo-pin',
+      placeholder: 'PIN do cliente', value: saldo.pin || pinSalvo, 'aria-label': 'PIN para consultar o saldo',
+      onkeydown: (e) => { if (e.key === 'Enter') consultarSaldo(entrada.value); },
+    });
+    const botao = el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => consultarSaldo(entrada.value) },
+      saldo.cliente || saldo.erro ? 'Consultar de novo' : 'Consultar saldo');
+    return el('div', { class: 'linha-saldo' }, entrada, botao);
+  }
+
   function blocoPin(c) {
     const ct = c.contato;
     const validado = Boolean(ct.pin && ct.pinValidadoEm);
@@ -620,7 +680,8 @@ import { icone, montarIcones } from './icones.js';
         linhaCanal(c),
         el('div', { class: 'linha-pin' },
           el('span', { class: 'pin-info' }, 'Nenhum PIN gerado para este cliente.'),
-          el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => acaoPin('novo') }, 'Gerar PIN')));
+          el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => acaoPin('novo') }, 'Gerar PIN')),
+        acoesSaldo(c), blocoSaldo());
     }
     return el('div', { class: `bloco-pin${validado ? '' : ' pendente'}` },
       cab(validado ? 'Validado' : 'Pendente', !validado),
@@ -631,7 +692,8 @@ import { icone, montarIcones } from './icones.js';
           ? `Conferido às ${horaCurta(ct.pinValidadoEm)} por ${ct.pinValidadoPor || 'equipe'}`
           : 'Aguardando o cliente confirmar o PIN.'),
         validado ? null : el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => acaoPin('validar') }, 'Validar PIN'),
-        el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => acaoPin('novo') }, 'Pedir novo PIN')));
+        el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => acaoPin('novo') }, 'Pedir novo PIN')),
+      acoesSaldo(c), blocoSaldo());
   }
 
   function renderPainel() {

@@ -259,6 +259,17 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .bloco-pin .cab { display: flex; align-items: center; gap: 8px; }
 .bloco-pin .cab .rotulo { flex: 1; padding: 0; color: var(--verde-texto); }
 .bloco-pin.pendente .cab .rotulo { color: var(--texto-suave); }
+.linha-saldo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.saldo-pin { flex: 1; min-width: 110px; height: 34px; border-radius: 10px; border: 1px solid var(--borda); background: #fff; padding: 0 11px; font-size: 12.5px; color: var(--texto); outline: none; }
+.saldo-pin:focus { border-color: var(--verde); }
+.saldo-resultado { border-radius: 12px; background: #fff; border: 1px solid var(--verde-borda); padding: 11px 12px; display: flex; flex-direction: column; gap: 3px; }
+.saldo-resultado.erro { border-color: var(--vermelho-claro); background: var(--vermelho-claro); color: var(--vermelho); font-size: 12.5px; line-height: 1.45; }
+.saldo-linha { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.saldo-valor { font-size: 18px; font-weight: 700; color: var(--verde-texto); }
+.saldo-nome { font-size: 12.5px; font-weight: 600; color: var(--texto); }
+.saldo-info { font-size: 11.5px; color: var(--texto-suave); }
+.saldo-alerta { font-size: 11.5px; font-weight: 700; color: var(--vermelho); }
+.saldo-aguarde { font-size: 12.5px; color: var(--texto-suave); }
 .pin-canal { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--texto-suave); min-width: 0; }
 .pin-canal-nome { font-weight: 700; color: var(--texto); flex-shrink: 0; }
 .pin-canal-id { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

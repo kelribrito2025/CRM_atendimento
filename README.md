@@ -97,6 +97,20 @@ Quando conectar, o menu da conta (avatar) mostra "WhatsApp conectado" com o núm
 
 Na janela de canais, o botão **Eventos** mostra os últimos avisos que o uazapi enviou ao CRM, o que ajuda a diagnosticar problemas. Mensagens de grupos são ignoradas. Fotos, áudios e documentos aparecem por enquanto como texto (por exemplo, "[Imagem]").
 
+## Consulta de saldo pelo PIN
+
+No card **PIN do cliente** (painel da direita), o atendente digita o PIN e clica em **Consultar saldo**. Aparecem o saldo, o nome, quantas recargas o cliente tem e avisos de conta bloqueada ou desativada.
+
+Para ligar, coloque a chave do agente no `.env` e reinicie:
+
+```
+SALDO_TOKEN=sua-chave-do-agente
+```
+
+A chave dá acesso a reembolso e cancelamento, não só à consulta. Por isso ela **fica só no servidor**: a tela manda apenas o PIN para o CRM, o CRM consulta e devolve somente o que aparece na tela. Sem a chave, o botão não aparece.
+
+Cada atendente pode fazer até 60 consultas a cada 5 minutos, para evitar consulta em massa (todas as chamadas ficam registradas do outro lado). PIN não encontrado aparece como aviso na tela, não como erro do sistema.
+
 ## Telegram (bot oficial)
 
 O Telegram é o canal mais simples de ligar: só precisa do **token de um bot**, e não precisa de endereço público (o CRM busca as mensagens sozinho).
@@ -167,6 +181,7 @@ Copie `.env.example` para `.env` e ajuste:
 | `DADOS_EXEMPLO` | `true` para criar conversas de exemplo (padrão: vazio)     |
 | `DOIS_FATORES`  | `true` para pedir um código por e-mail a cada login       |
 | `BASE_URL`      | Endereço público do sistema, usado nos links de convite, nova senha e no webhook do WhatsApp |
+| `SALDO_TOKEN`   | Chave do agente para consultar o saldo pelo PIN (fica só no servidor) |
 | `UAZAPI_URL`    | Endereço do servidor uazapi (WhatsApp)                    |
 | `UAZAPI_ADMIN_TOKEN` | Token de administrador do uazapi                     |
 | `COOKIE_SEGURO` | `true` quando o sistema estiver publicado com HTTPS       |
@@ -185,6 +200,7 @@ src/uazapi.js             cliente da API do uazapi (WhatsApp)
 src/canais.js             traduz os eventos do WhatsApp em conversas e mensagens
 src/db.js                 banco de dados (SQLite) e dados de exemplo
 src/telegram.js           cliente da Bot API do Telegram e consulta contínua
+src/saldo.js              consulta de saldo do cliente pelo PIN
 src/senha.js              hash e verificação de senha
 src/acesso.js             convites, recuperação de senha e verificação em duas etapas
 src/email.js              envio de e-mails (modo de teste: mostra na janela do servidor)
