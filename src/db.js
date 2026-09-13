@@ -155,10 +155,13 @@ CREATE TABLE IF NOT EXISTS canal_eventos (
   FOREIGN KEY (canal_id) REFERENCES canais(id) ON DELETE CASCADE
 );
 
+-- conversa_id fica vazio até o cliente escrever a primeira mensagem: abrir a
+-- dashboard não é conversa, e antes disso enchia a caixa de entrada de linhas
+-- "Sem mensagens".
 CREATE TABLE IF NOT EXISTS widget_sessoes (
   token_hash VARCHAR(191) PRIMARY KEY,
   contato_id BIGINT NOT NULL,
-  conversa_id BIGINT NOT NULL,
+  conversa_id BIGINT,
   criado_em BIGINT NOT NULL,
   expira_em BIGINT NOT NULL,
   FOREIGN KEY (contato_id) REFERENCES contatos(id) ON DELETE CASCADE,
@@ -238,6 +241,45 @@ async function garantirEquipe(db, nome, cor) {
   await db.prepare('INSERT INTO equipes (nome, cor, ordem) VALUES (?, ?, ?)').run(nome, cor, Number(ultima?.fim ?? -1) + 1);
 }
 
+// Bancos criados antes: a sessão do chat exigia conversa, e por isso a conversa
+// nascia junto com o login do cliente. Aqui a coluna passa a aceitar vazio e as
+// conversas que nunca receberam mensagem são apagadas — não perdem nada, porque
+// nunca tiveram conteúdo. O contato do cliente continua guardado.
+async function limparConversasDeChatVazias(db) {
+  if (await lerAjuste(db, 'widget_conversa_sob_demanda') === '1') return;
+
+  if (db.dialeto === 'mysql') {
+    await db.exec('ALTER TABLE widget_sessoes MODIFY conversa_id BIGINT NULL');
+  } else {
+    // SQLite não altera coluna: refaz a tabela levando as sessões junto.
+    await db.exec('ALTER TABLE widget_sessoes RENAME TO widget_sessoes_antiga');
+    await db.exec(`CREATE TABLE widget_sessoes (
+      token_hash VARCHAR(191) PRIMARY KEY,
+      contato_id BIGINT NOT NULL,
+      conversa_id BIGINT,
+      criado_em BIGINT NOT NULL,
+      expira_em BIGINT NOT NULL,
+      FOREIGN KEY (contato_id) REFERENCES contatos(id) ON DELETE CASCADE,
+      FOREIGN KEY (conversa_id) REFERENCES conversas(id) ON DELETE CASCADE
+    )`);
+    await db.exec(`INSERT INTO widget_sessoes (token_hash, contato_id, conversa_id, criado_em, expira_em)
+      SELECT token_hash, contato_id, conversa_id, criado_em, expira_em FROM widget_sessoes_antiga`);
+    await db.exec('DROP TABLE widget_sessoes_antiga');
+  }
+
+  // Solta as sessões das conversas vazias antes de apagá-las: assim o cliente
+  // que está com o chat aberto não é desconectado.
+  const vazias = `SELECT c.id FROM conversas c
+    WHERE c.canal = 'widget' AND NOT EXISTS (SELECT 1 FROM mensagens m WHERE m.conversa_id = c.id)`;
+  const ids = (await db.prepare(vazias).all()).map((c) => Number(c.id));
+  if (ids.length) {
+    const lista = ids.join(', ');
+    await db.exec(`UPDATE widget_sessoes SET conversa_id = NULL WHERE conversa_id IN (${lista})`);
+    await db.exec(`DELETE FROM conversas WHERE id IN (${lista})`);
+  }
+  await gravarAjuste(db, 'widget_conversa_sob_demanda', '1');
+}
+
 async function migrar(db) {
   await garantirColuna(db, 'conversas', 'canal_id', 'BIGINT');
   await garantirColuna(db, 'conversas', 'wa_chatid', 'VARCHAR(191)');
@@ -257,6 +299,7 @@ async function migrar(db) {
   await garantirColuna(db, 'contatos', 'tg_foto_id', 'VARCHAR(255)');
   await garantirColuna(db, 'contatos', 'tg_foto_em', 'BIGINT');
   for (const [nome, tabela, colunas] of INDICES) await db.criarIndice(nome, tabela, colunas);
+  await limparConversasDeChatVazias(db);
   await renomearEquipe(db, 'Cobrança', 'Admin');
   // Equipes padrão antigas que deixaram de existir (removidas uma única vez).
   if (await lerAjuste(db, 'equipes_padrao') !== '3') {
@@ -633,4 +676,4 @@ async function semearDadosExemplo(db, senhaEquipe) {
   });
 }
 
-module.exports = { abrirBanco, semear, inserirUsuario, semearDadosExemplo, removerDadosExemplo };
+module.exports = { abrirBanco, semear, migrar, inserirUsuario, semearDadosExemplo, removerDadosExemplo };

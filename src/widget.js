@@ -65,30 +65,47 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null 
       if (pinNovo && pinNovo !== contato.pin && !contato.pin_validado_em) await db.prepare('UPDATE contatos SET pin = ? WHERE id = ?').run(pinNovo, contato.id);
     }
 
-    // Sempre a mesma conversa deste cliente: se estava resolvida, ela reabre com o histórico.
-    let conversa = await db.prepare("SELECT * FROM conversas WHERE contato_id = ? AND canal = 'widget' ORDER BY id DESC LIMIT 1").get(contato.id);
-    if (!conversa) {
-      const agora = Date.now();
-      const nova = await db.prepare(`
-        INSERT INTO conversas (protocolo, contato_id, equipe_id, atendente_id, canal, status, nao_lidas, criada_em, atualizada_em)
-        VALUES (?, ?, ?, NULL, 'widget', 'aberta', 0, ?, ?)`)
-        .run(await proximoProtocolo(db), contato.id, equipePadraoId, agora, agora);
-      conversa = await db.prepare('SELECT * FROM conversas WHERE id = ?').get(Number(nova.lastInsertRowid));
-    }
+    // A conversa NÃO nasce aqui. Abrir a dashboard não é pedir atendimento: se
+    // criasse agora, a caixa de entrada encheria de linhas "Sem mensagens" de
+    // gente que só entrou no painel. Ela nasce na primeira mensagem.
+    // Se este cliente já conversou antes, a sessão volta para a mesma conversa
+    // — inclusive se estava resolvida, que reabre com o histórico.
+    const conversa = await db.prepare("SELECT * FROM conversas WHERE contato_id = ? AND canal = 'widget' ORDER BY id DESC LIMIT 1").get(contato.id);
 
     const token = crypto.randomBytes(32).toString('base64url');
     const agora = Date.now();
     await db.prepare('INSERT INTO widget_sessoes (token_hash, contato_id, conversa_id, criado_em, expira_em) VALUES (?, ?, ?, ?, ?)')
-      .run(hashToken(token), contato.id, conversa.id, agora, agora + VALIDADE_SESSAO_MS);
+      .run(hashToken(token), contato.id, conversa ? conversa.id : null, agora, agora + VALIDADE_SESSAO_MS);
 
-    return { token, conversaId: conversa.id, contato: { id: contato.id, nome: contato.nome }, protocolo: conversa.protocolo };
+    return {
+      token,
+      conversaId: conversa ? conversa.id : null,
+      contato: { id: contato.id, nome: contato.nome },
+      protocolo: conversa ? conversa.protocolo : null,
+    };
+  }
+
+  // Chamada no momento em que o cliente realmente fala alguma coisa.
+  async function garantirConversa(sessao) {
+    if (sessao.conversa_id) return Number(sessao.conversa_id);
+    const agora = Date.now();
+    const nova = await db.prepare(`
+      INSERT INTO conversas (protocolo, contato_id, equipe_id, atendente_id, canal, status, nao_lidas, criada_em, atualizada_em)
+      VALUES (?, ?, ?, NULL, 'widget', 'aberta', 0, ?, ?)`)
+      .run(await proximoProtocolo(db), sessao.contato_id, equipePadraoId, agora, agora);
+    const id = Number(nova.lastInsertRowid);
+    // As outras abas do mesmo cliente passam a apontar para esta conversa.
+    await db.prepare('UPDATE widget_sessoes SET conversa_id = ? WHERE contato_id = ? AND conversa_id IS NULL')
+      .run(id, sessao.contato_id);
+    sessao.conversa_id = id;
+    return id;
   }
 
   async function sessaoDoToken(token) {
     if (!token) return null;
     const linha = await db.prepare(`
       SELECT s.*, c.status AS conversa_status
-      FROM widget_sessoes s JOIN conversas c ON c.id = s.conversa_id
+      FROM widget_sessoes s LEFT JOIN conversas c ON c.id = s.conversa_id
       WHERE s.token_hash = ?`).get(hashToken(token));
     if (!linha) return null;
     if (Number(linha.expira_em) < Date.now()) {
@@ -102,6 +119,7 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null 
   // O arquivo vai como um endereço do próprio CRM (/widget/midia/123): assim o
   // link do S3 nunca aparece no navegador do cliente.
   async function listarMensagens(sessao, desde = 0) {
+    if (!sessao.conversa_id) return [];
     const linhas = await db.prepare(`
       SELECT m.id, m.tipo, m.texto, m.criada_em, m.entrega, m.midia_tipo, m.midia_nome, m.midia_mime, m.midia_chave, m.midia_id,
              u.nome AS autor_nome
@@ -129,16 +147,17 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null 
     if (bytes.length > TAMANHO_MAXIMO_ANEXO) throw new Error('Arquivo muito grande (o limite é 20 MB).');
 
     const tipo = tipoDoArquivo(mime, nome);
-    const guardado = await arquivos.enviar(bytes, { nome, tipo: mime, pasta: `conversa-${sessao.conversa_id}` });
+    const conversaId = await garantirConversa(sessao);
+    const guardado = await arquivos.enviar(bytes, { nome, tipo: mime, pasta: `conversa-${conversaId}` });
 
     const agora = Date.now();
     const texto = ROTULO_MIDIA[tipo] || '[Arquivo]';
     const info = await db.prepare(`
       INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, criada_em, midia_tipo, midia_nome, midia_mime, midia_chave, midia_tamanho)
       VALUES (?, 'cliente', NULL, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(sessao.conversa_id, texto, agora, tipo, nome, mime, guardado.chave, guardado.tamanho);
+      .run(conversaId, texto, agora, tipo, nome, mime, guardado.chave, guardado.tamanho);
     await db.prepare("UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + 1, status = 'aberta' WHERE id = ?")
-      .run(agora, sessao.conversa_id);
+      .run(agora, conversaId);
 
     const id = Number(info.lastInsertRowid);
     return {
@@ -149,6 +168,7 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null 
 
   // Só devolve o arquivo se ele for mesmo da conversa daquele visitante.
   async function arquivoDaSessao(sessao, mensagemId) {
+    if (!sessao.conversa_id) return null;
     const m = await db.prepare('SELECT * FROM mensagens WHERE id = ? AND conversa_id = ? AND tipo != ?')
       .get(Number(mensagemId) || 0, sessao.conversa_id, 'nota');
     return m && (m.midia_chave || m.midia_id) ? m : null;
@@ -157,11 +177,12 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null 
   async function enviarMensagem(sessao, texto) {
     const conteudo = String(texto || '').trim().slice(0, TAMANHO_MAXIMO_MENSAGEM);
     if (!conteudo) throw new Error('Escreva a mensagem antes de enviar.');
+    const conversaId = await garantirConversa(sessao);
     const agora = Date.now();
     const info = await db.prepare('INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, criada_em) VALUES (?, ?, NULL, ?, ?)')
-      .run(sessao.conversa_id, 'cliente', conteudo, agora);
+      .run(conversaId, 'cliente', conteudo, agora);
     await db.prepare("UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + 1, status = 'aberta' WHERE id = ?")
-      .run(agora, sessao.conversa_id);
+      .run(agora, conversaId);
     return { id: Number(info.lastInsertRowid), de: 'voce', texto: conteudo, criadaEm: agora, autor: null };
   }
 

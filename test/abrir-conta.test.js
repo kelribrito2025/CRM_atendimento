@@ -50,8 +50,10 @@ async function subirServidor({ site = siteFalso(), token = 'chave-do-agente' } =
     method: 'POST', headers: { 'Content-Type': 'application/json', 'x-widget-token': sessao.token },
     body: JSON.stringify({ texto: 'Meu saldo não bate' }),
   });
+  // A conversa nasce na primeira mensagem, não no login do cliente.
+  const conversa = await db.prepare("SELECT id FROM conversas WHERE canal = 'widget' ORDER BY id DESC LIMIT 1").get();
 
-  return { db, base, site, chamar, conversaId: sessao.conversaId, fechar: async () => { await new Promise((r) => servidor.close(r)); await db.fechar(); } };
+  return { db, base, site, chamar, conversaId: Number(conversa.id), fechar: async () => { await new Promise((r) => servidor.close(r)); await db.fechar(); } };
 }
 
 test('abrir conta: manda quem abriu e o motivo, e devolve o link de uso único', async () => {

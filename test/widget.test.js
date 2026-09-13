@@ -80,7 +80,9 @@ test('chat do site: visitante manda mensagem, atendente responde e o visitante r
     assert.equal(sessao.status, 200, JSON.stringify(sessao.dados));
     const token = sessao.dados.token;
     assert.ok(token && token.length > 20);
-    assert.ok(sessao.dados.protocolo, 'a conversa recebe protocolo como as outras');
+    // Só entrar no painel não abre conversa nenhuma no CRM.
+    assert.equal(sessao.dados.conversaId, null, 'entrar no painel ainda não é conversa');
+    assert.equal((await s.crm('/api/conversas')).dados.conversas.length, 0, 'nada na caixa de entrada ainda');
 
     // Conversa começa vazia
     assert.deepEqual((await s.visitante('/widget/mensagens', 'GET', null, token)).dados.mensagens, []);
@@ -88,6 +90,8 @@ test('chat do site: visitante manda mensagem, atendente responde e o visitante r
     const enviada = await s.visitante('/widget/mensagens', 'POST', { texto: 'Oi, meu saldo não atualizou.' }, token);
     assert.equal(enviada.status, 201, JSON.stringify(enviada.dados));
     assert.equal(enviada.dados.mensagem.de, 'voce');
+    // Agora sim: a conversa nasceu, com protocolo como as outras.
+    assert.ok((await s.abrirSessao({ id: 'u-901', nome: 'Carla Menezes' })).dados.protocolo, 'a conversa recebe protocolo como as outras');
 
     // A conversa aparece na caixa de entrada do CRM, como canal "widget"
     const caixa = await s.crm('/api/conversas');
@@ -127,7 +131,7 @@ test('chat do site: voltar ao painel continua a mesma conversa, sem duplicar cli
     await s.visitante('/widget/mensagens', 'POST', { texto: 'primeira' }, a.dados.token);
     const b = await s.abrirSessao({ id: 'u-901', nome: 'Carla M. Menezes' });
 
-    assert.equal(b.dados.conversaId, a.dados.conversaId, 'mesma conversa');
+    assert.ok(b.dados.conversaId, 'ao voltar, a sessão já encontra a conversa de antes');
     assert.equal(b.dados.contato.id, a.dados.contato.id, 'mesmo cliente');
     assert.equal(b.dados.contato.nome, 'Carla M. Menezes', 'o nome é atualizado pelo site');
     assert.equal((await s.db.prepare('SELECT COUNT(*) AS n FROM contatos').get()).n, 1);
@@ -142,8 +146,13 @@ test('chat do site: cada visitante só vê a conversa dele', async () => {
     const bruno = await s.abrirSessao({ id: 'u-902', nome: 'Bruno' });
     await s.visitante('/widget/mensagens', 'POST', { texto: 'segredo da Carla' }, carla.dados.token);
 
-    assert.notEqual(carla.dados.conversaId, bruno.dados.conversaId);
+    // O Bruno entrou no painel e não escreveu: não tem conversa nenhuma.
+    assert.equal(bruno.dados.conversaId, null);
     assert.deepEqual((await s.visitante('/widget/mensagens', 'GET', null, bruno.dados.token)).dados.mensagens, []);
+    // E a conversa da Carla, que escreveu, não é a dele.
+    const dela = (await s.abrirSessao({ id: 'u-901', nome: 'Carla' })).dados.conversaId;
+    assert.ok(dela);
+    assert.notEqual(dela, bruno.dados.conversaId);
     assert.equal((await s.visitante('/widget/mensagens', 'GET', null, 'token-inventado')).status, 401);
     assert.equal((await s.visitante('/widget/mensagens', 'POST', { texto: 'oi' }, 'token-inventado')).status, 401);
     assert.equal((await s.visitante('/widget/mensagens', 'GET')).status, 401);
@@ -245,5 +254,62 @@ test('chat do site: a assinatura precisa ser do segredo e do id certos', async (
       assert.equal((await s.visitante('/widget/sessao', 'POST', { id: 'u-500', assinatura })).status, 401, `aceitou ${JSON.stringify(assinatura)}`);
     }
     assert.equal((await s.visitante('/widget/sessao', 'POST', { id: 'u-500', assinatura: certa })).status, 200);
+  } finally { await s.fechar(); }
+});
+
+test('chat do site: só entrar no painel não cria conversa; escrever cria', async () => {
+  const s = await subirServidor();
+  try {
+    // Dez pessoas abrem a dashboard e não falam nada.
+    const tokens = [];
+    for (let i = 0; i < 10; i += 1) {
+      const r = await s.abrirSessao({ id: `visita-${i}`, nome: `Pessoa ${i}` });
+      tokens.push(r.dados.token);
+      assert.equal(r.dados.conversaId, null);
+    }
+    assert.equal((await s.crm('/api/conversas')).dados.conversas.length, 0, 'caixa de entrada limpa');
+    // Os contatos ficam guardados: é a mesma pessoa se ela voltar.
+    assert.equal((await s.db.prepare('SELECT COUNT(*) AS n FROM contatos').get()).n, 10);
+
+    // Uma delas escreve.
+    await s.visitante('/widget/mensagens', 'POST', { texto: 'Preciso de ajuda' }, tokens[3]);
+    const caixa = await s.crm('/api/conversas');
+    assert.equal(caixa.dados.conversas.length, 1, 'só a conversa de quem falou');
+    assert.equal(caixa.dados.conversas[0].contato.nome, 'Pessoa 3');
+
+    // Recarregar a página continua na mesma conversa, sem criar outra.
+    const devolta = await s.abrirSessao({ id: 'visita-3', nome: 'Pessoa 3' });
+    assert.equal(devolta.dados.conversaId, caixa.dados.conversas[0].id);
+    await s.visitante('/widget/mensagens', 'POST', { texto: 'ainda estou aqui' }, devolta.dados.token);
+    assert.equal((await s.crm('/api/conversas')).dados.conversas.length, 1);
+  } finally { await s.fechar(); }
+});
+
+test('chat do site: conversas vazias de antes somem na atualização', async () => {
+  const s = await subirServidor();
+  try {
+    const { proximoProtocolo } = require('../src/canais');
+    const agora = Date.now();
+    // Simula o banco antigo: um cliente com conversa vazia e outro com conversa de verdade.
+    const vazio = await s.db.prepare('INSERT INTO contatos (nome, site_id) VALUES (?, ?)').run('Só passou', 'antigo-1');
+    const falante = await s.db.prepare('INSERT INTO contatos (nome, site_id) VALUES (?, ?)').run('Escreveu', 'antigo-2');
+    const criarConversa = async (contatoId) => {
+      const r = await s.db.prepare(`INSERT INTO conversas (protocolo, contato_id, canal, status, nao_lidas, criada_em, atualizada_em)
+        VALUES (?, ?, 'widget', 'aberta', 0, ?, ?)`).run(await proximoProtocolo(s.db), contatoId, agora, agora);
+      return Number(r.lastInsertRowid);
+    };
+    const conversaVazia = await criarConversa(Number(vazio.lastInsertRowid));
+    const conversaCheia = await criarConversa(Number(falante.lastInsertRowid));
+    await s.db.prepare('INSERT INTO mensagens (conversa_id, tipo, texto, criada_em) VALUES (?, ?, ?, ?)')
+      .run(conversaCheia, 'cliente', 'oi', agora);
+
+    // Roda a atualização de novo, como faria ao subir a versão nova.
+    await s.db.prepare('DELETE FROM ajustes WHERE chave = ?').run('widget_conversa_sob_demanda');
+    await require('../src/db').migrar(s.db);
+
+    assert.equal(await s.db.prepare('SELECT id FROM conversas WHERE id = ?').get(conversaVazia), undefined, 'a vazia some');
+    assert.ok(await s.db.prepare('SELECT id FROM conversas WHERE id = ?').get(conversaCheia), 'a que tem mensagem fica');
+    // Ninguém perde o cadastro do cliente.
+    assert.equal((await s.db.prepare('SELECT COUNT(*) AS n FROM contatos').get()).n, 2);
   } finally { await s.fechar(); }
 });
