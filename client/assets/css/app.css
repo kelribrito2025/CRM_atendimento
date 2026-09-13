@@ -185,6 +185,16 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
   background: none; text-align: left; width: 100%; color: inherit;
 }
 .conversa:hover { background: var(--hover); }
+.conversa { position: relative; }
+.conversa-encerrar {
+  position: absolute; right: 10px; bottom: 10px;
+  width: 28px; height: 28px; border-radius: 9px;
+  border: 1px solid var(--verde-borda); background: #fff; color: var(--verde-texto);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  opacity: 0; transition: opacity .12s ease, background .12s ease;
+}
+.conversa:hover .conversa-encerrar, .conversa.ativa .conversa-encerrar, .conversa-encerrar:focus-visible { opacity: 1; }
+.conversa-encerrar:hover { background: var(--verde); border-color: var(--verde); color: #fff; }
 .conversa.ativa { background: var(--verde-fundo); border-color: var(--verde); }
 .avatar-wrap { position: relative; flex-shrink: 0; align-self: flex-start; }
 .canal-badge { position: absolute; right: -3px; bottom: -3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; }
@@ -229,6 +239,9 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
   background-size: 400px 400px;
   background-position: left top;
 }
+.historico-btn { align-self: center; border: 1px solid var(--borda); background: #fff; color: var(--texto-suave); font-size: 11.5px; font-weight: 600; padding: 6px 14px; border-radius: 999px; cursor: pointer; }
+.historico-btn:hover { border-color: var(--verde-borda); color: var(--verde-texto); }
+.historico-aviso { align-self: center; font-size: 11.5px; color: var(--texto-suave); padding: 6px 0; }
 .data-sep { align-self: center; font-size: 11px; font-weight: 700; color: var(--texto-suave); background: var(--cinza); padding: 5px 12px; border-radius: 999px; }
 .msg { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; gap: 5px; max-width: 78%; }
 .msg.saida { align-self: flex-end; align-items: flex-end; }

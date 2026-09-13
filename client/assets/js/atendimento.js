@@ -408,6 +408,40 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     return botao;
   }
 
+  /* --------------------- histórico da conversa --------------------- */
+  // A conversa abre com as últimas mensagens. As antigas chegam conforme a
+  // pessoa sobe a rolagem, para um histórico grande não travar a tela.
+  const historico = { carregando: false };
+
+  async function carregarAnteriores() {
+    const c = estado.conversa;
+    if (!c || !c.temMaisMensagens || historico.carregando) return;
+    const maisAntiga = c.mensagens.find((m) => !m.provisoria);
+    if (!maisAntiga) return;
+    historico.carregando = true;
+    redesenharMensagens({ manterPosicao: true });
+    try {
+      const r = await api(`/conversas/${c.id}/mensagens?antes=${maisAntiga.id}&antesEm=${maisAntiga.criadaEm}`);
+      if (estado.conversa?.id !== c.id) return;
+      c.mensagens.unshift(...r.mensagens);
+      c.temMaisMensagens = r.temMais;
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      historico.carregando = false;
+      if (estado.conversa?.id === c.id) redesenharMensagens({ manterPosicao: true });
+    }
+  }
+
+  // Redesenha só a lista de mensagens (não mexe no campo de escrever).
+  function redesenharMensagens({ manterPosicao = false } = {}) {
+    const caixa = $('#mensagens');
+    if (!caixa || !estado.conversa) return;
+    const doFim = caixa.scrollHeight - caixa.scrollTop;
+    caixa.replaceChildren(...construirMensagens(estado.conversa));
+    caixa.scrollTop = manterPosicao ? caixa.scrollHeight - doFim : caixa.scrollHeight;
+  }
+
   /* ------------------------ notas internas ------------------------ */
   // `editando` guarda qual nota está aberta para edição e em que lugar da tela
   // (no chat ou na ficha do cliente), para não abrir dois campos ao mesmo tempo.
@@ -575,6 +609,21 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     }
   }
 
+  // Encerra a conversa direto pelo card da lista, sem precisar abri-la.
+  async function encerrarPeloCard(id) {
+    try {
+      const r = await api(`/conversas/${id}/status`, { method: 'POST', body: { status: 'resolvida' } });
+      if (estado.conversa?.id === id) {
+        Object.assign(estado.conversa, { status: r.conversa.status });
+        aplicarConversa(estado.conversa);
+      }
+      toast('Conversa encerrada.');
+      await Promise.all([carregarResumo(), carregarConversas()]);
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
   async function mudarStatus(status) {
     const c = estado.conversa;
     if (!c) return;
@@ -701,7 +750,21 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       ? `${c.ultimaAutor.split(' ')[0]}: ${c.ultimaTexto}`
       : (c.ultimaTexto || 'Sem mensagens');
 
-    return el('button', { type: 'button', class: `conversa${ativa ? ' ativa' : ''}`, onclick: () => abrirConversa(c.id) },
+    // Só em "Minhas conversas": o botão de encerrar, no canto de baixo do card.
+    const encerrar = estado.caixa === 'minhas' && c.status === 'aberta'
+      ? el('button', {
+        type: 'button', class: 'conversa-encerrar hov', 'aria-label': `Encerrar a conversa com ${c.contato.nome}`,
+        title: 'Encerrar conversa',
+        onclick: (e) => { e.stopPropagation(); encerrarPeloCard(c.id); },
+      }, svg(ICONE.check))
+      : null;
+
+    // Cartão clicável (div, e não button, porque tem um botão dentro).
+    return el('div', {
+      class: `conversa${ativa ? ' ativa' : ''}`, role: 'button', tabindex: '0',
+      onclick: () => abrirConversa(c.id),
+      onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirConversa(c.id); } },
+    },
       el('span', { class: 'avatar-wrap' },
         avatarCliente(c, `avatar m ${corAvatar}`),
         el('span', { class: 'canal-badge', style: `background:${corCanal}`, html: ICONE[c.canal]?.(11, '#FFFFFF') || '' })),
@@ -712,7 +775,8 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
           el('span', { class: 'conversa-hora' }, horaLista(c.ultimaEm || c.atualizadaEm))),
         el('span', { class: 'conversa-previa' }, previa),
         tag ? el('span', { class: `tag ${tag[1]}`.trim() }, tag[0]) : null),
-      c.naoLidas > 0 && !ativa ? el('span', { class: 'nao-lidas' }, String(c.naoLidas)) : null);
+      c.naoLidas > 0 && !ativa ? el('span', { class: 'nao-lidas' }, String(c.naoLidas)) : null,
+      encerrar);
   }
 
   function renderLista() {
@@ -1081,6 +1145,11 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   function construirMensagens(c) {
     const nos = [];
     let ultimoDia = null;
+    if (c.temMaisMensagens) {
+      nos.push(historico.carregando
+        ? el('div', { class: 'historico-aviso' }, 'Carregando o histórico…')
+        : el('button', { type: 'button', class: 'historico-btn hov', onclick: carregarAnteriores }, 'Ver mensagens anteriores'));
+    }
     for (const m of c.mensagens) {
       const dia = new Date(m.criadaEm).toDateString();
       if (dia !== ultimoDia) {
@@ -1147,7 +1216,10 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         comDica(el('button', { type: 'button', class: 'btn-icone btn-info hov', onclick: () => $('#painel').classList.toggle('aberto') }, icone('info', ICONE.info)), 'ficha', 'Ficha do cliente'),
         comDica(el('button', { type: 'button', class: 'btn-icone hov', onclick: (e) => { e.stopPropagation(); abrirMenuAcoes(e.currentTarget); } }, icone('acoes', ICONE.pontos)), 'acoes', 'Mais ações')));
 
-    const mensagens = el('div', { class: 'rolagem mensagens', id: 'mensagens' }, ...construirMensagens(c));
+    const mensagens = el('div', {
+      class: 'rolagem mensagens', id: 'mensagens',
+      onscroll: () => { if (mensagens.scrollTop < 80) carregarAnteriores(); },
+    }, ...construirMensagens(c));
 
     const textarea = el('textarea', {
       id: 'texto-msg', rows: '2', maxlength: '4000',

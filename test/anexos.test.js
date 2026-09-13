@@ -283,3 +283,82 @@ test('equipes: o CRM passa a ter também a equipe Prioridade', async () => {
     assert.deepEqual(nomes, ['Reembolso', 'Admin', 'Prioridade']);
   } finally { await s.fechar(); }
 });
+
+test('histórico: a conversa abre com as últimas mensagens e as antigas chegam depois', async () => {
+  const s = await subirServidor();
+  try {
+    const { conversa } = await conversaDeWhatsapp(s);
+    // 100 mensagens antigas, em ordem
+    // todas depois da primeira mensagem da conversa (que é de um minuto atrás)
+    const base = Date.now() - 59_000;
+    for (let i = 1; i <= 100; i++) {
+      await s.db.prepare("INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, criada_em) VALUES (?, 'cliente', NULL, ?, ?)")
+        .run(conversa.id, `mensagem ${i}`, base + i * 500);
+    }
+
+    // abre: só as 40 últimas
+    const aberta = await s.chamar(`/api/conversas/${conversa.id}`);
+    const primeiras = aberta.dados.conversa.mensagens;
+    assert.equal(primeiras.length, 40);
+    assert.equal(aberta.dados.conversa.temMaisMensagens, true);
+    assert.equal(primeiras.at(-1).texto, 'mensagem 100', 'a última da tela é a mais recente');
+    assert.equal(primeiras[0].texto, 'mensagem 61');
+
+    // sobe a rolagem: chegam as 40 anteriores
+    const maisAntiga = primeiras[0];
+    const pagina2 = await s.chamar(`/api/conversas/${conversa.id}/mensagens?antes=${maisAntiga.id}&antesEm=${maisAntiga.criadaEm}`);
+    assert.equal(pagina2.status, 200, JSON.stringify(pagina2.dados));
+    assert.equal(pagina2.dados.mensagens.length, 40);
+    assert.equal(pagina2.dados.temMais, true);
+    assert.equal(pagina2.dados.mensagens.at(-1).texto, 'mensagem 60', 'emenda exatamente onde a tela parou');
+    assert.equal(pagina2.dados.mensagens[0].texto, 'mensagem 21');
+
+    // sobe de novo: chega o começo da conversa e acaba
+    const antiga2 = pagina2.dados.mensagens[0];
+    const pagina3 = await s.chamar(`/api/conversas/${conversa.id}/mensagens?antes=${antiga2.id}&antesEm=${antiga2.criadaEm}`);
+    assert.equal(pagina3.dados.temMais, false, 'não há mais histórico para buscar');
+    assert.equal(pagina3.dados.mensagens.at(-1).texto, 'mensagem 20');
+    assert.equal(pagina3.dados.mensagens[0].texto, 'Oi, preciso de ajuda', 'a primeira mensagem da conversa');
+
+    // nenhuma mensagem se repete nem some
+    const tudo = [...pagina3.dados.mensagens, ...pagina2.dados.mensagens, ...primeiras];
+    assert.equal(tudo.length, 101);
+    assert.equal(new Set(tudo.map((m) => m.id)).size, 101);
+
+    // pedido sem referência é recusado
+    assert.equal((await s.chamar(`/api/conversas/${conversa.id}/mensagens`)).status, 400);
+  } finally { await s.fechar(); }
+});
+
+test('histórico: conversa curta abre inteira, sem pedir mais nada', async () => {
+  const s = await subirServidor();
+  try {
+    const { conversa } = await conversaDeWhatsapp(s);
+    const aberta = await s.chamar(`/api/conversas/${conversa.id}`);
+    assert.equal(aberta.dados.conversa.mensagens.length, 1);
+    assert.equal(aberta.dados.conversa.temMaisMensagens, false);
+  } finally { await s.fechar(); }
+});
+
+test('encerrar pelo card: a conversa sai de Minhas e volta com o histórico', async () => {
+  const s = await subirServidor();
+  try {
+    const { conversa, evento } = await conversaDeWhatsapp(s);
+    await s.chamar(`/api/conversas/${conversa.id}/mensagens`, 'POST', { texto: 'Resolvido!' });
+    assert.equal((await s.chamar('/api/conversas?caixa=minhas')).dados.conversas.length, 1);
+
+    const encerrada = await s.chamar(`/api/conversas/${conversa.id}/status`, 'POST', { status: 'resolvida' });
+    assert.equal(encerrada.status, 200);
+    assert.equal(encerrada.dados.conversa.status, 'resolvida');
+    assert.deepEqual((await s.chamar('/api/conversas?caixa=minhas')).dados.conversas, [], 'some da lista Minhas');
+    assert.equal((await s.chamar('/api/resumo')).dados.caixas.minhas, 0);
+    // mas continua em Todas, para achar depois
+    assert.equal((await s.chamar('/api/conversas')).dados.conversas.filter((c) => c.id === conversa.id).length, 1);
+
+    // o mesmo cliente volta: mesma conversa, histórico inteiro
+    await evento('Voltei!', 'E9', Date.now() + 60_000);
+    const detalhe = await s.chamar(`/api/conversas/${conversa.id}`);
+    assert.equal(detalhe.dados.conversa.status, 'aberta');
+    assert.deepEqual(detalhe.dados.conversa.mensagens.map((m) => m.texto), ['Oi, preciso de ajuda', 'Resolvido!', 'Voltei!']);
+  } finally { await s.fechar(); }
+});

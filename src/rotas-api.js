@@ -12,6 +12,9 @@ const { interpretarStatus } = require('./uazapi');
 const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta']);
 const STATUS = new Set(['aberta', 'resolvida']);
 const TAMANHO_MAXIMO_MENSAGEM = 4000;
+// A conversa abre com as últimas mensagens; as antigas chegam conforme a pessoa
+// sobe a rolagem, para um histórico grande não deixar a tela pesada.
+const PAGINA_MENSAGENS = 40;
 const TAMANHO_MAXIMO_ANEXO = 20 * 1024 * 1024; // 20 MB: é o limite que o Telegram aceita de um bot
 const VALIDADE_LINK_ANEXO_S = 15 * 60; // o WhatsApp/Telegram busca o arquivo neste prazo
 
@@ -120,6 +123,17 @@ function criarRotasApi(db, opcoes = {}) {
       SELECT m.*, u.nome AS autor_nome
       FROM mensagens m LEFT JOIN usuarios u ON u.id = m.autor_id
       WHERE m.conversa_id = ? ORDER BY m.criada_em, m.id`),
+    // As últimas da conversa (vêm de trás para a frente e são viradas depois).
+    ultimasMensagens: db.prepare(`
+      SELECT m.*, u.nome AS autor_nome
+      FROM mensagens m LEFT JOIN usuarios u ON u.id = m.autor_id
+      WHERE m.conversa_id = ? ORDER BY m.criada_em DESC, m.id DESC LIMIT ?`),
+    // As que vêm antes de uma mensagem já mostrada na tela.
+    mensagensAntesDe: db.prepare(`
+      SELECT m.*, u.nome AS autor_nome
+      FROM mensagens m LEFT JOIN usuarios u ON u.id = m.autor_id
+      WHERE m.conversa_id = ? AND (m.criada_em < ? OR (m.criada_em = ? AND m.id < ?))
+      ORDER BY m.criada_em DESC, m.id DESC LIMIT ?`),
     mensagemPorId: db.prepare(`
       SELECT m.*, u.nome AS autor_nome
       FROM mensagens m LEFT JOIN usuarios u ON u.id = m.autor_id
@@ -203,11 +217,23 @@ function criarRotasApi(db, opcoes = {}) {
     return row ? formatarConversa(row) : null;
   }
 
+  // Busca um pedaço do histórico. `antes` (mensagem mais antiga já na tela)
+  // pede as anteriores a ela; sem `antes`, traz as últimas da conversa.
+  async function paginaDeMensagens(conversaId, antes = null) {
+    const linhas = antes
+      ? await sql.mensagensAntesDe.all(conversaId, antes.criadaEm, antes.criadaEm, antes.id, PAGINA_MENSAGENS + 1)
+      : await sql.ultimasMensagens.all(conversaId, PAGINA_MENSAGENS + 1);
+    const temMais = linhas.length > PAGINA_MENSAGENS;
+    const pagina = temMais ? linhas.slice(0, PAGINA_MENSAGENS) : linhas;
+    return { mensagens: pagina.reverse().map(formatarMensagem), temMais };
+  }
+
   async function detalharConversa(c) {
     const ct = await sql.contato.get(c.contato.id);
-    const mensagens = (await sql.mensagens.all(c.id)).map(formatarMensagem);
+    const { mensagens, temMais } = await paginaDeMensagens(c.id);
     return {
       ...c,
+      temMaisMensagens: temMais,
       contato: {
         ...c.contato,
         dados: lerJson(ct.dados_conta, []),
@@ -289,7 +315,9 @@ function criarRotasApi(db, opcoes = {}) {
 
     let lista = (await todasConversas()).filter((c) => c.status === 'aberta' || c.atualizadaEm >= limiteResolvidas);
     if (equipeId) lista = lista.filter((c) => c.equipe?.id === equipeId);
-    if (caixa === 'minhas') lista = lista.filter((c) => c.atendente?.id === req.usuario.id);
+    // "Minhas" mostra o que ainda está em aberto comigo: ao encerrar, o cliente
+    // sai da lista (continua em "Todas" e na busca por sete dias).
+    if (caixa === 'minhas') lista = lista.filter((c) => c.atendente?.id === req.usuario.id && c.status === 'aberta');
     if (caixa === 'sem_resposta') lista = lista.filter((c) => c.semResposta);
     if (busca) {
       lista = lista.filter((c) => [
@@ -303,6 +331,16 @@ function criarRotasApi(db, opcoes = {}) {
     await sql.marcarLida.run(req.conversa.id);
     req.conversa.naoLidas = 0;
     res.json({ conversa: await detalharConversa(req.conversa) });
+  });
+
+  // Histórico antigo, pedido quando a pessoa sobe a rolagem do chat.
+  r.get('/conversas/:id/mensagens', comConversa, async (req, res) => {
+    const id = Number(req.query.antes);
+    const criadaEm = Number(req.query.antesEm);
+    if (!Number.isInteger(id) || !Number.isFinite(criadaEm)) {
+      return res.status(400).json({ erro: 'Informe a partir de qual mensagem buscar o histórico.' });
+    }
+    res.json(await paginaDeMensagens(req.conversa.id, { id, criadaEm }));
   });
 
   r.post('/conversas/:id/mensagens', comConversa, async (req, res) => {
