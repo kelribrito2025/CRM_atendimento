@@ -98,6 +98,32 @@ function criarTelegram({ fetchImpl = globalThis.fetch, base = 'https://api.teleg
     return { messageId: r?.message_id ?? null, chatId: r?.chat?.id ?? chatId };
   }
 
+  // Onde o arquivo está guardado no Telegram (vale ~1 hora).
+  async function obterArquivo(token, fileId) {
+    const r = await chamar(token, 'getFile', { file_id: String(fileId) });
+    if (!r?.file_path) throw new ErroTelegram('O Telegram não informou onde está o arquivo.');
+    return { caminho: r.file_path, tamanho: Number(r.file_size || 0) };
+  }
+
+  // Baixa o conteúdo do arquivo (limite do Telegram para bots: 20 MB).
+  async function baixarArquivo(token, fileId, { timeout = 60_000 } = {}) {
+    const { caminho } = await obterArquivo(token, fileId);
+    const controle = new AbortController();
+    const temporizador = setTimeout(() => controle.abort(), timeout);
+    let resposta;
+    try {
+      resposta = await fetchImpl(`${base}/file/bot${token}/${caminho}`, { signal: controle.signal });
+    } catch (erro) {
+      const motivo = erro.name === 'AbortError' ? 'tempo esgotado' : erro.message;
+      throw new ErroTelegram(`Não foi possível baixar o arquivo do Telegram (${motivo}).`);
+    } finally {
+      clearTimeout(temporizador);
+    }
+    if (!resposta.ok) throw new ErroTelegram('O arquivo não está mais disponível no Telegram.', { status: resposta.status });
+    const bytes = Buffer.from(await resposta.arrayBuffer());
+    return { bytes, tipo: resposta.headers.get('content-type') || null, caminho };
+  }
+
   function obterUpdates(token, offset, { signal } = {}) {
     return chamar(token, 'getUpdates', { offset, timeout: esperaSondagemS, allowed_updates: ['message'] },
       { timeout: (esperaSondagemS + 15) * 1000, signal });
@@ -164,7 +190,7 @@ function criarTelegram({ fetchImpl = globalThis.fetch, base = 'https://api.teleg
     },
   };
 
-  return { base, validarToken, removerWebhook, enviarTexto, obterUpdates, sondagem };
+  return { base, validarToken, removerWebhook, enviarTexto, obterArquivo, baixarArquivo, obterUpdates, sondagem };
 }
 
 module.exports = { criarTelegram, tokenValido, traduzirErro, ErroTelegram };

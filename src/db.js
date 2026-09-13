@@ -165,6 +165,10 @@ function migrar(db) {
   garantirColuna(db, 'conversas', 'canal_id', 'INTEGER REFERENCES canais(id)');
   garantirColuna(db, 'conversas', 'wa_chatid', 'TEXT');
   garantirColuna(db, 'mensagens', 'externo_id', 'TEXT');
+  garantirColuna(db, 'mensagens', 'midia_tipo', 'TEXT');
+  garantirColuna(db, 'mensagens', 'midia_id', 'TEXT');
+  garantirColuna(db, 'mensagens', 'midia_nome', 'TEXT');
+  garantirColuna(db, 'mensagens', 'midia_mime', 'TEXT');
   garantirColuna(db, 'contatos', 'wa_id', 'TEXT');
   garantirColuna(db, 'contatos', 'tg_id', 'TEXT');
   garantirColuna(db, 'contatos', 'tg_usuario', 'TEXT');

@@ -146,6 +146,7 @@ function criarRotasApi(db, opcoes = {}) {
       id: m.id,
       tipo: m.tipo,
       texto: m.texto,
+      midia: m.midia_id ? { tipo: m.midia_tipo || 'documento', nome: m.midia_nome || null, mime: m.midia_mime || null, url: `/api/midia/${m.id}` } : null,
       entrega: m.entrega,
       criadaEm: m.criada_em,
       autor: m.autor_id ? { id: m.autor_id, nome: m.autor_nome, nomeCurto: nomeCurto(m.autor_nome) } : null,
@@ -365,6 +366,35 @@ function criarRotasApi(db, opcoes = {}) {
       return res.status(400).json({ erro: 'Ação inválida.' });
     }
     res.json({ conversa: detalharConversa(buscarConversa(req.conversa.id)) });
+  });
+
+  /* -------------------- arquivos recebidos (imagens, áudios, documentos) -------------------- */
+
+  const EXTENSAO_MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
+    mp4: 'video/mp4', mov: 'video/quicktime', ogg: 'audio/ogg', oga: 'audio/ogg', mp3: 'audio/mpeg', m4a: 'audio/mp4', pdf: 'application/pdf' };
+
+  // O navegador nunca recebe o token do bot: o CRM baixa o arquivo e repassa.
+  r.get('/midia/:id', async (req, res) => {
+    const id = idDaRota(req);
+    const m = id ? db.prepare('SELECT m.*, c.canal_id FROM mensagens m JOIN conversas c ON c.id = m.conversa_id WHERE m.id = ?').get(id) : null;
+    if (!m || !m.midia_id) return res.status(404).json({ erro: 'Arquivo não encontrado.' });
+    const canal = m.canal_id ? db.prepare('SELECT * FROM canais WHERE id = ?').get(m.canal_id) : null;
+    if (!canal || canal.tipo !== 'telegram') return res.status(400).json({ erro: 'Este canal ainda não entrega arquivos no CRM.' });
+    if (!telegram) return res.status(400).json({ erro: 'Integração com Telegram indisponível.' });
+
+    try {
+      const { bytes, tipo, caminho } = await telegram.baixarArquivo(canal.instancia_token, m.midia_id);
+      const extensao = String(caminho || '').split('.').pop().toLowerCase();
+      res.setHeader('Content-Type', m.midia_mime || tipo || EXTENSAO_MIME[extensao] || 'application/octet-stream');
+      res.setHeader('Cache-Control', 'private, max-age=600');
+      if (req.query.baixar === '1') {
+        const nome = (m.midia_nome || `arquivo-${m.id}.${extensao || 'bin'}`).replace(/[\r\n"]/g, '');
+        res.setHeader('Content-Disposition', `attachment; filename="${nome}"`);
+      }
+      res.send(bytes);
+    } catch (erro) {
+      res.status(502).json({ erro: erro.message });
+    }
   });
 
   /* -------------------- consulta de saldo pelo PIN -------------------- */

@@ -23,6 +23,11 @@ function telegramFalso() {
       return { id: '123456789', usuario: 'bigteck_bot', nome: 'Bigteck Atendimento' };
     },
     async removerWebhook(token) { chamadas.push(['deleteWebhook', token]); return true; },
+    async baixarArquivo(token, fileId) {
+      chamadas.push(['baixarArquivo', token, fileId]);
+      if (fileId !== 'foto-123') { const e = new Error('O arquivo não está mais disponível no Telegram.'); e.status = 404; throw e; }
+      return { bytes: Buffer.from('imagem-falsa'), tipo: 'image/jpeg', caminho: 'photos/file_1.jpg' };
+    },
     async enviarTexto(token, chatId, texto) { chamadas.push(['sendMessage', token, chatId, texto]); return { messageId: 77, chatId }; },
     sondagem: {
       iniciar(canal) { chamadas.push(['sondagem.iniciar', canal.id]); ativos.add(canal.id); },
@@ -47,7 +52,7 @@ async function subirServidor() {
     const r = await fetch(`${base}${caminho}`, { method: metodo, headers: h, body: corpo ? JSON.stringify(corpo) : undefined });
     return { status: r.status, dados: await r.json().catch(() => ({})) };
   };
-  return { db, base, telegram, chamar, fechar: () => new Promise((r) => servidor.close(r)) };
+  return { db, base, telegram, chamar, cookie, fechar: () => new Promise((r) => servidor.close(r)) };
 }
 
 const update = (id, texto, extra = {}) => ({
@@ -109,6 +114,7 @@ test('telegram: a consulta contínua entrega as mensagens e para quando pedido',
 
 test('telegram: conectar bot pelo token, receber mensagem e responder pelo CRM', async () => {
   const s = await subirServidor();
+  const cookieAdmin = s.cookie;
   try {
     // usuário comum não pode gerenciar canais
     const loginMarina = await fetch(`${s.base}/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'marina@bigteck.com.br', senha: ADMIN.senha }) });
@@ -150,7 +156,7 @@ test('telegram: conectar bot pelo token, receber mensagem e responder pelo CRM',
     assert.equal(canais.processarUpdateTelegram(s.db, row, update(1, 'Olá, preciso de ajuda com a fatura')).motivo, 'duplicada');
     assert.equal(canais.processarUpdateTelegram(s.db, row, { update_id: 5, message: { message_id: 1, chat: { id: -100, type: 'group' }, text: 'oi' } }).motivo, 'grupo');
     assert.equal(canais.processarUpdateTelegram(s.db, row, { update_id: 6, edited_message: {} }).motivo, 'mensagem editada');
-    const r2 = canais.processarUpdateTelegram(s.db, row, update(2, '', { photo: [{ file_id: 'x' }], caption: 'segue o boleto' }));
+    const r2 = canais.processarUpdateTelegram(s.db, row, update(2, '', { photo: [{ file_id: 'pequena' }, { file_id: 'foto-123' }], caption: 'segue o boleto' }));
     assert.equal(r2.nova, false);
     const inicio = canais.processarUpdateTelegram(s.db, row, { update_id: 7, message: { message_id: 3, date: 1_700_000_100, from: { id: 777, first_name: 'Ana' }, chat: { id: 777, type: 'private' }, text: '/start' } });
     assert.equal(inicio.nova, true);
@@ -165,6 +171,18 @@ test('telegram: conectar bot pelo token, receber mensagem e responder pelo CRM',
     const detalhe = await s.chamar(`/api/conversas/${conversa.id}`);
     const textos = detalhe.dados.conversa.mensagens.map((m) => m.texto);
     assert.deepEqual(textos, ['Olá, preciso de ajuda com a fatura', '[Imagem] segue o boleto']);
+
+    // a imagem enviada pelo cliente é entregue pelo CRM, sem expor o token do bot
+    const comImagem = detalhe.dados.conversa.mensagens.find((m) => m.midia);
+    assert.equal(comImagem.midia.tipo, 'imagem');
+    assert.equal(comImagem.midia.url, `/api/midia/${comImagem.id}`);
+    const arquivo = await fetch(`${s.base}${comImagem.midia.url}`, { headers: { Cookie: cookieAdmin } });
+    assert.equal(arquivo.status, 200);
+    assert.equal(arquivo.headers.get('content-type'), 'image/jpeg');
+    assert.equal(await arquivo.text(), 'imagem-falsa');
+    assert.deepEqual(s.telegram.chamadas.filter((c) => c[0] === 'baixarArquivo').at(-1), ['baixarArquivo', TOKEN, 'foto-123'], 'baixa a maior versão da foto');
+    const semLogin = await fetch(`${s.base}${comImagem.midia.url}`);
+    assert.equal(semLogin.status, 401);
     const conversaAna = lista.dados.conversas.find((c) => c.contato.nome === 'Ana');
     assert.ok(conversaAna);
 

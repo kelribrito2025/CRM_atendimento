@@ -404,7 +404,7 @@ import { icone, montarIcones } from './icones.js';
 
     return el('button', { type: 'button', class: `conversa${ativa ? ' ativa' : ''}`, onclick: () => abrirConversa(c.id) },
       el('span', { class: 'avatar-wrap' },
-        el('span', { class: `avatar m ${corAvatar}` }, c.contato.iniciais),
+        avatarCliente(c, `avatar m ${corAvatar}`),
         el('span', { class: 'canal-badge', html: ICONE[c.canal]?.(10, corCanal, 2.6) || '' })),
       el('div', { class: 'conversa-corpo' },
         el('div', { class: 'conversa-linha' },
@@ -482,6 +482,27 @@ import { icone, montarIcones } from './icones.js';
       el('div', { class: 'chat-vazio-texto' }, el('strong', {}, titulo), texto));
   }
 
+  // Balão da mensagem: mostra a imagem, o áudio ou o vídeo quando o cliente mandou um arquivo.
+  function balaoMensagem(m) {
+    const a = m.midia;
+    if (!a) return el('div', { class: 'balao' }, m.texto);
+
+    const legenda = String(m.texto || '').replace(/^\[[^\]]+\]\s*/, '').trim();
+    let conteudo;
+    if (a.tipo === 'imagem') {
+      conteudo = el('a', { href: a.url, target: '_blank', rel: 'noopener', class: 'midia-abrir' },
+        el('img', { src: a.url, alt: legenda || 'Imagem enviada pelo cliente', class: 'midia-imagem', loading: 'lazy' }));
+    } else if (a.tipo === 'video') {
+      conteudo = el('video', { src: a.url, controls: 'controls', class: 'midia-video', preload: 'metadata' });
+    } else if (a.tipo === 'audio') {
+      conteudo = el('audio', { src: a.url, controls: 'controls', class: 'midia-audio', preload: 'metadata' });
+    } else {
+      conteudo = el('a', { href: `${a.url}?baixar=1`, target: '_blank', rel: 'noopener', class: 'midia-arquivo' },
+        icone('anexo', ICONE.clipe), el('span', {}, a.nome || 'Abrir documento'));
+    }
+    return el('div', { class: `balao midia ${a.tipo}` }, conteudo, legenda ? el('span', { class: 'midia-legenda' }, legenda) : null);
+  }
+
   function construirMensagens(c) {
     const nos = [];
     let ultimoDia = null;
@@ -498,11 +519,11 @@ import { icone, montarIcones } from './icones.js';
             el('span', { class: 'nota-meta' }, `${m.autor?.nomeCurto || 'Equipe'} · ${horaCurta(m.criadaEm)} · visível só para a equipe`))));
       } else if (m.tipo === 'atendente') {
         nos.push(el('div', { class: 'msg saida' },
-          el('div', { class: 'balao' }, m.texto),
+          balaoMensagem(m),
           el('span', { class: 'msg-meta' }, [horaCurta(m.criadaEm), m.autor?.nomeCurto || (m.tipo === 'atendente' ? 'pelo celular' : null), m.entrega === 'falhou' ? 'não enviada ⚠' : m.entrega].filter(Boolean).join(' · '))));
       } else {
         nos.push(el('div', { class: 'msg' },
-          el('div', { class: 'balao' }, m.texto),
+          balaoMensagem(m),
           el('span', { class: 'msg-meta' }, `${horaCurta(m.criadaEm)} · ${NOME_CANAL[c.canal] || c.canal}`)));
       }
     }
@@ -539,7 +560,7 @@ import { icone, montarIcones } from './icones.js';
 
     const cabecalho = el('div', { class: 'chat-topo' },
       el('div', { class: 'chat-cab' },
-        el('span', { class: 'avatar g verde' }, c.contato.iniciais),
+        avatarCliente(c, 'avatar g verde'),
         el('div', { class: 'chat-info' },
           el('span', { class: 'chat-nome' }, c.contato.nome),
           el('span', { class: 'chat-sub' }, [c.contato.empresa, `protocolo #${c.protocolo}`, textoAberto(c.criadaEm, c.status)].filter(Boolean).join(' · '))),
@@ -591,6 +612,14 @@ import { icone, montarIcones } from './icones.js';
   }
 
   // Ícone do canal (WhatsApp ou Telegram) herdando a cor do texto ao redor.
+  // Iniciais do cliente; se o nome começa com emoji ou símbolo (comum no Telegram),
+  // o avatar mostra o ícone do canal em vez de um desenho sem sentido.
+  function avatarCliente(c, classe = 'avatar') {
+    const ini = String(c.contato.iniciais || '');
+    const soLetras = ini && !/[^A-Za-zÀ-ÿ0-9]/.test(ini);
+    return el('span', { class: classe }, soLetras ? ini : iconeCanal(c.canal, classe.includes('g') ? 20 : 15));
+  }
+
   function iconeCanal(canal, tamanho = 15) {
     return el('span', { class: 'ic', style: `--ic:${tamanho}px`, html: ICONE[canal]?.(tamanho, 'currentColor', 2.2) || '' });
   }
@@ -722,7 +751,7 @@ import { icone, montarIcones } from './icones.js';
 
     painel.replaceChildren(
       el('div', { class: 'painel-topo' },
-        el('span', { class: 'avatar-quadrado' }, iniciais(ct.empresa || ct.nome)),
+        avatarCliente({ canal: c.canal, contato: { iniciais: iniciais(ct.empresa || ct.nome) } }, 'avatar-quadrado'),
         el('div', { class: 'membro-info' },
           el('span', { class: 'painel-nome' }, ct.empresa || ct.nome),
           el('span', { class: 'painel-sub' }, ct.cnpj || ct.telefone || '')),

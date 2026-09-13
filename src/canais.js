@@ -176,8 +176,11 @@ function guardarMensagem(db, canal, contato, m, tipoCanal) {
     nova = true;
   }
   const fromMe = Boolean(m.fromMe);
-  db.prepare('INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, entrega, criada_em, externo_id) VALUES (?, ?, NULL, ?, ?, ?, ?)')
-    .run(conversa.id, fromMe ? 'atendente' : 'cliente', m.texto, fromMe ? 'enviada' : null, m.criadaEm, m.messageid);
+  const arq = m.arquivo || null;
+  db.prepare(`INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, entrega, criada_em, externo_id, midia_tipo, midia_id, midia_nome, midia_mime)
+    VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(conversa.id, fromMe ? 'atendente' : 'cliente', m.texto, fromMe ? 'enviada' : null, m.criadaEm, m.messageid,
+      arq?.tipo || null, arq?.id || null, arq?.nome || null, arq?.mime || null);
   db.prepare('UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + ?, wa_chatid = COALESCE(wa_chatid, ?) WHERE id = ?')
     .run(Math.max(m.criadaEm, agora), fromMe ? 0 : 1, m.chatid, conversa.id);
   return { resultado: 'mensagem', conversaId: conversa.id, contatoId: contato.id, nova, fromMe };
@@ -190,6 +193,32 @@ const ROTULOS_MIDIA_TELEGRAM = [
   ['voice', '[Áudio]'], ['audio', '[Áudio]'], ['document', '[Documento]'], ['sticker', '[Figurinha]'],
   ['location', '[Localização]'], ['venue', '[Localização]'], ['contact', '[Contato]'], ['poll', '[Enquete]'],
 ];
+
+// Campo do Telegram -> como o CRM mostra o arquivo.
+const TIPOS_ARQUIVO_TELEGRAM = [
+  ['photo', 'imagem'], ['sticker', 'imagem'], ['animation', 'video'], ['video', 'video'],
+  ['video_note', 'video'], ['voice', 'audio'], ['audio', 'audio'], ['document', 'documento'],
+];
+
+// Encontra o arquivo da mensagem: id, tipo, nome e formato.
+function extrairArquivoTelegram(m) {
+  for (const [campo, tipo] of TIPOS_ARQUIVO_TELEGRAM) {
+    const valor = m[campo];
+    if (!valor) continue;
+    // Fotos vêm em vários tamanhos: o último é o maior.
+    const arquivo = Array.isArray(valor) ? valor[valor.length - 1] : valor;
+    if (!arquivo?.file_id) continue;
+    const mime = arquivo.mime_type || (campo === 'photo' ? 'image/jpeg' : null);
+    const ehImagem = tipo === 'imagem' || (mime && mime.startsWith('image/'));
+    return {
+      tipo: ehImagem ? 'imagem' : tipo,
+      id: String(arquivo.file_id),
+      nome: arquivo.file_name || null,
+      mime,
+    };
+  }
+  return null;
+}
 
 // Traduz um update da Bot API do Telegram para o formato interno.
 function extrairMensagemTelegram(update) {
@@ -208,6 +237,7 @@ function extrairMensagemTelegram(update) {
     chatid: String(chat.id),
     messageid: `tg:${chat.id}:${m.message_id}`,
     texto,
+    arquivo: extrairArquivoTelegram(m),
     nome,
     usuario: de.username || chat.username || null,
     criadaEm: m.date ? Number(m.date) * 1000 : Date.now(),
@@ -222,7 +252,7 @@ function processarUpdateTelegram(db, canal, update) {
   if (!m) return { resultado: 'ignorado', motivo: update?.edited_message ? 'mensagem editada' : 'sem mensagem' };
   if (m.grupo) return { resultado: 'ignorado', motivo: 'grupo' };
   if (m.deBot) return { resultado: 'ignorado', motivo: 'mensagem de bot' };
-  if (!m.texto) return { resultado: 'ignorado', motivo: 'sem conteúdo' };
+  if (!m.texto && !m.arquivo) return { resultado: 'ignorado', motivo: 'sem conteúdo' };
   if (db.prepare('SELECT 1 FROM mensagens WHERE externo_id = ?').get(m.messageid)) return { resultado: 'ignorado', motivo: 'duplicada' };
 
   const nomePadrao = m.nome || (m.usuario ? `@${m.usuario}` : `Telegram ${m.chatid}`);
@@ -285,6 +315,7 @@ module.exports = {
   processarEvento,
   guardarMensagem,
   extrairMensagemTelegram,
+  extrairArquivoTelegram,
   processarUpdateTelegram,
   ligarTelegram,
   ligarTelegramTodos,

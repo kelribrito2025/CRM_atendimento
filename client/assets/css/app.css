@@ -18,6 +18,7 @@
   --fundo-suave: #F8FAF9;
   --cinza: #F1F4F2;
   --vermelho: #8E1F16;
+  --vermelho-badge: #D93025;
   --vermelho-claro: #FDECEA;
   --azul: #1D6FA5;
   --azul-claro: #E3EEF6;
@@ -79,7 +80,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .rail-btn svg { stroke: currentColor; }
 .rail-badge {
   position: absolute; top: 4px; right: 4px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
-  background: var(--verde); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center;
+  background: var(--vermelho-badge); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center;
   justify-content: center; border: 2px solid var(--rail);
 }
 .rail-sep { width: 28px; height: 1px; background: var(--rail-linha); margin: 8px 0; }
@@ -195,8 +196,16 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .data-sep { align-self: center; font-size: 11px; font-weight: 700; color: var(--texto-suave); background: var(--cinza); padding: 5px 12px; border-radius: 999px; }
 .msg { display: flex; flex-direction: column; min-width: 0; gap: 5px; max-width: 78%; }
 .msg.saida { align-self: flex-end; align-items: flex-end; }
-.balao { background: var(--verde-texto); border: 1px solid var(--verde-texto); border-radius: 16px 16px 16px 6px; padding: 12px 14px; font-size: 13.5px; line-height: 1.55; color: #fff; white-space: pre-wrap; word-break: break-word; }
+.balao { background: var(--verde); border: 1px solid var(--verde); border-radius: 16px 16px 16px 6px; padding: 12px 14px; font-size: 13.5px; line-height: 1.55; color: #fff; white-space: pre-wrap; word-break: break-word; }
 .msg.saida .balao { background: var(--rail); color: #fff; border: 0; border-radius: 16px 16px 6px 16px; }
+.balao.midia { padding: 6px; display: flex; flex-direction: column; gap: 6px; }
+.midia-abrir { display: block; line-height: 0; }
+.midia-imagem { max-width: 320px; max-height: 340px; width: auto; height: auto; object-fit: contain; border-radius: 12px; display: block; background: rgba(255, 255, 255, .25); }
+.midia-video { max-width: 320px; width: 100%; border-radius: 12px; display: block; background: #000; }
+.midia-audio { width: 260px; max-width: 100%; display: block; }
+.midia-arquivo { display: inline-flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, .18); color: inherit; font-size: 13px; font-weight: 600; text-decoration: none; }
+.midia-arquivo:hover { background: rgba(255, 255, 255, .3); }
+.midia-legenda { padding: 2px 8px 6px; font-size: 13.5px; line-height: 1.5; }
 .msg-meta { font-size: 11px; color: var(--texto-suave); padding: 0 4px; }
 .nota { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--nota-fundo); border: 1px dashed var(--nota-borda); }
 .nota svg { flex-shrink: 0; margin-top: 1px; }

@@ -166,7 +166,7 @@ npm run usuario -- --listar
 
 Botões que mostram um aviso e ainda não fazem nada: **Entrar com Google Workspace**, **Anexo**, **Respostas rápidas**, **Estornar**, **Ver faturas**, **Abrir conta**, **Nova equipe**, **Adicionar à equipe**, **Filtros** e os outros módulos do menu lateral.
 
-No WhatsApp e no Telegram, mídias (fotos, áudios, documentos) ainda não são exibidas, só indicadas como texto (por exemplo, "[Imagem]").
+No Telegram, fotos, áudios, vídeos e documentos aparecem dentro da conversa (o CRM baixa o arquivo com o token do bot, que nunca vai para o navegador). No WhatsApp, mídias ainda aparecem só como texto, por exemplo "[Imagem]".
 
 ## Configurações (opcional)
 
