@@ -3,6 +3,7 @@ import { detectarNovasMensagens } from './alerta-mensagem.mjs';
 import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 import { capturarCompositor, restaurarCompositor } from './foco-compositor.mjs';
 import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notificacoes.mjs';
+import { deveSalvarNota } from './nota-editor.mjs';
 
 (() => {
   'use strict';
@@ -350,6 +351,7 @@ import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notific
     const c = estado.conversa;
     if (!c || !texto.trim() || estado.enviando) return;
     estado.enviando = true;
+    const seletorRetorno = tipo === 'nota' && campo?.id === 'texto-nota' ? '#texto-nota' : '#texto-msg';
 
     // A mensagem aparece na hora, marcada como "enviando", e o campo já fica livre.
     const provisoria = {
@@ -367,7 +369,7 @@ import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notific
     c.mensagens.push(provisoria);
     if (tipo === 'nota') estado.modo = 'resposta';
     aplicarConversa(c);
-    $('#texto-msg')?.focus();
+    $(seletorRetorno)?.focus();
 
     try {
       const r = await api(`/conversas/${c.id}/mensagens`, { method: 'POST', body: { texto: provisoria.texto, tipo } });
@@ -382,7 +384,7 @@ import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notific
       const posicao = c.mensagens.findIndex((m) => m.id === provisoria.id);
       if (posicao >= 0) c.mensagens.splice(posicao, 1);
       aplicarConversa(c);
-      const volta = $('#texto-msg');
+      const volta = $(seletorRetorno);
       if (volta && !volta.value) { volta.value = textoAnterior || provisoria.texto; ajustarAltura(volta); }
       toast(e.message, 5000);
     } finally {
@@ -1699,9 +1701,14 @@ import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notific
     const notas = c.mensagens.filter((m) => m.tipo === 'nota').slice().reverse();
 
     const textareaNota = el('textarea', {
-      id: 'texto-nota', rows: '2', maxlength: '4000', placeholder: 'Escreva uma nota para a equipe…',
+      id: 'texto-nota', rows: '1', maxlength: '4000', placeholder: 'Escreva uma nota para a equipe…',
       'aria-label': 'Nova nota interna', lang: 'pt-BR', spellcheck: 'true',
-      oninput: () => { maiuscularInicio(textareaNota); corrigirEnquantoDigita(textareaNota); },
+      oninput: () => { maiuscularInicio(textareaNota); corrigirEnquantoDigita(textareaNota); ajustarAltura(textareaNota); },
+      onkeydown: (e) => {
+        if (!deveSalvarNota(e, textareaNota.value)) return;
+        e.preventDefault();
+        salvarNota();
+      },
     });
     const salvarNota = () => enviarMensagem(acentosLigados ? corrigirTexto(textareaNota.value) : textareaNota.value, 'nota', textareaNota);
 
@@ -1725,16 +1732,14 @@ import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notific
         c.alerta ? el('div', { class: 'alerta' }, icone('alerta', ICONE.alerta),
           el('span', {}, el('strong', {}, `${c.alerta.titulo} `), c.alerta.texto)) : null,
         el('div', { class: 'secao' },
-          el('div', { class: 'caixa-nota' }, textareaNota,
-            el('div', { class: 'rodape' },
-              el('span', { class: 'dica' }, 'Só a equipe vê.'),
-              el('button', { type: 'button', class: 'btn-escuro', onclick: salvarNota }, 'Salvar nota'))),
+          el('div', { class: 'caixa-nota' }, textareaNota),
           ...notas.map((n) => el('div', { class: 'nota-item' },
             editandoAqui(n, 'ficha') ? edicaoDaNota(n) : el('span', { class: 't' }, n.texto),
             el('div', { class: 'nota-item-pe' },
               el('span', { class: 'm' }, `${n.autor?.nomeCurto || 'Equipe'} · ${horaLista(n.criadaEm) === horaCurta(n.criadaEm) ? horaCurta(n.criadaEm) : `${horaLista(n.criadaEm)} ${horaCurta(n.criadaEm)}`}${n.editadaEm ? ' · editada' : ''}`),
               editandoAqui(n, 'ficha') ? null : acoesDaNota(n, 'ficha', 'nota-acoes linha')))),
           notas.length ? null : el('span', { class: 'dica', style: 'font-size:12px;color:#4C6355' }, 'Nenhuma nota ainda.'))));
+    ajustarAltura(textareaNota);
   }
 
 

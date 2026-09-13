@@ -440,12 +440,10 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 .linha-dado .v.verde { color: var(--verde-texto); }
 .alerta { display: flex; align-items: flex-start; gap: 10px; padding: 12px 13px; border-radius: 13px; background: var(--vermelho-claro); font-size: 12.5px; line-height: 1.5; color: var(--vermelho); }
 .alerta svg { flex-shrink: 0; margin-top: 1px; }
-.caixa-nota { border: 1px dashed var(--nota-borda); border-radius: 13px; padding: 11px 12px; display: flex; flex-direction: column; gap: 9px; background: var(--nota-fundo); }
+.caixa-nota { border: 1px dashed var(--nota-borda); border-radius: 13px; padding: 9px 12px; display: flex; background: var(--nota-fundo); }
 .caixa-nota:focus-within { border-color: var(--nota-suave); }
-.caixa-nota textarea { border: 0; resize: none; outline: none; font-size: 12.5px; line-height: 1.5; background: none; min-height: 40px; width: 100%; color: var(--nota-texto); }
+.caixa-nota textarea { border: 0; resize: none; outline: none; font-size: 12.5px; line-height: 1.5; background: none; min-height: 19px; max-height: var(--altura-maxima, 320px); overflow-y: auto; width: 100%; color: var(--nota-texto); }
 .caixa-nota textarea::placeholder { color: var(--nota-suave); }
-.caixa-nota .rodape { display: flex; align-items: center; gap: 8px; }
-.caixa-nota .dica { font-size: 11px; color: var(--nota-suave); flex: 1; }
 .btn-escuro { height: 32px; padding: 0 13px; border-radius: 9px; border: 0; background: var(--rail); color: #fff; font-size: 12px; font-weight: 700; }
 .btn-escuro:hover { background: var(--rail-hover); }
 .nota-item { padding: 11px 12px; border-radius: 13px; background: var(--nota-fundo); border: 1px dashed var(--nota-borda); display: flex; flex-direction: column; gap: 5px; }
