@@ -55,7 +55,7 @@ Dá para mudar a cor e o título do botão pelo próprio `<script>`:
 
 ---
 
-## 2. Gerar a assinatura (back-end — obrigatório em produção)
+## 2. Gerar a assinatura (back-end — sem ela o chat não abre)
 
 A assinatura impede que alguém abra o console do navegador, troque o `id` e leia a
 conversa de outro cliente. É um HMAC-SHA256 do id do usuário, com um segredo que só os
@@ -88,6 +88,10 @@ assinatura = hmac.new(os.environ['CHAT_SEGREDO'].encode(), str(usuario.id).encod
 
 O valor entra no `identificar()` junto com o `id`. Se a assinatura não combinar com o
 id, o CRM responde `401` e o chat não abre.
+
+O CRM também responde `401` quando o `WIDGET_SEGREDO` não está configurado no
+servidor dele: sem o segredo, o chat fica desligado em vez de aceitar qualquer
+pessoa. Não existe modo "sem assinatura".
 
 ---
 

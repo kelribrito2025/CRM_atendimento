@@ -171,7 +171,7 @@ Do lado do site são duas linhas no HTML:
 </script>
 ```
 
-A `assinatura` é um HMAC-SHA256 do id do usuário feito **no servidor do site**, com o mesmo `WIDGET_SEGREDO`. É o que impede alguém de trocar o id no navegador e ler a conversa de outro cliente. No logout, o site chama `ChatAtendimento.sair()`.
+A `assinatura` é um HMAC-SHA256 do id do usuário feito **no servidor do site**, com o mesmo `WIDGET_SEGREDO`. É o que impede alguém de trocar o id no navegador e ler a conversa de outro cliente. Sem o `WIDGET_SEGREDO` no servidor, o chat fica desligado: nenhuma conversa abre. No logout, o site chama `ChatAtendimento.sair()`.
 
 O passo a passo completo para entregar a quem cuida do site está em **[docs/chat-do-site.md](docs/chat-do-site.md)**.
 

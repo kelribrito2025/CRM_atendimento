@@ -4,8 +4,10 @@
 // conversa cai na mesma caixa de entrada do CRM, junto com WhatsApp e Telegram.
 //
 // Como o visitante entra: o site do cliente chama `identificar()` com os dados
-// da pessoa logada. Se WIDGET_SEGREDO estiver definido, o site precisa mandar
-// também uma assinatura feita no servidor dele, para ninguém se passar por outro.
+// da pessoa logada e uma assinatura feita no servidor dele, com o mesmo segredo
+// do WIDGET_SEGREDO. É ela que impede alguém de trocar o id no navegador e ler a
+// conversa de outra pessoa. Sem o segredo configurado, o chat não abre para
+// ninguém.
 
 const crypto = require('node:crypto');
 const { proximoProtocolo } = require('./canais');
@@ -23,8 +25,11 @@ function assinar(segredo, id) {
   return crypto.createHmac('sha256', String(segredo)).update(String(id)).digest('hex');
 }
 
+// Sem WIDGET_SEGREDO configurado, ninguém entra. O chat do site fica desligado
+// em vez de aceitar qualquer pessoa: liberar sem conferir a assinatura deixaria
+// a conversa de qualquer cliente à mão de quem soubesse o id dele.
 function conferirAssinatura(segredo, id, assinatura) {
-  if (!segredo) return true; // sem segredo configurado, o CRM aceita (modo de teste)
+  if (!segredo) return false;
   const esperado = assinar(segredo, id);
   const recebido = String(assinatura || '');
   if (recebido.length !== esperado.length) return false;
@@ -124,7 +129,7 @@ function criarWidget(db, { segredo = '', equipePadraoId = null } = {}) {
   }
 
   return {
-    exigeAssinatura: Boolean(segredo),
+    configurado: Boolean(segredo),
     conferirAssinatura: (id, assinatura) => conferirAssinatura(segredo, id, assinatura),
     abrirSessao,
     sessaoDoToken,

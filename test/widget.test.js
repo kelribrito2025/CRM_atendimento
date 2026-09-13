@@ -12,7 +12,9 @@ const { criarWidget, assinar } = require('../src/widget');
 const ADMIN = { email: 'admin@teste.com', senha: 'segredo123' };
 const PAGINAS = path.join(__dirname, '..', 'client');
 
-async function subirServidor({ segredo = '' } = {}) {
+const SEGREDO = 'segredo-do-site';
+
+async function subirServidor({ segredo = SEGREDO } = {}) {
   const db = await abrirBancoDeTeste();
   await semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: false });
   const widget = criarWidget(db, { segredo });
@@ -48,7 +50,12 @@ async function subirServidor({ segredo = '' } = {}) {
     return { status: r.status, dados: await r.json().catch(() => ({})) };
   };
 
-  return { db, base, widget, visitante, crm, fechar: async () => { await new Promise((r) => servidor.close(r)); await db.fechar(); } };
+  // Abre a sessão como o site do cliente faria: assinando o id no servidor dele.
+  const abrirSessao = (dados) => visitante('/widget/sessao', 'POST', {
+    ...dados, assinatura: assinar(segredo || SEGREDO, dados.id),
+  });
+
+  return { db, base, widget, visitante, abrirSessao, crm, fechar: async () => { await new Promise((r) => servidor.close(r)); await db.fechar(); } };
 }
 
 test('chat do site: o arquivo de uma linha e a página do quadro ficam públicos', async () => {
@@ -69,7 +76,7 @@ test('chat do site: o arquivo de uma linha e a página do quadro ficam públicos
 test('chat do site: visitante manda mensagem, atendente responde e o visitante recebe', async () => {
   const s = await subirServidor();
   try {
-    const sessao = await s.visitante('/widget/sessao', 'POST', { id: 'u-901', nome: 'Carla Menezes', empresa: 'Loja Aurora', pin: '5446' });
+    const sessao = await s.abrirSessao({ id: 'u-901', nome: 'Carla Menezes', empresa: 'Loja Aurora', pin: '5446' });
     assert.equal(sessao.status, 200, JSON.stringify(sessao.dados));
     const token = sessao.dados.token;
     assert.ok(token && token.length > 20);
@@ -116,9 +123,9 @@ test('chat do site: visitante manda mensagem, atendente responde e o visitante r
 test('chat do site: voltar ao painel continua a mesma conversa, sem duplicar cliente', async () => {
   const s = await subirServidor();
   try {
-    const a = await s.visitante('/widget/sessao', 'POST', { id: 'u-901', nome: 'Carla Menezes' });
+    const a = await s.abrirSessao({ id: 'u-901', nome: 'Carla Menezes' });
     await s.visitante('/widget/mensagens', 'POST', { texto: 'primeira' }, a.dados.token);
-    const b = await s.visitante('/widget/sessao', 'POST', { id: 'u-901', nome: 'Carla M. Menezes' });
+    const b = await s.abrirSessao({ id: 'u-901', nome: 'Carla M. Menezes' });
 
     assert.equal(b.dados.conversaId, a.dados.conversaId, 'mesma conversa');
     assert.equal(b.dados.contato.id, a.dados.contato.id, 'mesmo cliente');
@@ -131,8 +138,8 @@ test('chat do site: voltar ao painel continua a mesma conversa, sem duplicar cli
 test('chat do site: cada visitante só vê a conversa dele', async () => {
   const s = await subirServidor();
   try {
-    const carla = await s.visitante('/widget/sessao', 'POST', { id: 'u-901', nome: 'Carla' });
-    const bruno = await s.visitante('/widget/sessao', 'POST', { id: 'u-902', nome: 'Bruno' });
+    const carla = await s.abrirSessao({ id: 'u-901', nome: 'Carla' });
+    const bruno = await s.abrirSessao({ id: 'u-902', nome: 'Bruno' });
     await s.visitante('/widget/mensagens', 'POST', { texto: 'segredo da Carla' }, carla.dados.token);
 
     assert.notEqual(carla.dados.conversaId, bruno.dados.conversaId);
@@ -143,10 +150,10 @@ test('chat do site: cada visitante só vê a conversa dele', async () => {
   } finally { await s.fechar(); }
 });
 
-test('chat do site: com segredo definido, só entra quem tem a assinatura certa', async () => {
-  const s = await subirServidor({ segredo: 'segredo-do-site' });
+test('chat do site: só entra quem tem a assinatura certa', async () => {
+  const s = await subirServidor();
   try {
-    assert.equal(s.widget.exigeAssinatura, true);
+    assert.equal(s.widget.configurado, true);
     assert.equal((await s.visitante('/widget/sessao', 'POST', { id: 'u-901', nome: 'Carla' })).status, 401, 'sem assinatura não entra');
     assert.equal((await s.visitante('/widget/sessao', 'POST', { id: 'u-901', assinatura: 'errada' })).status, 401);
     assert.equal((await s.visitante('/widget/sessao', 'POST', { id: 'u-901', assinatura: assinar('outro-segredo', 'u-901') })).status, 401);
@@ -161,9 +168,9 @@ test('chat do site: com segredo definido, só entra quem tem a assinatura certa'
 test('chat do site: mensagem vazia, id ausente e sessão vencida são recusados', async () => {
   const s = await subirServidor();
   try {
-    assert.equal((await s.visitante('/widget/sessao', 'POST', { nome: 'Sem id' })).status, 400);
+    assert.equal((await s.abrirSessao({ nome: 'Sem id' })).status, 400);
 
-    const sessao = await s.visitante('/widget/sessao', 'POST', { id: 'u-903', nome: 'Vera' });
+    const sessao = await s.abrirSessao({ id: 'u-903', nome: 'Vera' });
     const token = sessao.dados.token;
     assert.equal((await s.visitante('/widget/mensagens', 'POST', { texto: '   ' }, token)).status, 400);
 
@@ -192,4 +199,51 @@ test('chat do site: sem widget ligado, as rotas não existem', async () => {
     await new Promise((r) => servidor.close(r));
     await db.fechar();
   }
+});
+
+// O caso relatado pelo dev do site: com o servidor sem WIDGET_SEGREDO, o chat
+// aceitava qualquer id e entregava a conversa de qualquer cliente a quem soubesse
+// o id dele. Agora o chat fica desligado em vez de liberar.
+test('chat do site: sem segredo no servidor, ninguém abre conversa nenhuma', async () => {
+  const s = await subirServidor({ segredo: '' });
+  try {
+    assert.equal(s.widget.configurado, false);
+
+    // sem assinatura
+    const semAssinatura = await s.visitante('/widget/sessao', 'POST', { id: '999', nome: 'teste', email: 't@t.com' });
+    assert.equal(semAssinatura.status, 401, JSON.stringify(semAssinatura.dados));
+    assert.equal(semAssinatura.dados.token, undefined, 'não pode devolver chave de conversa');
+
+    // com assinatura inventada
+    const inventada = await s.visitante('/widget/sessao', 'POST', { id: '999', nome: 'teste', assinatura: 'naoehumaassinaturavalida'.repeat(3) });
+    assert.equal(inventada.status, 401);
+
+    // com uma assinatura feita com qualquer segredo (não há segredo que valha)
+    const comSegredo = await s.visitante('/widget/sessao', 'POST', { id: '999', assinatura: assinar('qualquer-segredo', '999') });
+    assert.equal(comSegredo.status, 401);
+
+    // e nada foi criado no banco
+    assert.equal((await s.db.prepare('SELECT COUNT(*) AS n FROM contatos').get()).n, 0);
+    assert.equal((await s.db.prepare('SELECT COUNT(*) AS n FROM conversas').get()).n, 0);
+    assert.equal((await s.db.prepare('SELECT COUNT(*) AS n FROM widget_sessoes').get()).n, 0);
+
+    // sem chave de conversa, as mensagens também não abrem
+    assert.equal((await s.visitante('/widget/mensagens', 'GET', null, 'inventado')).status, 401);
+    assert.equal((await s.visitante('/widget/mensagens', 'POST', { texto: 'oi' }, 'inventado')).status, 401);
+  } finally { await s.fechar(); }
+});
+
+test('chat do site: a assinatura precisa ser do segredo e do id certos', async () => {
+  const s = await subirServidor();
+  try {
+    const certa = assinar(SEGREDO, 'u-500');
+    // um caractere trocado já derruba
+    const quaseIgual = `${certa.slice(0, -1)}${certa.at(-1) === 'a' ? 'b' : 'a'}`;
+    assert.equal((await s.visitante('/widget/sessao', 'POST', { id: 'u-500', assinatura: quaseIgual })).status, 401);
+    // assinatura curta, vazia, nula ou de outro tipo
+    for (const assinatura of ['', null, 0, certa.slice(0, 10), `${certa}extra`, { a: 1 }]) {
+      assert.equal((await s.visitante('/widget/sessao', 'POST', { id: 'u-500', assinatura })).status, 401, `aceitou ${JSON.stringify(assinatura)}`);
+    }
+    assert.equal((await s.visitante('/widget/sessao', 'POST', { id: 'u-500', assinatura: certa })).status, 200);
+  } finally { await s.fechar(); }
 });

@@ -138,8 +138,8 @@ function mostrarBoasVindas({ config, resultado, db }, endereco) {
     ? `🗂️  Arquivos das conversas: guardados no S3 (${config.s3Bucket}/${config.s3Prefixo}/).`
     : '🗂️  Arquivos das conversas: sem S3. Preencha S3_ACCESS_KEY_ID e S3_SECRET_ACCESS_KEY no .env.');
   console.log(config.widgetSegredo
-    ? '💬 Chat do site: ligado com assinatura (o site precisa assinar o id do usuário).'
-    : '💬 Chat do site: ligado sem assinatura. Defina WIDGET_SEGREDO no .env antes de publicar.');
+    ? '💬 Chat do site: ligado. O site precisa assinar o id do usuário com o mesmo segredo.'
+    : '💬 Chat do site: DESLIGADO. Preencha WIDGET_SEGREDO no .env para ligar (sem ele, nenhuma conversa abre).');
   console.log(config.saldoToken
     ? '💰 Consulta de saldo por PIN: configurada.'
     : '💰 Consulta de saldo por PIN: desligada. Preencha SALDO_TOKEN no .env (a chave fica só no servidor).');

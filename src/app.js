@@ -353,6 +353,10 @@ function criarApp(db, opcoes = {}) {
 
     // O site identifica quem está logado; o CRM devolve a chave da conversa.
     app.post('/widget/sessao', async (req, res) => {
+      // Sem o segredo configurado no servidor, o chat do site fica desligado.
+      if (!widget.configurado) {
+        return res.status(401).json({ erro: 'Chat do site desligado: o servidor está sem o segredo de assinatura.' });
+      }
       const chave = `widget|${req.ip}`;
       if (limitadorWidget.bloqueadoPor(chave) > 0) {
         return res.status(429).json({ erro: 'Muitas tentativas. Tente de novo em alguns minutos.' });
