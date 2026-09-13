@@ -113,6 +113,42 @@ test('telegram: a consulta contínua entrega as mensagens e para quando pedido',
   assert.equal(tg.sondagem.ativo(9), false);
 });
 
+test('telegram: PIN que chega na conversa preenche o card do cliente', async () => {
+  const s = await subirServidor();
+  try {
+    const criado = await s.chamar('/api/canais/telegram', 'POST', { token: TOKEN });
+    const canal = await s.db.prepare('SELECT * FROM canais WHERE id = ?').get(criado.dados.canal.id);
+    const de = { id: 900, is_bot: false, first_name: 'Pedro' };
+    const chat = { id: 900, type: 'private' };
+
+    // link de início com o PIN: /start 5446
+    await canais.processarUpdateTelegram(s.db, canal, { update_id: 1, message: { message_id: 1, date: 1_700_000_000, from: de, chat, text: '/start 5446' } });
+    let contato = await s.db.prepare('SELECT * FROM contatos WHERE tg_id = ?').get('900');
+    assert.equal(contato.pin, '5446', 'o PIN do link de início deveria preencher o card');
+    const conversa = (await s.chamar('/api/conversas')).dados.conversas.find((c) => c.contato.nome === 'Pedro');
+    const detalhe = await s.chamar(`/api/conversas/${conversa.id}`);
+    assert.equal(detalhe.dados.conversa.contato.pin, '5446');
+    assert.equal(detalhe.dados.conversa.contato.pinValidadoEm, null, 'o PIN ainda precisa ser conferido');
+    assert.match(detalhe.dados.conversa.mensagens[0].texto, /PIN 5446/);
+
+    // mensagem com só o número também preenche
+    const outro = { id: 901, is_bot: false, first_name: 'Ana' };
+    await canais.processarUpdateTelegram(s.db, canal, { update_id: 2, message: { message_id: 2, date: 1_700_000_100, from: outro, chat: { id: 901, type: 'private' }, text: '486213' } });
+    assert.equal((await s.db.prepare('SELECT pin FROM contatos WHERE tg_id = ?').get('901')).pin, '486213');
+
+    // texto comum não é confundido com PIN
+    await canais.processarUpdateTelegram(s.db, canal, { update_id: 3, message: { message_id: 3, date: 1_700_000_200, from: { id: 902, is_bot: false, first_name: 'Rui' }, chat: { id: 902, type: 'private' }, text: 'bom dia' } });
+    assert.equal((await s.db.prepare('SELECT pin FROM contatos WHERE tg_id = ?').get('902')).pin, null);
+
+    // PIN já conferido não é trocado por uma mensagem nova
+    await s.db.prepare('UPDATE contatos SET pin_validado_em = ? WHERE tg_id = ?').run(Date.now(), '900');
+    await canais.processarUpdateTelegram(s.db, canal, { update_id: 4, message: { message_id: 4, date: 1_700_000_300, from: de, chat, text: '9999' } });
+    assert.equal((await s.db.prepare('SELECT pin FROM contatos WHERE tg_id = ?').get('900')).pin, '5446');
+  } finally {
+    await s.fechar();
+  }
+});
+
 test('telegram: conectar bot pelo token, receber mensagem e responder pelo CRM', async () => {
   const s = await subirServidor();
   const cookieAdmin = s.cookie;

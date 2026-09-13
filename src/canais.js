@@ -233,6 +233,18 @@ function extrairArquivoTelegram(m) {
   return null;
 }
 
+// O PIN do cliente pode chegar junto da conversa no Telegram: no link de início
+// (/start 5446) ou numa mensagem que é só o número. Tem de 4 a 8 dígitos.
+function extrairPinTelegram(texto) {
+  const t = String(texto || '').trim();
+  const inicio = /^\/start(?:@\w+)?\s+(\S+)$/i.exec(t);
+  const bruto = inicio ? inicio[1] : t;
+  const digitos = String(bruto).replace(/\D/g, '');
+  const soNumeros = /^[\s\d.-]+$/.test(bruto);
+  if (!soNumeros && !inicio) return null;
+  return digitos.length >= 4 && digitos.length <= 8 ? digitos : null;
+}
+
 // Traduz um update da Bot API do Telegram para o formato interno.
 function extrairMensagemTelegram(update) {
   const m = update?.message;
@@ -242,7 +254,10 @@ function extrairMensagemTelegram(update) {
   let texto = String(m.text || m.caption || '').trim();
   const midia = ROTULOS_MIDIA_TELEGRAM.find(([chave]) => m[chave] !== undefined);
   if (midia) texto = texto ? `${midia[1]} ${texto}` : midia[1];
-  if (texto === '/start') texto = '[Iniciou a conversa pelo Telegram]';
+  const pinRecebido = extrairPinTelegram(texto);
+  if (/^\/start(?:@\w+)?(\s|$)/i.test(texto)) {
+    texto = pinRecebido ? `[Iniciou a conversa pelo Telegram · PIN ${pinRecebido}]` : '[Iniciou a conversa pelo Telegram]';
+  }
   const nome = [de.first_name, de.last_name].filter(Boolean).join(' ').trim()
     || [chat.first_name, chat.last_name].filter(Boolean).join(' ').trim()
     || (de.username ? `@${de.username}` : '');
@@ -256,6 +271,7 @@ function extrairMensagemTelegram(update) {
     criadaEm: m.date ? Number(m.date) * 1000 : Date.now(),
     grupo: chat.type !== 'private',
     deBot: Boolean(de.is_bot),
+    pinRecebido,
   };
 }
 
@@ -275,6 +291,12 @@ async function processarUpdateTelegram(db, canal, update) {
     contato = { id, nome: nomePadrao };
   } else if (m.usuario && m.usuario !== contato.tg_usuario) {
     await db.prepare('UPDATE contatos SET tg_usuario = ? WHERE id = ?').run(m.usuario, contato.id);
+  }
+
+  // PIN que veio pelo Telegram já preenche o card, sem sobrescrever um PIN conferido.
+  if (m.pinRecebido && !(contato.pin && contato.pin_validado_em)) {
+    await db.prepare('UPDATE contatos SET pin = ? WHERE id = ?').run(m.pinRecebido, contato.id);
+    contato.pin = m.pinRecebido;
   }
   return await guardarMensagem(db, canal, contato, m, 'telegram');
 }
@@ -330,6 +352,7 @@ module.exports = {
   processarEvento,
   guardarMensagem,
   extrairMensagemTelegram,
+  extrairPinTelegram,
   extrairArquivoTelegram,
   processarUpdateTelegram,
   ligarTelegram,

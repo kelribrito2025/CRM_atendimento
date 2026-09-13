@@ -722,9 +722,10 @@ import { detectarNovasMensagens } from './alerta-mensagem.mjs';
   // Os quadradinhos do PIN: o atendente digita ali o PIN informado pelo cliente.
   function camposPin(valorInicial) {
     const caixas = [];
+    const quantidade = Math.min(Math.max(6, String(valorInicial || '').length), 12);
     const pinAtual = () => caixas.map((i) => i.value).join('').replace(/\D/g, '');
     const foco = (i) => { const alvo = caixas[i]; if (alvo) { alvo.focus(); alvo.select(); } };
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < quantidade; i += 1) {
       const caixa = el('input', {
         type: 'text', inputmode: 'numeric', maxlength: '1', class: 'pin-digito', 'aria-label': `Dígito ${i + 1} do PIN`,
         value: valorInicial[i] || '',
@@ -789,7 +790,12 @@ import { detectarNovasMensagens } from './alerta-mensagem.mjs';
   function blocoPin(c) {
     const ct = c.contato;
     const validado = Boolean(ct.pin && ct.pinValidadoEm);
-    const { caixas, pinAtual } = camposPin(saldo.pin || ct.pin || '');
+    // No Telegram o cliente já chega identificado: o número dele preenche os
+    // quadradinhos quando ainda não há um PIN salvo. No WhatsApp fica vazio.
+    const doCanal = c.canal === 'telegram' ? (ct.telegramId || '') : '';
+    const valorInicial = saldo.pin || ct.pin || doCanal;
+    const preenchidoPeloCanal = !saldo.pin && !ct.pin && Boolean(doCanal);
+    const { caixas, pinAtual } = camposPin(valorInicial);
     const podeConsultar = Boolean(estado.resumo?.saldoAtivo);
 
     return el('div', { class: `bloco-pin${validado ? '' : ' pendente'}` },
@@ -802,7 +808,9 @@ import { detectarNovasMensagens } from './alerta-mensagem.mjs';
       el('div', { class: 'linha-pin' },
         el('span', { class: 'pin-info' }, validado
           ? `Conferido às ${horaCurta(ct.pinValidadoEm)} por ${ct.pinValidadoPor || 'equipe'}`
-          : 'Digite o PIN que o cliente informou.'),
+          : (preenchidoPeloCanal
+            ? 'Preenchido com o número do Telegram. Se o PIN for outro, digite por cima.'
+            : 'Digite o PIN que o cliente informou.')),
         podeConsultar
           ? el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => consultarSaldo(pinAtual()) },
             saldo.cliente || saldo.erro ? 'Consultar de novo' : 'Consultar saldo')
