@@ -161,6 +161,7 @@ test('telegram: conectar bot pelo token, receber mensagem e responder pelo CRM',
     assert.equal(conversa.canal, 'telegram');
     assert.equal(conversa.canalId, canal.id);
     assert.equal(conversa.contato.telegramUsuario, 'joaosilva');
+    assert.equal(conversa.contato.telegramId, '555');
     const detalhe = await s.chamar(`/api/conversas/${conversa.id}`);
     const textos = detalhe.dados.conversa.mensagens.map((m) => m.texto);
     assert.deepEqual(textos, ['Olá, preciso de ajuda com a fatura', '[Imagem] segue o boleto']);

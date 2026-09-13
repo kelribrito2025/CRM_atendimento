@@ -256,6 +256,9 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .bloco-pin .cab { display: flex; align-items: center; gap: 8px; }
 .bloco-pin .cab .rotulo { flex: 1; padding: 0; color: var(--verde-texto); }
 .bloco-pin.pendente .cab .rotulo { color: var(--texto-suave); }
+.pin-canal { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--texto-suave); min-width: 0; }
+.pin-canal-nome { font-weight: 700; color: var(--texto); flex-shrink: 0; }
+.pin-canal-id { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pin-digitos { display: flex; gap: 6px; }
 .pin-digito { flex: 1; height: 44px; border-radius: 10px; background: #fff; border: 1px solid var(--verde-borda); display: flex; align-items: center; justify-content: center; font-family: "Courier New", monospace; font-size: 19px; font-weight: 700; color: var(--verde-texto); }
 .bloco-pin.pendente .pin-digito { border-color: var(--borda); color: var(--texto-suave); }

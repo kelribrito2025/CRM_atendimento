@@ -40,7 +40,6 @@ import { icone, montarIcones } from './icones.js';
     balao: '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 11.5a8.4 8.4 0 01-9 8.4 8.9 8.9 0 01-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0121 11.5z"></path></svg>',
     busca: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.3-4.3"></path></svg>',
     cadeadoGrande: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
-    cadeado: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
     alerta: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8E1F16" stroke-width="2.2"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.3 3.9L2 19a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"></path></svg>',
     fechar: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18"></path><path d="M6 6l12 12"></path></svg>',
   };
@@ -581,22 +580,46 @@ import { icone, montarIcones } from './icones.js';
     return el('div', { class: 'secao' }, el('span', { class: 'rotulo' }, titulo), ...filhos);
   }
 
+  // Ícone do canal (WhatsApp ou Telegram) herdando a cor do texto ao redor.
+  function iconeCanal(canal, tamanho = 15) {
+    return el('span', { class: 'ic', style: `--ic:${tamanho}px`, html: ICONE[canal]?.(tamanho, 'currentColor', 2.2) || '' });
+  }
+
+  // Como o cliente é identificado no canal: telefone no WhatsApp, @usuário e ID no Telegram.
+  function identificacaoCanal(c) {
+    const ct = c.contato;
+    if (c.canal === 'telegram') {
+      const partes = [ct.telegramUsuario ? `@${ct.telegramUsuario}` : null, ct.telegramId ? `ID ${ct.telegramId}` : null].filter(Boolean);
+      return partes.length ? partes.join(' · ') : 'Sem identificação do Telegram';
+    }
+    return ct.telefone || 'Sem número de WhatsApp';
+  }
+
+  function linhaCanal(c) {
+    return el('div', { class: 'pin-canal' },
+      iconeCanal(c.canal),
+      el('span', { class: 'pin-canal-nome' }, NOME_CANAL[c.canal] || c.canal),
+      el('span', { class: 'pin-canal-id' }, identificacaoCanal(c)));
+  }
+
   function blocoPin(c) {
     const ct = c.contato;
     const validado = Boolean(ct.pin && ct.pinValidadoEm);
     const cab = (selo, pendente) => el('div', { class: 'cab' },
-      icone('pin', ICONE.cadeado, { classe: pendente ? 'suave' : 'verde' }),
+      iconeCanal(c.canal, 16),
       el('span', { class: 'rotulo' }, 'PIN do cliente'),
       el('span', { class: `selo${pendente ? ' pendente' : ''}` }, selo));
 
     if (!ct.pin) {
       return el('div', { class: 'bloco-pin pendente' }, cab('Sem PIN', true),
+        linhaCanal(c),
         el('div', { class: 'linha-pin' },
           el('span', { class: 'pin-info' }, 'Nenhum PIN gerado para este cliente.'),
           el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => acaoPin('novo') }, 'Gerar PIN')));
     }
     return el('div', { class: `bloco-pin${validado ? '' : ' pendente'}` },
       cab(validado ? 'Validado' : 'Pendente', !validado),
+      linhaCanal(c),
       el('div', { class: 'pin-digitos' }, ...ct.pin.split('').map((d) => el('span', { class: 'pin-digito' }, d))),
       el('div', { class: 'linha-pin' },
         el('span', { class: 'pin-info' }, validado
@@ -638,7 +661,7 @@ import { icone, montarIcones } from './icones.js';
         el('span', { class: 'avatar-quadrado' }, iniciais(ct.empresa || ct.nome)),
         el('div', { class: 'membro-info' },
           el('span', { class: 'painel-nome' }, ct.empresa || ct.nome),
-          el('span', { class: 'painel-sub' }, ct.cnpj || ct.telefone || (ct.telegramUsuario ? `Telegram @${ct.telegramUsuario}` : ''))),
+          el('span', { class: 'painel-sub' }, ct.cnpj || identificacaoCanal(c))),
         el('button', { type: 'button', class: 'link-btn', onclick: () => toast('Abrir conta do cliente: em breve.') }, 'Abrir conta')),
       el('div', { class: 'rolagem painel-corpo' },
         blocoPin(c),

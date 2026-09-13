@@ -44,7 +44,7 @@ function formatarPrimeiraResposta(ms) {
 const SQL_CONVERSAS = `
   SELECT c.id, c.protocolo, c.canal, c.status, c.alerta, c.nao_lidas, c.criada_em, c.atualizada_em,
          c.equipe_id, c.atendente_id, c.canal_id, c.wa_chatid,
-         ct.id AS contato_id, ct.nome AS contato_nome, ct.empresa, ct.cnpj, ct.telefone, ct.tg_usuario,
+         ct.id AS contato_id, ct.nome AS contato_nome, ct.empresa, ct.cnpj, ct.telefone, ct.tg_usuario, ct.tg_id,
          u.nome AS atendente_nome,
          e.nome AS equipe_nome, e.cor AS equipe_cor,
          um.tipo AS ultima_tipo, um.texto AS ultima_texto, um.criada_em AS ultima_em,
@@ -128,6 +128,7 @@ function criarRotasApi(db, opcoes = {}) {
         cnpj: row.cnpj,
         telefone: row.telefone,
         telegramUsuario: row.tg_usuario || null,
+        telegramId: row.tg_id || null,
         iniciais: iniciais(row.contato_nome),
       },
       equipe: row.equipe_id ? { id: row.equipe_id, nome: row.equipe_nome, cor: row.equipe_cor } : null,
