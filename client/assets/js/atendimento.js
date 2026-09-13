@@ -338,6 +338,66 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     }
   }
 
+  /* ================================================================
+   * Balãozinho verde que explica os botões de ícone.
+   * Some depois que a pessoa já viu aquele botão 5 vezes.
+   * ============================================================== */
+  const CHAVE_DICAS = 'crm_dicas';
+  const VEZES_DICA = 5;
+  let balaoDica = null;
+
+  function lerDicas() {
+    try {
+      return JSON.parse(localStorage.getItem(CHAVE_DICAS) || '{}') || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function gravarDicas(dicas) {
+    try { localStorage.setItem(CHAVE_DICAS, JSON.stringify(dicas)); } catch { /* navegador sem armazenamento */ }
+  }
+
+  function esconderDica() {
+    balaoDica?.remove();
+    balaoDica = null;
+  }
+
+  function mostrarDica(botao, texto) {
+    esconderDica();
+    balaoDica = el('span', { class: 'dica-balao', role: 'tooltip' }, texto);
+    document.body.append(balaoDica);
+    const alvo = botao.getBoundingClientRect();
+    const bolha = balaoDica.getBoundingClientRect();
+    const margem = 8;
+    let esquerda = alvo.left + (alvo.width - bolha.width) / 2;
+    esquerda = Math.max(margem, Math.min(esquerda, window.innerWidth - bolha.width - margem));
+    const acima = alvo.top - bolha.height - 10;
+    balaoDica.classList.toggle('embaixo', acima < margem);
+    balaoDica.style.left = `${Math.round(esquerda)}px`;
+    balaoDica.style.top = `${Math.round(acima < margem ? alvo.bottom + 10 : acima)}px`;
+  }
+
+  // Envolve um botão de ícone: explica o que ele faz nas primeiras vezes.
+  function comDica(botao, chave, texto) {
+    if (!botao) return botao;
+    botao.setAttribute('aria-label', texto);
+    botao.removeAttribute('title'); // o balão verde substitui a tarjinha do navegador
+    botao.addEventListener('mouseenter', () => {
+      const dicas = lerDicas();
+      const vistas = Number(dicas[chave] || 0);
+      if (vistas >= VEZES_DICA) return;
+      dicas[chave] = vistas + 1;
+      gravarDicas(dicas);
+      mostrarDica(botao, texto);
+    });
+    for (const evento of ['mouseleave', 'click', 'blur']) botao.addEventListener(evento, esconderDica);
+    return botao;
+  }
+
+  window.addEventListener('scroll', esconderDica, true);
+  window.addEventListener('resize', esconderDica);
+
   // Botão que ainda não faz nada: fica desligado, com o aviso no título.
   function desligar(botao, aviso) {
     if (!botao) return null;
@@ -1084,8 +1144,8 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         el('div', { class: 'chat-info' },
           el('span', { class: 'chat-nome' }, c.contato.nome),
           el('span', { class: 'chat-sub' }, [c.contato.empresa, `protocolo #${c.protocolo}`, textoAberto(c.criadaEm, c.status)].filter(Boolean).join(' · '))),
-        el('button', { type: 'button', class: 'btn-icone btn-info hov', title: 'Dados do cliente', onclick: () => $('#painel').classList.toggle('aberto') }, icone('info', ICONE.info)),
-        el('button', { type: 'button', class: 'btn-icone hov', title: 'Mais ações', onclick: (e) => { e.stopPropagation(); abrirMenuAcoes(e.currentTarget); } }, icone('acoes', ICONE.pontos))));
+        comDica(el('button', { type: 'button', class: 'btn-icone btn-info hov', onclick: () => $('#painel').classList.toggle('aberto') }, icone('info', ICONE.info)), 'ficha', 'Ficha do cliente'),
+        comDica(el('button', { type: 'button', class: 'btn-icone hov', onclick: (e) => { e.stopPropagation(); abrirMenuAcoes(e.currentTarget); } }, icone('acoes', ICONE.pontos)), 'acoes', 'Mais ações')));
 
     const mensagens = el('div', { class: 'rolagem mensagens', id: 'mensagens' }, ...construirMensagens(c));
 
@@ -1109,23 +1169,22 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       el('div', { class: `caixa-texto${modoNota ? ' modo-nota' : ''}` },
         textarea,
         el('div', { class: 'compositor-acoes' },
-          el('button', { type: 'button', class: 'btn-icone hov', title: 'Enviar arquivo (foto, vídeo, áudio ou documento)', onclick: escolherAnexo }, icone('anexo', ICONE.clipe)),
-          el('button', {
-            type: 'button', class: `btn-icone hov${rapidas.aberto ? ' ativo' : ''}`, title: 'Respostas rápidas',
+          comDica(el('button', { type: 'button', class: 'btn-icone hov', onclick: escolherAnexo }, icone('anexo', ICONE.clipe)),
+            'anexo', 'Enviar arquivo'),
+          comDica(el('button', {
+            type: 'button', class: `btn-icone hov${rapidas.aberto ? ' ativo' : ''}`,
             onclick: () => (rapidas.aberto ? fecharRapidas() : abrirRapidas()),
-          }, icone('raio', ICONE.raio)),
-          el('button', {
+          }, icone('raio', ICONE.raio)), 'rapidas', 'Respostas rápidas'),
+          comDica(el('button', {
             type: 'button', class: `btn-icone hov acentos-toggle${acentosLigados ? ' ativo' : ''}`,
-            title: acentosLigados ? 'Acentuação automática ligada (clique para desligar)' : 'Acentuação automática desligada (clique para ligar)',
             'aria-pressed': acentosLigados ? 'true' : 'false',
             onclick: alternarAcentos,
-          }, 'Á'),
-          el('button', {
+          }, 'Á'), 'acentos', acentosLigados ? 'Acentuação automática ligada' : 'Acentuação automática desligada'),
+          comDica(el('button', {
             type: 'button', class: `btn-icone hov nota-toggle${modoNota ? ' ativo' : ''}`,
-            title: modoNota ? 'Voltar a responder o cliente' : 'Escrever nota interna (só a equipe vê)',
             'aria-pressed': modoNota ? 'true' : 'false',
             onclick: () => mudarModo(modoNota ? 'resposta' : 'nota'),
-          }, icone('nota', ICONE.lapis)),
+          }, icone('nota', ICONE.lapis)), 'nota', modoNota ? 'Voltar a responder o cliente' : 'Nota interna'),
           modoNota ? el('span', { class: 'aviso-nota' }, 'Nota interna: só a equipe vê') : null,
           el('span', { class: 'empurrar' }),
           el('button', { type: 'button', class: 'btn-primario', id: 'btn-enviar', onclick: enviar }, modoNota ? 'Salvar nota' : 'Enviar', modoNota ? null : icone('enviar', ICONE.enviar, { animado: true, classe: 'branco' })))));
