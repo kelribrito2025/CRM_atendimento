@@ -379,7 +379,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .empurrar { margin-left: auto; }
 
 /* ===== Painel do cliente ===== */
-.painel { width: 340px; flex-shrink: 0; }
+.painel { width: 381px; flex-shrink: 0; }
 .painel-topo { padding: 16px 18px 14px; border-bottom: 1px solid var(--borda); display: flex; align-items: center; gap: 11px; }
 .avatar-quadrado { width: 38px; height: 38px; border-radius: 12px; background: var(--verde); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
 .painel-nome { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
