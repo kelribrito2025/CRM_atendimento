@@ -752,16 +752,9 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         el('span', { class: 'rotulo' }, 'Inbox da equipe'),
         desligar(el('button', { type: 'button', class: 'btn-mini' }, icone('mais', ICONE.mais)), 'Cadastro de equipes: em breve')),
       el('div', { class: 'lista-nav' },
-        ...r.equipes.map((e) => navItem({ cor: e.cor, nome: e.nome, cont: e.abertas, ativo: estado.equipeId === e.id, onclick: () => selecionarEquipe(e.id) })),
-        // Cada canal tem a sua caixa: o cliente cai na do lugar em que escreveu.
-        ...['widget', 'telegram', 'whatsapp'].map((canal) => navItem({
-          icone: el('span', { class: 'selo-canal', style: `background:${COR_CANAL[canal]}`, html: ICONE[canal]?.(11, '#FFFFFF') || '' }),
-          nome: NOME_CANAL[canal],
-          cont: r.porCanal?.[canal] ?? 0,
-          sempreVerde: true,
-          ativo: estado.canal === canal,
-          onclick: () => selecionarCanal(canal),
-        }))),
+        ...r.equipes
+          .filter((e) => e.nome.trim().toLocaleLowerCase('pt-BR') !== 'admin')
+          .map((e) => navItem({ cor: e.cor, nome: e.nome, cont: e.abertas, ativo: estado.equipeId === e.id, onclick: () => selecionarEquipe(e.id) }))),
       el('span', { class: 'separador' }),
       el('span', { class: 'rotulo' }, equipeSel ? `Equipe de ${equipeSel.nome}` : 'Atendentes'),
       el('div', { class: 'membros' },
