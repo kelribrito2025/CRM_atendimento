@@ -97,6 +97,17 @@ Quando conectar, o menu da conta (avatar) mostra "WhatsApp conectado" com o núm
 
 Na janela de canais, o botão **Eventos** mostra os últimos avisos que o uazapi enviou ao CRM, o que ajuda a diagnosticar problemas. Mensagens de grupos são ignoradas. Fotos, áudios e documentos aparecem por enquanto como texto (por exemplo, "[Imagem]").
 
+## Telegram (bot oficial)
+
+O Telegram é o canal mais simples de ligar: só precisa do **token de um bot**, e não precisa de endereço público (o CRM busca as mensagens sozinho).
+
+1. No Telegram, abra o **@BotFather** e envie `/newbot`. Escolha um nome (ex.: Bigteck Atendimento) e um usuário terminado em "bot".
+2. Copie o token que ele mostra (formato `123456789:AAF…`).
+3. No CRM, entre como administrador, clique no avatar › **Conectar canal** › cole o token em **Adicionar Telegram**.
+4. Divulgue o @usuário do bot para os clientes. Tudo o que eles mandarem ao bot aparece na lista de conversas, e as respostas do chat vão para o Telegram deles.
+
+O CRM recebe as mensagens por consulta contínua à API do Telegram. Se o mesmo bot for usado por dois sistemas ao mesmo tempo (por exemplo, o CRM local e o publicado), o Telegram recusa um deles e a janela de canais mostra o erro. Mensagens de grupos são ignoradas.
+
 ## Ícones (Iconly)
 
 Os ícones da interface vêm do **Iconly**. Coloque os arquivos exportados na pasta `client/public/icones/`:
@@ -141,7 +152,7 @@ npm run usuario -- --listar
 
 Botões que mostram um aviso e ainda não fazem nada: **Entrar com Google Workspace**, **Anexo**, **Respostas rápidas**, **Estornar**, **Ver faturas**, **Abrir conta**, **Nova equipe**, **Adicionar à equipe**, **Filtros** e os outros módulos do menu lateral.
 
-O Telegram ainda não está integrado. No WhatsApp, mídias (fotos, áudios, documentos) ainda não são exibidas, só indicadas como texto.
+No WhatsApp e no Telegram, mídias (fotos, áudios, documentos) ainda não são exibidas, só indicadas como texto (por exemplo, "[Imagem]").
 
 ## Configurações (opcional)
 
@@ -173,6 +184,7 @@ src/rotas-api.js          API de conversas, mensagens, equipes e canais
 src/uazapi.js             cliente da API do uazapi (WhatsApp)
 src/canais.js             traduz os eventos do WhatsApp em conversas e mensagens
 src/db.js                 banco de dados (SQLite) e dados de exemplo
+src/telegram.js           cliente da Bot API do Telegram e consulta contínua
 src/senha.js              hash e verificação de senha
 src/acesso.js             convites, recuperação de senha e verificação em duas etapas
 src/email.js              envio de e-mails (modo de teste: mostra na janela do servidor)

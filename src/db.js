@@ -166,6 +166,9 @@ function migrar(db) {
   garantirColuna(db, 'conversas', 'wa_chatid', 'TEXT');
   garantirColuna(db, 'mensagens', 'externo_id', 'TEXT');
   garantirColuna(db, 'contatos', 'wa_id', 'TEXT');
+  garantirColuna(db, 'contatos', 'tg_id', 'TEXT');
+  garantirColuna(db, 'contatos', 'tg_usuario', 'TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_contatos_tg ON contatos(tg_id);');
   db.exec('CREATE INDEX IF NOT EXISTS idx_mensagens_externo ON mensagens(externo_id);');
   db.exec('CREATE INDEX IF NOT EXISTS idx_contatos_wa ON contatos(wa_id);');
   db.exec('CREATE INDEX IF NOT EXISTS idx_conversas_canal ON conversas(canal_id, status);');
@@ -268,7 +271,7 @@ function removerDadosExemplo(db) {
   db.exec('BEGIN');
   try {
     totais.conversas = db.prepare('DELETE FROM conversas WHERE canal_id IS NULL').run().changes;
-    totais.contatos = db.prepare('DELETE FROM contatos WHERE wa_id IS NULL AND id NOT IN (SELECT contato_id FROM conversas)').run().changes;
+    totais.contatos = db.prepare('DELETE FROM contatos WHERE wa_id IS NULL AND tg_id IS NULL AND id NOT IN (SELECT contato_id FROM conversas)').run().changes;
     const marcadores = USUARIOS_EXEMPLO.map(() => '?').join(', ');
     const ids = db.prepare(`SELECT id FROM usuarios WHERE email IN (${marcadores})`).all(...USUARIOS_EXEMPLO).map((u) => Number(u.id));
     if (ids.length) {

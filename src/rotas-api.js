@@ -4,6 +4,7 @@ const express = require('express');
 const crypto = require('node:crypto');
 const { iniciais, nomeCurto } = require('./util');
 const canais = require('./canais');
+const { tokenValido } = require('./telegram');
 const { interpretarStatus } = require('./uazapi');
 
 const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta']);
@@ -43,7 +44,7 @@ function formatarPrimeiraResposta(ms) {
 const SQL_CONVERSAS = `
   SELECT c.id, c.protocolo, c.canal, c.status, c.alerta, c.nao_lidas, c.criada_em, c.atualizada_em,
          c.equipe_id, c.atendente_id, c.canal_id, c.wa_chatid,
-         ct.id AS contato_id, ct.nome AS contato_nome, ct.empresa, ct.cnpj, ct.telefone,
+         ct.id AS contato_id, ct.nome AS contato_nome, ct.empresa, ct.cnpj, ct.telefone, ct.tg_usuario,
          u.nome AS atendente_nome,
          e.nome AS equipe_nome, e.cor AS equipe_cor,
          um.tipo AS ultima_tipo, um.texto AS ultima_texto, um.criada_em AS ultima_em,
@@ -60,6 +61,7 @@ const SQL_CONVERSAS = `
 `;
 
 function criarRotasApi(db, opcoes = {}) {
+  const telegram = opcoes.telegram || null;
   const uazapi = opcoes.uazapi || null;
   const urlBase = typeof opcoes.urlBase === 'function' ? opcoes.urlBase : () => '';
   const r = express.Router();
@@ -125,6 +127,7 @@ function criarRotasApi(db, opcoes = {}) {
         empresa: row.empresa,
         cnpj: row.cnpj,
         telefone: row.telefone,
+        telegramUsuario: row.tg_usuario || null,
         iniciais: iniciais(row.contato_nome),
       },
       equipe: row.equipe_id ? { id: row.equipe_id, nome: row.equipe_nome, cor: row.equipe_cor } : null,
@@ -273,23 +276,30 @@ function criarRotasApi(db, opcoes = {}) {
     valores.push(c.id);
     db.prepare(`UPDATE conversas SET ${campos.join(', ')} WHERE id = ?`).run(...valores);
 
-    // Conversa vinda do WhatsApp: envia a resposta pelo uazapi
+    // Conversa vinda de um canal (WhatsApp ou Telegram): envia a resposta por ele
     let erroEnvio = null;
     if (tipo === 'atendente' && c.canalId) {
       const mensagemId = Number(info.lastInsertRowid);
       const canalRow = db.prepare('SELECT * FROM canais WHERE id = ?').get(c.canalId);
-      const numero = c.waChatid ? canais.numeroDoChat(c.waChatid) : canais.somenteDigitos(c.contato.telefone);
-      if (!uazapi || !uazapi.configurado) erroEnvio = 'Servidor do WhatsApp não configurado.';
-      else if (!canalRow || !numero) erroEnvio = 'Conversa sem canal ou número de WhatsApp.';
-      else {
-        try {
+      try {
+        if (!canalRow) throw new Error('O canal desta conversa não existe mais.');
+        let idExterno = null;
+        if (canalRow.tipo === 'telegram') {
+          if (!telegram) throw new Error('Integração com Telegram indisponível.');
+          if (!c.waChatid) throw new Error('Conversa sem identificação do chat no Telegram.');
+          const r2 = await telegram.enviarTexto(canalRow.instancia_token, c.waChatid, texto);
+          idExterno = r2?.messageId != null ? `tg:${c.waChatid}:${r2.messageId}` : null;
+        } else {
+          const numero = c.waChatid ? canais.numeroDoChat(c.waChatid) : canais.somenteDigitos(c.contato.telefone);
+          if (!uazapi || !uazapi.configurado) throw new Error('Servidor do WhatsApp não configurado.');
+          if (!numero) throw new Error('Conversa sem canal ou número de WhatsApp.');
           const r2 = await uazapi.enviarTexto(canalRow.instancia_token, numero, texto);
-          const idExterno = r2?.messageid || r2?.id || r2?.key?.id || r2?.message?.messageid || null;
-          db.prepare("UPDATE mensagens SET entrega = 'enviada', externo_id = COALESCE(?, externo_id) WHERE id = ?")
-            .run(idExterno ? String(idExterno) : null, mensagemId);
-        } catch (erro) {
-          erroEnvio = erro.message;
+          idExterno = r2?.messageid || r2?.id || r2?.key?.id || r2?.message?.messageid || null;
         }
+        db.prepare("UPDATE mensagens SET entrega = 'enviada', externo_id = COALESCE(?, externo_id) WHERE id = ?")
+          .run(idExterno ? String(idExterno) : null, mensagemId);
+      } catch (erro) {
+        erroEnvio = erro.message;
       }
       if (erroEnvio) db.prepare("UPDATE mensagens SET entrega = 'falhou' WHERE id = ?").run(mensagemId);
     }
@@ -352,7 +362,7 @@ function criarRotasApi(db, opcoes = {}) {
     res.json({ conversa: detalharConversa(buscarConversa(req.conversa.id)) });
   });
 
-  /* -------------------- canais (WhatsApp via uazapi) -------------------- */
+  /* -------------------- canais (WhatsApp via uazapi e Telegram) -------------------- */
 
   function exigirAdmin(req, res, next) {
     if (req.usuario.papel !== 'admin') return res.status(403).json({ erro: 'Apenas administradores podem gerenciar canais.' });
@@ -364,6 +374,14 @@ function criarRotasApi(db, opcoes = {}) {
       return res.status(400).json({ erro: 'Servidor do WhatsApp não configurado. Preencha UAZAPI_URL e UAZAPI_ADMIN_TOKEN no arquivo .env e reinicie o sistema.' });
     }
     next();
+  }
+
+  // Canais do Telegram não dependem do servidor do WhatsApp.
+  function exigirUazapiParaWhatsapp(req, res, next) {
+    const id = idDaRota(req);
+    const row = id ? sqlCanal.get(id) : null;
+    if (row && row.tipo === 'telegram') return next();
+    return exigirUazapi(req, res, next);
   }
 
   function urlWebhook(req, row) {
@@ -380,17 +398,19 @@ function criarRotasApi(db, opcoes = {}) {
   }
 
   function formatarCanal(req, row) {
-    const url = urlWebhook(req, row);
+    const ehTelegram = row.tipo === 'telegram';
+    const url = ehTelegram ? null : urlWebhook(req, row);
     return {
       id: row.id,
       tipo: row.tipo,
       nome: row.nome,
       status: row.status,
       numero: row.numero,
-      numeroFormatado: row.numero ? canais.formatarNumero(row.numero) : null,
+      numeroFormatado: row.numero ? (ehTelegram ? `@${row.numero}` : canais.formatarNumero(row.numero)) : null,
       perfil: row.perfil_nome,
       webhookUrl: url,
-      webhookAviso: avisoWebhook(url),
+      webhookAviso: url ? avisoWebhook(url) : null,
+      recebendo: ehTelegram ? Boolean(telegram?.sondagem?.ativo(row.id)) : null,
       ultimoErro: row.ultimo_erro,
       criadoEm: row.criado_em,
       atualizadoEm: row.atualizado_em,
@@ -399,9 +419,11 @@ function criarRotasApi(db, opcoes = {}) {
 
   function resumoCanais(req) {
     const lista = db.prepare('SELECT * FROM canais ORDER BY id').all().map((c) => formatarCanal(req, c));
+    const whats = lista.filter((c) => c.tipo !== 'telegram');
+    const tg = lista.filter((c) => c.tipo === 'telegram');
     return [
-      { id: 'whatsapp', nome: 'WhatsApp', conectado: lista.some((c) => c.status === 'connected'), configurado: Boolean(uazapi && uazapi.configurado), canais: lista },
-      { id: 'telegram', nome: 'Telegram', conectado: false, emBreve: true, canais: [] },
+      { id: 'whatsapp', nome: 'WhatsApp', conectado: whats.some((c) => c.status === 'connected'), configurado: Boolean(uazapi && uazapi.configurado), canais: whats },
+      { id: 'telegram', nome: 'Telegram', conectado: tg.some((c) => c.status === 'connected'), configurado: Boolean(telegram), canais: tg },
     ];
   }
 
@@ -440,7 +462,7 @@ function criarRotasApi(db, opcoes = {}) {
 
   r.get('/canais', exigirAdmin, (req, res) => {
     const lista = db.prepare('SELECT * FROM canais ORDER BY id').all().map((c) => formatarCanal(req, c));
-    res.json({ configurado: Boolean(uazapi && uazapi.configurado), servidor: uazapi ? uazapi.base : '', canais: lista });
+    res.json({ configurado: Boolean(uazapi && uazapi.configurado), telegram: Boolean(telegram), servidor: uazapi ? uazapi.base : '', canais: lista });
   });
 
   r.post('/canais', exigirAdmin, exigirUazapi, async (req, res) => {
@@ -469,9 +491,50 @@ function criarRotasApi(db, opcoes = {}) {
     res.status(201).json({ canal: formatarCanal(req, sqlCanal.get(id)) });
   });
 
-  r.post('/canais/:id/conectar', exigirAdmin, exigirUazapi, async (req, res) => {
+  r.post('/canais/telegram', exigirAdmin, async (req, res) => {
+    if (!telegram) return res.status(400).json({ erro: 'Integração com Telegram indisponível.' });
+    const token = String(req.body?.token || '').trim();
+    if (!tokenValido(token)) {
+      return res.status(400).json({ erro: 'Token do bot inválido. Ele tem o formato 123456789:AAAA… e é fornecido pelo @BotFather no Telegram.' });
+    }
+    let bot;
+    try {
+      bot = await telegram.validarToken(token);
+    } catch (erro) {
+      return res.status(erro.status === 401 || erro.status === 404 || erro.status === 400 ? 400 : 502).json({ erro: erro.message });
+    }
+    const existente = db.prepare("SELECT id FROM canais WHERE tipo = 'telegram' AND (instancia_id = ? OR instancia_token = ?)").get(bot.id, token);
+    if (existente) return res.status(409).json({ erro: `Este bot (@${bot.usuario || bot.id}) já está conectado.` });
+
+    const agora = Date.now();
+    const nome = String(req.body?.nome || '').trim().slice(0, 60) || bot.nome || 'Telegram';
+    const id = Number(db.prepare(`
+      INSERT INTO canais (tipo, nome, instancia_id, instancia_token, webhook_segredo, numero, perfil_nome, status, criado_em, atualizado_em)
+      VALUES ('telegram', ?, ?, ?, ?, ?, ?, 'connected', ?, ?)`)
+      .run(nome, bot.id, token, canais.novoSegredo(), bot.usuario, bot.nome, agora, agora).lastInsertRowid);
+    try { await telegram.removerWebhook(token); } catch { /* segue com a consulta contínua */ }
+    canais.ligarTelegram(db, telegram, sqlCanal.get(id));
+    res.status(201).json({ canal: formatarCanal(req, sqlCanal.get(id)) });
+  });
+
+  r.post('/canais/:id/conectar', exigirAdmin, exigirUazapiParaWhatsapp, async (req, res) => {
     const row = canalDaRota(req, res);
     if (!row) return;
+    if (row.tipo === 'telegram') {
+      if (!telegram) return res.status(400).json({ erro: 'Integração com Telegram indisponível.' });
+      try {
+        const bot = await telegram.validarToken(row.instancia_token);
+        db.prepare("UPDATE canais SET status = 'connected', numero = ?, perfil_nome = ?, ultimo_erro = NULL, atualizado_em = ? WHERE id = ?")
+          .run(bot.usuario, bot.nome, Date.now(), row.id);
+        try { await telegram.removerWebhook(row.instancia_token); } catch { /* segue */ }
+        canais.ligarTelegram(db, telegram, sqlCanal.get(row.id));
+        return res.json({ status: 'connected', canal: formatarCanal(req, sqlCanal.get(row.id)) });
+      } catch (erro) {
+        registrarErro(row, erro);
+        db.prepare("UPDATE canais SET status = 'disconnected' WHERE id = ?").run(row.id);
+        return res.status(502).json({ erro: erro.message });
+      }
+    }
     const telefone = canais.somenteDigitos(req.body?.telefone);
     if (req.body?.telefone && (telefone.length < 10 || telefone.length > 15)) {
       return res.status(400).json({ erro: 'Digite o número com o código do país e o DDD. Exemplo: 55 31 99999-0000.' });
@@ -486,9 +549,10 @@ function criarRotasApi(db, opcoes = {}) {
     }
   });
 
-  r.get('/canais/:id/status', exigirAdmin, exigirUazapi, async (req, res) => {
+  r.get('/canais/:id/status', exigirAdmin, exigirUazapiParaWhatsapp, async (req, res) => {
     const row = canalDaRota(req, res);
     if (!row) return;
+    if (row.tipo === 'telegram') return res.json({ status: row.status, canal: formatarCanal(req, row) });
     try {
       const st = interpretarStatus(await uazapi.status(row.instancia_token));
       aplicarStatus(row, st);
@@ -499,9 +563,14 @@ function criarRotasApi(db, opcoes = {}) {
     }
   });
 
-  r.post('/canais/:id/desconectar', exigirAdmin, exigirUazapi, async (req, res) => {
+  r.post('/canais/:id/desconectar', exigirAdmin, exigirUazapiParaWhatsapp, async (req, res) => {
     const row = canalDaRota(req, res);
     if (!row) return;
+    if (row.tipo === 'telegram') {
+      telegram?.sondagem?.parar(row.id);
+      db.prepare("UPDATE canais SET status = 'disconnected', ultimo_erro = NULL, atualizado_em = ? WHERE id = ?").run(Date.now(), row.id);
+      return res.json({ canal: formatarCanal(req, sqlCanal.get(row.id)) });
+    }
     try {
       await uazapi.desconectar(row.instancia_token);
       db.prepare("UPDATE canais SET status = 'disconnected', ultimo_erro = NULL, atualizado_em = ? WHERE id = ?").run(Date.now(), row.id);
@@ -512,9 +581,10 @@ function criarRotasApi(db, opcoes = {}) {
     }
   });
 
-  r.post('/canais/:id/webhook', exigirAdmin, exigirUazapi, async (req, res) => {
+  r.post('/canais/:id/webhook', exigirAdmin, exigirUazapiParaWhatsapp, async (req, res) => {
     const row = canalDaRota(req, res);
     if (!row) return;
+    if (row.tipo === 'telegram') return res.status(400).json({ erro: 'O Telegram não usa webhook neste CRM: as mensagens são buscadas automaticamente.' });
     try {
       const url = await configurarWebhookDoCanal(req, row);
       db.prepare('UPDATE canais SET ultimo_erro = NULL, atualizado_em = ? WHERE id = ?').run(Date.now(), row.id);
@@ -541,7 +611,9 @@ function criarRotasApi(db, opcoes = {}) {
   r.delete('/canais/:id', exigirAdmin, async (req, res) => {
     const row = canalDaRota(req, res);
     if (!row) return;
-    if (uazapi && uazapi.configurado) {
+    if (row.tipo === 'telegram') {
+      telegram?.sondagem?.parar(row.id);
+    } else if (uazapi && uazapi.configurado) {
       try { await uazapi.excluir(row.instancia_token); } catch { /* remove do CRM mesmo assim */ }
     }
     db.prepare('UPDATE conversas SET canal_id = NULL WHERE canal_id = ?').run(row.id);

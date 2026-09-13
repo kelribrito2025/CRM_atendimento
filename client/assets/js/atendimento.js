@@ -318,6 +318,13 @@ import { icone, montarIcones } from './icones.js';
       const conectados = wa.canais.filter((c) => c.status === 'connected').map((c) => c.numeroFormatado || c.nome);
       status.textContent = wa.conectado ? `WhatsApp conectado: ${conectados.join(', ')}` : (wa.configurado ? 'WhatsApp não conectado' : 'WhatsApp não configurado no servidor');
     }
+    const tg = (r.canais || []).find((c) => c.id === 'telegram');
+    const statusTg = $('#menu-telegram');
+    statusTg.hidden = !(admin && tg);
+    if (admin && tg) {
+      const bots = tg.canais.filter((c) => c.status === 'connected').map((c) => c.numeroFormatado || c.nome);
+      statusTg.textContent = tg.conectado ? `Telegram conectado: ${bots.join(', ')}` : 'Telegram não conectado';
+    }
   }
 
   /* ================================================================
@@ -565,7 +572,7 @@ import { icone, montarIcones } from './icones.js';
         el('span', { class: 'avatar-quadrado' }, iniciais(ct.empresa || ct.nome)),
         el('div', { class: 'membro-info' },
           el('span', { class: 'painel-nome' }, ct.empresa || ct.nome),
-          el('span', { class: 'painel-sub' }, ct.cnpj || ct.telefone || '')),
+          el('span', { class: 'painel-sub' }, ct.cnpj || ct.telefone || (ct.telegramUsuario ? `Telegram @${ct.telegramUsuario}` : ''))),
         el('button', { type: 'button', class: 'link-btn', onclick: () => toast('Abrir conta do cliente: em breve.') }, 'Abrir conta')),
       el('div', { class: 'rolagem painel-corpo' },
         blocoPin(c),
@@ -610,7 +617,7 @@ import { icone, montarIcones } from './icones.js';
   }
 
   async function abrirModalCanais() {
-    if (estado.resumo?.usuario?.papel !== 'admin') return toast('Peça a um administrador para conectar o WhatsApp.');
+    if (estado.resumo?.usuario?.papel !== 'admin') return toast('Peça a um administrador para conectar os canais.');
     if (modalCanais) return;
     modalCanais = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === modalCanais) fecharModalCanais(); } },
       el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Canais de atendimento' },
@@ -636,18 +643,21 @@ import { icone, montarIcones } from './icones.js';
     }
     const partes = [
       el('div', { class: 'modal-cab' },
-        el('div', {}, el('h2', {}, 'Canais de atendimento'), el('p', {}, 'Conecte o WhatsApp da empresa para receber e responder as mensagens aqui no CRM.')),
+        el('div', {}, el('h2', {}, 'Canais de atendimento'), el('p', {}, 'Conecte o WhatsApp e o Telegram da empresa para receber e responder as mensagens aqui no CRM.')),
         el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: fecharModalCanais }, svg(ICONE.fechar))),
     ];
-    if (!dados.configurado) {
-      partes.push(el('div', { class: 'aviso erro' }, 'Servidor do WhatsApp não configurado. Preencha UAZAPI_URL e UAZAPI_ADMIN_TOKEN no arquivo .env e reinicie o sistema.'));
-    }
-    const lista = el('div', { class: 'canais-lista' }, ...dados.canais.map(itemCanal));
-    if (!dados.canais.length) lista.append(el('div', { class: 'vazio' }, 'Nenhum WhatsApp conectado ainda.'));
-    partes.push(el('div', { class: 'secao' }, el('span', { class: 'rotulo' }, 'WhatsApp'), lista, dados.configurado ? formNovoCanal() : null));
-    const canalConexao = dados.canais.find((c) => c.id === conexao.canalId);
+    const whats = dados.canais.filter((c) => c.tipo !== 'telegram');
+    const bots = dados.canais.filter((c) => c.tipo === 'telegram');
+    const lista = el('div', { class: 'canais-lista' }, ...whats.map(itemCanal));
+    if (!whats.length) lista.append(el('div', { class: 'vazio' }, 'Nenhum WhatsApp conectado ainda.'));
+    partes.push(el('div', { class: 'secao' }, el('span', { class: 'rotulo' }, 'WhatsApp'),
+      dados.configurado ? null : el('div', { class: 'aviso erro' }, 'Servidor do WhatsApp não configurado. Preencha UAZAPI_URL e UAZAPI_ADMIN_TOKEN no arquivo .env e reinicie o sistema.'),
+      lista, dados.configurado ? formNovoCanal() : null));
+    const canalConexao = whats.find((c) => c.id === conexao.canalId);
     if (canalConexao) partes.push(painelConexao(canalConexao));
-    partes.push(el('div', { class: 'secao' }, el('span', { class: 'rotulo' }, 'Telegram'), el('div', { class: 'aviso info' }, 'Integração com Telegram: em breve.')));
+    const listaTg = el('div', { class: 'canais-lista' }, ...bots.map(itemTelegram));
+    if (!bots.length) listaTg.append(el('div', { class: 'vazio' }, 'Nenhum bot do Telegram conectado ainda.'));
+    partes.push(el('div', { class: 'secao' }, el('span', { class: 'rotulo' }, 'Telegram'), listaTg, dados.telegram ? formNovoTelegram() : null));
     corpo.replaceChildren(...partes);
   }
 
@@ -669,6 +679,51 @@ import { icone, montarIcones } from './icones.js';
       el('div', { class: 'canal-nota' }, `Endereço que recebe as mensagens: ${c.webhookUrl}`));
   }
 
+  function itemTelegram(c) {
+    const rotulo = c.status === 'connected' ? (c.recebendo === false ? 'Conectado (aguardando reinício)' : 'Conectado') : 'Desconectado';
+    const sub = [rotulo, c.numeroFormatado, c.perfil && c.perfil !== c.nome ? c.perfil : null].filter(Boolean).join(' · ');
+    return el('div', { class: 'canal-item' },
+      el('span', { class: `status-ponto ${c.status}` }),
+      el('div', { class: 'canal-info' }, el('span', { class: 'canal-nome' }, c.nome), el('span', { class: 'canal-sub' }, sub)),
+      el('div', { class: 'canal-acoes' },
+        c.status === 'connected'
+          ? el('button', { type: 'button', class: 'btn-suave hov', onclick: () => acaoCanal(c.id, 'desconectar') }, 'Desconectar')
+          : el('button', { type: 'button', class: 'btn-primario pequeno', style: 'height:34px', onclick: () => acaoCanal(c.id, 'conectar') }, 'Conectar'),
+        el('button', { type: 'button', class: 'btn-suave hov', onclick: () => verEventos(c) }, 'Eventos'),
+        el('button', { type: 'button', class: 'btn-suave hov', onclick: () => excluirCanal(c) }, 'Excluir')),
+      c.ultimoErro ? el('div', { class: 'canal-aviso' }, `Último erro: ${c.ultimoErro}`) : null,
+      el('div', { class: 'canal-nota' }, 'As mensagens enviadas ao bot chegam aqui automaticamente, sem precisar de endereço público.'));
+  }
+
+  function formNovoTelegram() {
+    const input = el('input', { type: 'text', placeholder: 'Token do bot (ex.: 123456789:AAF…)', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Token do bot do Telegram' });
+    const botao = el('button', { type: 'button', class: 'btn-primario pequeno', style: 'height:40px', onclick: async () => {
+      const token = input.value.trim();
+      if (!token) return toast('Cole o token do bot fornecido pelo @BotFather.');
+      botao.disabled = true;
+      try {
+        const { canal } = await api('/canais/telegram', { method: 'POST', body: { token } });
+        toast(`Telegram conectado: ${canal.numeroFormatado || canal.nome}`);
+        input.value = '';
+        await renderCanais();
+        carregarResumo().catch(() => {});
+      } catch (e) {
+        toast(e.message, 6000);
+      } finally {
+        botao.disabled = false;
+      }
+    } }, 'Adicionar Telegram');
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') botao.click(); });
+    return el('div', { class: 'secao' },
+      el('div', { class: 'novo-canal' }, input, botao),
+      el('div', { class: 'novo-canal-ajuda' },
+        el('strong', {}, 'Como criar o bot (leva 1 minuto):'),
+        el('ol', {},
+          el('li', {}, 'No Telegram, abra o @BotFather e envie /newbot.'),
+          el('li', {}, 'Escolha um nome (ex.: Bigteck Atendimento) e um usuário terminado em "bot".'),
+          el('li', {}, 'Copie o token que ele mostra e cole no campo acima. Depois, divulgue o @usuário do bot para os clientes.'))));
+  }
+
   function formNovoCanal() {
     const input = el('input', { type: 'text', placeholder: 'Nome do canal (ex.: WhatsApp principal)', maxlength: '60' });
     const botao = el('button', { type: 'button', class: 'btn-primario pequeno', style: 'height:40px', onclick: async () => {
@@ -688,16 +743,17 @@ import { icone, montarIcones } from './icones.js';
   async function acaoCanal(id, acao) {
     try {
       await api(`/canais/${id}/${acao}`, { method: 'POST', body: {} });
-      toast(acao === 'desconectar' ? 'WhatsApp desconectado.' : 'Webhook reconfigurado.');
+      toast({ desconectar: 'Canal desconectado.', webhook: 'Webhook reconfigurado.', conectar: 'Telegram conectado!' }[acao] || 'Pronto.');
       if (acao === 'desconectar') { pararSondagem(); conexao.canalId = null; }
       await renderCanais();
+      carregarResumo().catch(() => {});
     } catch (e) {
       toast(e.message, 5000);
     }
   }
 
   async function excluirCanal(c) {
-    if (!window.confirm(`Excluir o canal "${c.nome}"? As conversas ficam guardadas, mas o WhatsApp é desconectado.`)) return;
+    if (!window.confirm(`Excluir o canal "${c.nome}"? As conversas ficam guardadas, mas o canal é desconectado.`)) return;
     try {
       await api(`/canais/${c.id}`, { method: 'DELETE' });
       if (conexao.canalId === c.id) { pararSondagem(); conexao.canalId = null; }
@@ -715,9 +771,9 @@ import { icone, montarIcones } from './icones.js';
       const lista = el('div', { class: 'eventos-lista' }, ...eventos.map((e) => el('div', { class: 'evento-item' },
         el('span', { class: 'm' }, `${new Date(e.recebidoEm).toLocaleString('pt-BR')} · ${e.tipo || 'sem tipo'}`),
         typeof e.corpo === 'string' ? e.corpo : JSON.stringify(e.corpo, null, 1).slice(0, 1500))));
-      if (!eventos.length) lista.append(el('div', { class: 'vazio' }, 'Nenhum evento recebido ainda. Quando alguém mandar mensagem para este WhatsApp, o evento aparece aqui.'));
+      if (!eventos.length) lista.append(el('div', { class: 'vazio' }, 'Nenhum evento recebido ainda. Quando alguém mandar mensagem para este canal, o evento aparece aqui.'));
       corpo.replaceChildren(
-        el('div', { class: 'modal-cab' }, el('div', {}, el('h2', {}, `Eventos recebidos · ${c.nome}`), el('p', {}, 'Últimos 50 avisos que o servidor do WhatsApp enviou ao CRM. Útil para diagnosticar problemas.')),
+        el('div', { class: 'modal-cab' }, el('div', {}, el('h2', {}, `Eventos recebidos · ${c.nome}`), el('p', {}, 'Últimos 50 avisos que este canal entregou ao CRM. Útil para diagnosticar problemas.')),
           el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: fecharModalCanais }, svg(ICONE.fechar))),
         lista,
         el('div', {}, el('button', { type: 'button', class: 'btn-suave hov', onclick: renderCanais }, '← Voltar')));

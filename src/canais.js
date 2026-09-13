@@ -1,7 +1,7 @@
 'use strict';
 
-// Canais de atendimento (WhatsApp via uazapi): tradução dos eventos recebidos
-// por webhook em contatos, conversas e mensagens do CRM.
+// Canais de atendimento (WhatsApp via uazapi e Telegram via Bot API): tradução
+// dos eventos recebidos em contatos, conversas e mensagens do CRM.
 
 const crypto = require('node:crypto');
 
@@ -155,28 +155,113 @@ function processarEvento(db, canal, corpo) {
       db.prepare('UPDATE contatos SET nome = ? WHERE id = ?').run(m.nome, contato.id);
     }
 
-    // conversa aberta neste canal (ou a última resolvida, que é reaberta)
-    let conversa = db.prepare("SELECT id, status FROM conversas WHERE contato_id = ? AND canal_id = ? AND status = 'aberta' ORDER BY id DESC LIMIT 1")
-      .get(contato.id, canal.id);
-    let nova = false;
-    if (!conversa) {
-      const id = Number(db.prepare(`
-        INSERT INTO conversas (protocolo, contato_id, equipe_id, atendente_id, canal, status, nao_lidas, criada_em, atualizada_em, canal_id, wa_chatid)
-        VALUES (?, ?, ?, NULL, 'whatsapp', 'aberta', 0, ?, ?, ?, ?)`)
-        .run(proximoProtocolo(db), contato.id, canal.equipe_padrao_id || null, m.criadaEm, m.criadaEm, canal.id, m.chatid).lastInsertRowid);
-      conversa = { id, status: 'aberta' };
-      nova = true;
-    }
-
-    db.prepare('INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, entrega, criada_em, externo_id) VALUES (?, ?, NULL, ?, ?, ?, ?)')
-      .run(conversa.id, m.fromMe ? 'atendente' : 'cliente', m.texto, m.fromMe ? 'enviada' : null, m.criadaEm, m.messageid);
-    db.prepare('UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + ?, wa_chatid = COALESCE(wa_chatid, ?) WHERE id = ?')
-      .run(Math.max(m.criadaEm, agora), m.fromMe ? 0 : 1, m.chatid, conversa.id);
-
-    return { resultado: 'mensagem', conversaId: conversa.id, contatoId: contato.id, nova, fromMe: m.fromMe };
+    return guardarMensagem(db, canal, contato, m, 'whatsapp');
   }
 
   return { resultado: 'ignorado', motivo: `evento ${tipo || 'desconhecido'}` };
+}
+
+// Guarda uma mensagem recebida na conversa aberta do contato neste canal (cria a conversa se preciso).
+function guardarMensagem(db, canal, contato, m, tipoCanal) {
+  const agora = Date.now();
+  let conversa = db.prepare("SELECT id, status FROM conversas WHERE contato_id = ? AND canal_id = ? AND status = 'aberta' ORDER BY id DESC LIMIT 1")
+    .get(contato.id, canal.id);
+  let nova = false;
+  if (!conversa) {
+    const id = Number(db.prepare(`
+      INSERT INTO conversas (protocolo, contato_id, equipe_id, atendente_id, canal, status, nao_lidas, criada_em, atualizada_em, canal_id, wa_chatid)
+      VALUES (?, ?, ?, NULL, ?, 'aberta', 0, ?, ?, ?, ?)`)
+      .run(proximoProtocolo(db), contato.id, canal.equipe_padrao_id || null, tipoCanal, m.criadaEm, m.criadaEm, canal.id, m.chatid).lastInsertRowid);
+    conversa = { id, status: 'aberta' };
+    nova = true;
+  }
+  const fromMe = Boolean(m.fromMe);
+  db.prepare('INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, entrega, criada_em, externo_id) VALUES (?, ?, NULL, ?, ?, ?, ?)')
+    .run(conversa.id, fromMe ? 'atendente' : 'cliente', m.texto, fromMe ? 'enviada' : null, m.criadaEm, m.messageid);
+  db.prepare('UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + ?, wa_chatid = COALESCE(wa_chatid, ?) WHERE id = ?')
+    .run(Math.max(m.criadaEm, agora), fromMe ? 0 : 1, m.chatid, conversa.id);
+  return { resultado: 'mensagem', conversaId: conversa.id, contatoId: contato.id, nova, fromMe };
+}
+
+/* ------------------------------ Telegram ------------------------------ */
+
+const ROTULOS_MIDIA_TELEGRAM = [
+  ['photo', '[Imagem]'], ['video', '[Vídeo]'], ['video_note', '[Vídeo]'], ['animation', '[GIF]'],
+  ['voice', '[Áudio]'], ['audio', '[Áudio]'], ['document', '[Documento]'], ['sticker', '[Figurinha]'],
+  ['location', '[Localização]'], ['venue', '[Localização]'], ['contact', '[Contato]'], ['poll', '[Enquete]'],
+];
+
+// Traduz um update da Bot API do Telegram para o formato interno.
+function extrairMensagemTelegram(update) {
+  const m = update?.message;
+  if (!m || typeof m !== 'object' || !m.chat) return null;
+  const chat = m.chat;
+  const de = m.from || {};
+  let texto = String(m.text || m.caption || '').trim();
+  const midia = ROTULOS_MIDIA_TELEGRAM.find(([chave]) => m[chave] !== undefined);
+  if (midia) texto = texto ? `${midia[1]} ${texto}` : midia[1];
+  if (texto === '/start') texto = '[Iniciou a conversa pelo Telegram]';
+  const nome = [de.first_name, de.last_name].filter(Boolean).join(' ').trim()
+    || [chat.first_name, chat.last_name].filter(Boolean).join(' ').trim()
+    || (de.username ? `@${de.username}` : '');
+  return {
+    chatid: String(chat.id),
+    messageid: `tg:${chat.id}:${m.message_id}`,
+    texto,
+    nome,
+    usuario: de.username || chat.username || null,
+    criadaEm: m.date ? Number(m.date) * 1000 : Date.now(),
+    grupo: chat.type !== 'private',
+    deBot: Boolean(de.is_bot),
+  };
+}
+
+// Aplica um update do Telegram ao banco. Retorna um resumo do que foi feito.
+function processarUpdateTelegram(db, canal, update) {
+  const m = extrairMensagemTelegram(update);
+  if (!m) return { resultado: 'ignorado', motivo: update?.edited_message ? 'mensagem editada' : 'sem mensagem' };
+  if (m.grupo) return { resultado: 'ignorado', motivo: 'grupo' };
+  if (m.deBot) return { resultado: 'ignorado', motivo: 'mensagem de bot' };
+  if (!m.texto) return { resultado: 'ignorado', motivo: 'sem conteúdo' };
+  if (db.prepare('SELECT 1 FROM mensagens WHERE externo_id = ?').get(m.messageid)) return { resultado: 'ignorado', motivo: 'duplicada' };
+
+  const nomePadrao = m.nome || (m.usuario ? `@${m.usuario}` : `Telegram ${m.chatid}`);
+  let contato = db.prepare('SELECT * FROM contatos WHERE tg_id = ?').get(m.chatid);
+  if (!contato) {
+    const id = Number(db.prepare('INSERT INTO contatos (nome, tg_id, tg_usuario) VALUES (?, ?, ?)').run(nomePadrao, m.chatid, m.usuario).lastInsertRowid);
+    contato = { id, nome: nomePadrao };
+  } else if (m.usuario && m.usuario !== contato.tg_usuario) {
+    db.prepare('UPDATE contatos SET tg_usuario = ? WHERE id = ?').run(m.usuario, contato.id);
+  }
+  return guardarMensagem(db, canal, contato, m, 'telegram');
+}
+
+// Começa a receber as mensagens de um bot do Telegram e guarda tudo no banco.
+function ligarTelegram(db, telegram, canal) {
+  if (!telegram?.sondagem) return false;
+  telegram.sondagem.iniciar(canal, {
+    aoReceber: (update) => {
+      registrarEvento(db, canal.id, 'telegram', update);
+      return processarUpdateTelegram(db, canal, update);
+    },
+    aoEstado: (estado) => {
+      if (estado.ok) {
+        db.prepare("UPDATE canais SET ultimo_erro = NULL, status = 'connected', atualizado_em = ? WHERE id = ?").run(Date.now(), canal.id);
+      } else {
+        db.prepare('UPDATE canais SET ultimo_erro = ?, status = ?, atualizado_em = ? WHERE id = ?')
+          .run(String(estado.erro || 'erro').slice(0, 500), estado.fatal ? 'disconnected' : 'connected', Date.now(), canal.id);
+      }
+    },
+  });
+  return true;
+}
+
+// Ao iniciar o sistema: religa todos os bots do Telegram que estavam conectados.
+function ligarTelegramTodos(db, telegram) {
+  const lista = db.prepare("SELECT * FROM canais WHERE tipo = 'telegram' AND status = 'connected'").all();
+  let n = 0;
+  for (const canal of lista) if (ligarTelegram(db, telegram, canal)) n += 1;
+  return n;
 }
 
 function registrarEvento(db, canalId, tipo, corpo) {
@@ -198,5 +283,10 @@ module.exports = {
   interpretarEntrega,
   interpretarConexao,
   processarEvento,
+  guardarMensagem,
+  extrairMensagemTelegram,
+  processarUpdateTelegram,
+  ligarTelegram,
+  ligarTelegramTodos,
   registrarEvento,
 };

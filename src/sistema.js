@@ -12,6 +12,8 @@ const { criarEnviador } = require('./email');
 const { limparSessoesExpiradas } = require('./sessoes');
 const { limparAcessosExpirados } = require('./acesso');
 const { criarUazapi } = require('./uazapi');
+const { criarTelegram } = require('./telegram');
+const canais = require('./canais');
 
 const RAIZ = path.join(__dirname, '..');
 
@@ -57,8 +59,10 @@ function montarSistema(extras = {}) {
   });
   const enviador = criarEnviador();
   const uazapi = criarUazapi({ url: config.uazapiUrl, adminToken: config.uazapiAdminToken });
+  const telegram = criarTelegram();
   const app = criarApp(db, {
     uazapi,
+    telegram,
     cookieSeguro: config.cookieSeguro,
     trustProxy: config.trustProxy,
     doisFatores: config.doisFatores,
@@ -75,7 +79,10 @@ function montarSistema(extras = {}) {
     limparAcessosExpirados(db);
   }, 60 * 60 * 1000).unref();
 
-  return { app, db, config, resultado, enviador, uazapi };
+  // Religa os bots do Telegram que já estavam conectados.
+  resultado.botsTelegram = canais.ligarTelegramTodos(db, telegram);
+
+  return { app, db, config, resultado, enviador, uazapi, telegram };
 }
 
 function mostrarBoasVindas({ config, resultado }, endereco) {
@@ -97,6 +104,9 @@ function mostrarBoasVindas({ config, resultado }, endereco) {
   console.log(config.uazapiUrl && config.uazapiAdminToken
     ? `📱 WhatsApp (uazapi): configurado em ${config.uazapiUrl}`
     : '📱 WhatsApp (uazapi): não configurado. Preencha UAZAPI_URL e UAZAPI_ADMIN_TOKEN no .env para conectar.');
+  console.log(resultado.botsTelegram
+    ? `✈️  Telegram: ${resultado.botsTelegram} bot(s) recebendo mensagens.`
+    : '✈️  Telegram: conecte um bot pelo menu da conta (avatar) › Conectar canal. Só precisa do token do @BotFather.');
   if (!config.baseUrl) console.log('🌐 BASE_URL não definida: o WhatsApp só consegue entregar mensagens quando o CRM tiver um endereço público.');
   console.log('');
 }
