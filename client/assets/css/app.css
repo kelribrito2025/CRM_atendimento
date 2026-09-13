@@ -570,7 +570,13 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 .pessoa .nome { font-size: 13.5px; font-weight: 700; }
 .pessoa .email { font-size: 12px; color: var(--texto-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pessoa .equipes { width: 190px; flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 5px; }
-.pessoa .papel { width: 110px; flex-shrink: 0; }
+.pessoa .papel { width: 132px; flex-shrink: 0; }
+/* Sem isso a caixinha de papel fica branca do navegador e salta no tema escuro. */
+.pessoa select.papel {
+  height: 34px; padding: 0 8px; border-radius: 10px;
+  border: 1px solid var(--borda); background: var(--superficie); color: var(--texto);
+}
+.pessoa select.papel:disabled { color: var(--texto-suave); }
 .selo-equipe {
   display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 7px;
   background: var(--superficie); border: 1px solid var(--borda); font-size: 11px; font-weight: 600; color: var(--texto-suave);
@@ -605,41 +611,47 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 /* ===== Tema escuro =====
    Só repinta as cores da paleta: o resto da folha usa as variáveis. */
 :root[data-tema="escuro"] {
-  --bg: #07120C;
-  --shell: #0B1F14;
-  --rail: #060F0A;
-  --rail-hover: #14291D;
+  --bg: #081611;
+  --shell: #081611;
+  --rail: #0B1F14;
+  --rail-hover: #153021;
   --rail-linha: #1F3D2B;
   --rail-icone: #8FB39E;
   --verde: #12B85C;
   --verde-escuro: #0F9E4E;
-  --verde-texto: #6FDDA0;
-  --verde-claro: #163E2A;
-  --verde-fundo: #10291C;
-  --verde-borda: #205138;
-  --texto: #E6F0EA;
-  --texto-suave: #9DB3A6;
-  --borda: #1E3527;
-  --fundo-suave: #11231A;
-  --cinza: #172C20;
-  --vermelho: #FF9E93;
+  --verde-texto: #7EE2A8;
+  --verde-claro: #143B26;
+  --verde-fundo: #14402A;
+  --verde-borda: #1F5C3A;
+  --texto: #EAF4EE;
+  --texto-suave: #8FB39E;
+  --borda: #1F3D2B;
+  --fundo-suave: #0F241A;
+  --cinza: #173323;
+  --vermelho: #FFB4A8;
   --vermelho-badge: #E5544A;
   --vermelho-claro: #3A1A16;
-  --azul: #4FA3DA;
-  --azul-claro: #14293A;
-  --azul-icone: #4FA3DA;
-  --nota-fundo: #2A2312;
-  --nota-borda: #6B571C;
+  --azul: #7FC2EE;
+  --azul-claro: #17384F;
+  --azul-icone: #7FC2EE;
+  --nota-fundo: #332A12;
+  --nota-borda: #6E5A1E;
   --nota-texto: #F0DFA8;
-  --nota-suave: #C7AC5B;
-  --superficie: #0E2318;
-  --chat-fundo: #0A1B12;
-  --hover: rgba(18, 184, 92, .14);
+  --nota-suave: #C7A94A;
+  --superficie: #132A1E;
+  --chat-fundo: #0B1F14;
+  --hover: rgba(18, 184, 92, .10);
 }
 :root[data-tema="escuro"] body { color-scheme: dark; }
 :root[data-tema="escuro"] .chat-vazio-icone { background: var(--verde-fundo); border-color: var(--verde-borda); }
-:root[data-tema="escuro"] .mensagens { background-blend-mode: soft-light; }
-:root[data-tema="escuro"] .msg.saida .balao { background: #04120A; }
+/* No escuro a conversa é cor sólida: a textura do fundo claro suja a leitura. */
+:root[data-tema="escuro"] .mensagens { background-image: none; }
+/* Os dois balões viram os dois verdes: o do cliente no verde vivo (com texto
+   escuro, que lê melhor) e o do atendente no verde escuro, nunca no preto. */
+:root[data-tema="escuro"] .balao { color: #0B1F14; }
+:root[data-tema="escuro"] .msg.saida .balao { background: #173323; border: 1px solid #1F3D2B; color: var(--texto); }
+:root[data-tema="escuro"] .balao.midia .midia-legenda,
+:root[data-tema="escuro"] .msg.saida .balao.midia .midia-legenda { color: var(--texto); }
 :root[data-tema="escuro"] input, :root[data-tema="escuro"] textarea, :root[data-tema="escuro"] select { color: var(--texto); }
 :root[data-tema="escuro"] .selo-equipe, :root[data-tema="escuro"] .escolha-equipe { background: var(--superficie); }
 
