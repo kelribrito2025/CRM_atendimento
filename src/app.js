@@ -412,7 +412,7 @@ function criarApp(db, opcoes = {}) {
 
   app.get('/', exigirLogin, (req, res) => enviarPagina(req, res, 'atendimento.html'));
 
-  app.use('/api', exigirLogin, criarRotasApi(db, { uazapi: opcoes.uazapi || null, telegram: opcoes.telegram || null, saldo: opcoes.saldo || null, arquivos: opcoes.arquivos || null, urlBase, enviador, abrirContaUrl: opcoes.abrirContaUrl || '' }));
+  app.use('/api', exigirLogin, criarRotasApi(db, { uazapi: opcoes.uazapi || null, telegram: opcoes.telegram || null, saldo: opcoes.saldo || null, arquivos: opcoes.arquivos || null, urlBase, enviador, abrirConta: opcoes.abrirConta || null }));
 
   app.use((req, res) => {
     if (req.originalUrl.startsWith('/api/') || req.originalUrl.startsWith('/acesso/') || req.originalUrl.startsWith('/webhook/')) {

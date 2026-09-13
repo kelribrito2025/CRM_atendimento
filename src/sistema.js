@@ -16,6 +16,7 @@ const { criarTelegram } = require('./telegram');
 const { criarSaldo, URL_PADRAO: SALDO_URL_PADRAO } = require('./saldo');
 const { criarS3 } = require('./s3');
 const { criarWidget } = require('./widget');
+const { criarAbrirConta, URL_PADRAO: ABRIR_CONTA_PADRAO } = require('./abrir-conta');
 const canais = require('./canais');
 
 const RAIZ = path.join(__dirname, '..');
@@ -43,7 +44,8 @@ function lerConfig() {
     s3Chave: process.env.S3_ACCESS_KEY_ID || '',
     s3Segredo: process.env.S3_SECRET_ACCESS_KEY || '',
     widgetSegredo: process.env.WIDGET_SEGREDO || '',
-    abrirContaUrl: process.env.ABRIR_CONTA_URL || '',
+    abrirContaUrl: process.env.ABRIR_CONTA_URL || ABRIR_CONTA_PADRAO,
+    abrirContaToken: process.env.ABRIR_CONTA_TOKEN || '',
     widgetEquipeId: Number(process.env.WIDGET_EQUIPE_ID || 0) || null,
   };
 }
@@ -82,13 +84,14 @@ async function montarSistema(extras = {}) {
     secretAccessKey: config.s3Segredo,
   });
   const widget = criarWidget(db, { segredo: config.widgetSegredo, equipePadraoId: config.widgetEquipeId });
+  const abrirConta = criarAbrirConta({ url: config.abrirContaUrl, token: config.abrirContaToken });
   const app = criarApp(db, {
     uazapi,
     telegram,
     saldo,
     arquivos,
     widget,
-    abrirContaUrl: config.abrirContaUrl,
+    abrirConta,
     cookieSeguro: config.cookieSeguro,
     trustProxy: config.trustProxy,
     doisFatores: config.doisFatores,
@@ -142,6 +145,9 @@ function mostrarBoasVindas({ config, resultado, db }, endereco) {
   console.log(config.widgetSegredo
     ? '💬 Chat do site: ligado. O site precisa assinar o id do usuário com o mesmo segredo.'
     : '💬 Chat do site: DESLIGADO. Preencha WIDGET_SEGREDO no .env para ligar (sem ele, nenhuma conversa abre).');
+  console.log(config.abrirContaToken
+    ? '🔓 Abrir conta do cliente no site: ligado.'
+    : '🔓 Abrir conta do cliente no site: desligado. Preencha ABRIR_CONTA_TOKEN no .env.');
   console.log(config.saldoToken
     ? '💰 Consulta de saldo por PIN: configurada.'
     : '💰 Consulta de saldo por PIN: desligada. Preencha SALDO_TOKEN no .env (a chave fica só no servidor).');

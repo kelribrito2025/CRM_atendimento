@@ -111,6 +111,7 @@ function criarRotasApi(db, opcoes = {}) {
   const uazapi = opcoes.uazapi || null;
   const urlBase = typeof opcoes.urlBase === 'function' ? opcoes.urlBase : () => '';
   const enviador = opcoes.enviador || { modo: 'silencioso', async enviar() {} };
+  const abrirConta = opcoes.abrirConta || null;
   const r = express.Router();
 
   r.use((req, res, next) => {
@@ -451,8 +452,8 @@ function criarRotasApi(db, opcoes = {}) {
       primeiraResposta: formatarPrimeiraResposta(media),
       canais: await resumoCanais(req),
       saldoAtivo: Boolean(saldo && saldo.configurado),
-      // Endereço que abre a conta do cliente no site já logada (impersonação).
-      abrirContaUrl: opcoes.abrirContaUrl || '',
+      // O botão "Abrir conta" só aparece quando o site está configurado.
+      abrirContaAtivo: Boolean(abrirConta?.configurado),
       anexosAtivos: Boolean(arquivos && arquivos.configurado),
     });
   });
@@ -699,6 +700,31 @@ function criarRotasApi(db, opcoes = {}) {
     if (!STATUS.has(status)) return res.status(400).json({ erro: 'Status inválido.' });
     await db.prepare('UPDATE conversas SET status = ?, atualizada_em = ? WHERE id = ?').run(status, Date.now(), req.conversa.id);
     res.json({ conversa: await buscarConversa(req.conversa.id) });
+  });
+
+  // Abre a conta do cliente no site, já logada. Quem está abrindo vem da sessão
+  // do CRM (nunca do navegador) e o motivo é obrigatório: os dois vão no pedido
+  // e ficam registrados no site e aqui, na conversa, como nota interna.
+  r.post('/conversas/:id/abrir-conta', comConversa, async (req, res) => {
+    const c = req.conversa;
+    if (!abrirConta?.configurado) {
+      return res.status(400).json({ erro: 'Abrir conta não está configurado no servidor. Avise o administrador.' });
+    }
+    const ct = await sql.contato.get(c.contato.id);
+    const motivo = String(req.body?.motivo || '').trim();
+    try {
+      const r2 = await abrirConta.pedirLink({
+        clienteId: ct.site_id,
+        atendente: { id: req.usuario.id, nome: req.usuario.nome, email: req.usuario.email },
+        motivo,
+      });
+      const agora = Date.now();
+      await sql.inserirMensagem.run(c.id, 'nota', req.usuario.id, `Abriu a conta do cliente no site. Motivo: ${motivo}`, null, agora);
+      await db.prepare('UPDATE conversas SET atualizada_em = ? WHERE id = ?').run(agora, c.id);
+      res.json(r2);
+    } catch (erro) {
+      res.status(erro.status || 502).json({ erro: erro.message });
+    }
   });
 
   r.post('/conversas/:id/pin', comConversa, async (req, res) => {

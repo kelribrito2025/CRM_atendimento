@@ -285,15 +285,18 @@ Ninguém consegue se trancar do lado de fora: você não pode tirar o seu própr
 
 ## Abrir a conta do cliente no site
 
-Na ficha do cliente, o botão **Abrir conta** (com o ícone de olho) entra na conta da pessoa no site, já logada — o mesmo que o painel administrativo do site faz. Aparece só para quem chegou pelo chat do site, que é de onde vem o id do cliente.
+Na ficha do cliente, o botão **Abrir conta** (com o ícone de olho) entra na conta da pessoa no site, já logada. Aparece só para quem chegou pelo chat do site, que é de onde vem o id do cliente.
 
-Preencha no `.env` o endereço que o site expõe, com `{id}` no lugar do id do cliente:
+Antes de abrir, o CRM pede o **motivo** ao atendente. Então o servidor do CRM pede ao site um link de uso único, mandando junto **quem** está abrindo (vindo da sessão, nunca do navegador) e **por quê**. O site registra isso, e o CRM guarda o mesmo motivo como nota interna na conversa.
+
+No `.env`:
 
 ```
-ABRIR_CONTA_URL=https://SEU-SITE.com.br/admin/impersonar/{id}
+ABRIR_CONTA_TOKEN=<chave do agente, só para isto>
+# ABRIR_CONTA_URL=https://app.numero-virtual.com/api/agents/impersonar
 ```
 
-Sem essa variável, o botão fica apagado.
+Use uma chave separada da chave de saldo: assim dá para revogar o "abrir conta" sem derrubar a consulta de saldo. Sem a chave, o botão fica apagado.
 
 ## O que ainda é só visual ("em breve")
 

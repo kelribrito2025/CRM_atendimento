@@ -1564,18 +1564,60 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   // quem chegou pelo chat do site, que é de onde vem o id do cliente lá.
   function botaoAbrirConta(c) {
     const id = c.contato.siteId;
-    const modelo = estado.resumo?.abrirContaUrl || '';
-    if (!id || !modelo) {
-      return desligar(el('button', { type: 'button', class: 'link-btn' }, 'Abrir conta'),
-        id ? 'Abrir conta do cliente: falta configurar o endereço do site' : 'Abrir conta: só para clientes que chegam pelo chat do site');
+    if (!id || !estado.resumo?.abrirContaAtivo) {
+      return desligar(el('button', { type: 'button', class: 'link-btn com-olho' }, svg(ICONE.olho), 'Abrir conta'),
+        id ? 'Abrir conta: falta configurar o acesso ao site' : 'Abrir conta: só para clientes que chegam pelo chat do site');
     }
-    const endereco = modelo.includes('{id}')
-      ? modelo.replace('{id}', encodeURIComponent(id))
-      : `${modelo.replace(/\/$/, '')}/${encodeURIComponent(id)}`;
-    return el('a', {
-      class: 'link-btn com-olho', href: endereco, target: '_blank', rel: 'noopener',
+    return el('button', {
+      type: 'button', class: 'link-btn com-olho',
       title: `Entrar na conta de ${c.contato.nome} no site`,
+      onclick: () => pedirMotivoAbrirConta(c),
     }, svg(ICONE.olho), 'Abrir conta');
+  }
+
+  // O site exige saber por que a conta foi aberta, e guarda isso junto com o
+  // nome de quem abriu. O motivo também fica como nota interna na conversa.
+  function pedirMotivoAbrirConta(c) {
+    const campo = el('textarea', {
+      class: 'area', rows: '3', maxlength: '300', lang: 'pt-BR', spellcheck: 'true',
+      placeholder: 'Ex.: cliente relatou saldo divergente e pediu conferência',
+    });
+    const aviso = el('span', { class: 'dica' }, 'Fica registrado no site com o seu nome.');
+    const botao = el('button', { type: 'button', class: 'btn-primario' }, svg(ICONE.olho), 'Abrir conta');
+    const fundo = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === fundo) fundo.remove(); } },
+      el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true' },
+        el('div', { class: 'modal-corpo' },
+          el('div', { class: 'modal-cab' },
+            el('div', {}, el('h2', {}, `Abrir a conta de ${c.contato.nome}`),
+              el('p', {}, 'Você entra na conta do cliente no site, como se fosse ele. Escreva o motivo antes.')),
+            el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: () => fundo.remove() }, svg(ICONE.fechar))),
+          el('div', { class: 'caixa-nota' }, campo, el('div', { class: 'rodape' }, aviso)),
+          el('div', { style: 'display:flex;justify-content:flex-end;gap:8px;margin-top:16px' },
+            el('button', { type: 'button', class: 'btn-suave hov', onclick: () => fundo.remove() }, 'Cancelar'),
+            botao))));
+    document.body.append(fundo);
+    campo.focus();
+
+    botao.addEventListener('click', async () => {
+      const motivo = campo.value.trim();
+      if (motivo.length < 10) { aviso.textContent = 'Escreva o motivo com pelo menos 10 caracteres.'; campo.focus(); return; }
+      // A aba precisa abrir no clique; o endereço chega depois.
+      const aba = window.open('', '_blank');
+      botao.disabled = true;
+      aviso.textContent = 'Pedindo o acesso ao site…';
+      try {
+        const r = await api(`/conversas/${c.id}/abrir-conta`, { method: 'POST', body: { motivo } });
+        if (aba) aba.location = r.url; else window.open(r.url, '_blank', 'noopener');
+        fundo.remove();
+        toast('Conta aberta em outra aba. O link vale poucos segundos.', 5000);
+        const atualizada = await api(`/conversas/${c.id}`);
+        aplicarConversa(juntarHistorico(estado.conversa?.id === c.id ? estado.conversa : null, atualizada.conversa));
+      } catch (e) {
+        aba?.close();
+        botao.disabled = false;
+        aviso.textContent = e.message;
+      }
+    });
   }
 
   function renderPainel() {
