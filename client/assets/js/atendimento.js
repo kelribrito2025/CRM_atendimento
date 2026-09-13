@@ -834,17 +834,22 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 
   // Segurar o dedo (ou o botão do mouse) no card vai preenchendo ele da esquerda
   // para a direita; quando enche, a conversa é encerrada.
-  const TEMPO_SEGURAR_MS = 900;
-  const DISTANCIA_MAXIMA = 10; // arrastar o dedo/ponteiro cancela o gesto
+  // Um clique comum dura menos de 200 ms: nesse tempo nada aparece na tela. O
+  // preenchimento só começa quando fica claro que a pessoa está segurando.
+  const ESPERA_ANTES_MS = 260;
+  const TEMPO_SEGURAR_MS = 750; // precisa bater com a transição do CSS
+  const DISTANCIA_MAXIMA = 10;  // arrastar o dedo/ponteiro cancela o gesto
 
   // Só existe um gesto por vez, guardado aqui fora. Assim, se a lista for
   // redesenhada no meio (o que acontece a cada clique e na atualização
   // automática), o relógio do card antigo é cancelado junto e a conversa não
   // acaba sendo encerrada sozinha depois.
-  const segurando = { relogio: null, card: null, x: 0, y: 0 };
+  const segurando = { inicio: null, relogio: null, card: null, x: 0, y: 0 };
 
   function cancelarPressao() {
+    clearTimeout(segurando.inicio);
     clearTimeout(segurando.relogio);
+    segurando.inicio = null;
     segurando.relogio = null;
     segurando.card?.classList.remove('segurando', 'cheio');
     segurando.card = null;
@@ -864,16 +869,19 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       cancelarPressao();
       pressao.encerrou = false;
       Object.assign(segurando, { card, x: e.clientX, y: e.clientY });
-      card.classList.add('segurando');
-      requestAnimationFrame(() => { if (segurando.card === card) card.classList.add('cheio'); });
-      segurando.relogio = setTimeout(() => {
-        // Vale só se o dedo continua neste mesmo card, e ele ainda está na tela.
-        const vale = segurando.card === card && card.isConnected;
-        cancelarPressao();
-        if (!vale) return;
-        pressao.encerrou = true;
-        encerrarPeloCard(c.id);
-      }, TEMPO_SEGURAR_MS);
+      segurando.inicio = setTimeout(() => {
+        if (segurando.card !== card || !card.isConnected) return;
+        card.classList.add('segurando');
+        requestAnimationFrame(() => { if (segurando.card === card) card.classList.add('cheio'); });
+        segurando.relogio = setTimeout(() => {
+          // Vale só se o dedo continua neste mesmo card, e ele ainda está na tela.
+          const vale = segurando.card === card && card.isConnected;
+          cancelarPressao();
+          if (!vale) return;
+          pressao.encerrou = true;
+          encerrarPeloCard(c.id);
+        }, TEMPO_SEGURAR_MS);
+      }, ESPERA_ANTES_MS);
     });
 
     card.addEventListener('pointerleave', cancelarPressao);
