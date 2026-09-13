@@ -335,7 +335,8 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .chat-vazio { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 48px 24px; text-align: center; background: #fff; }
 .chat-vazio-icone { width: 96px; height: 96px; border-radius: 32px; background: #F1FBF6; border: 1.5px solid #C7E8D6; display: flex; align-items: center; justify-content: center; color: var(--verde); }
 .chat-vazio-icone .ic { color: var(--verde); }
-.perola-img { width: 64px; height: 64px; object-fit: contain; }
+.chat-vazio-icone.perola-sem-fundo { width: auto; height: auto; border: 0; border-radius: 0; background: transparent; }
+.perola-img { width: 77px; height: 77px; object-fit: contain; }
 .chat-vazio-texto { display: flex; flex-direction: column; gap: 9px; max-width: 460px; }
 .chat-vazio-texto > strong { font-size: 24px; font-weight: 700; letter-spacing: -.02em; color: var(--texto); }
 .chat-vazio-texto > span { font-size: 14px; line-height: 1.6; color: var(--texto-suave); text-wrap: pretty; }

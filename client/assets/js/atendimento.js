@@ -959,7 +959,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     const semNada = !estado.conversas.length && !estado.busca && !estado.equipeId && !estado.canal
       && ['todas', 'minhas', 'sem_resposta'].includes(estado.caixa);
     return el('div', { class: 'chat-vazio' },
-      el('span', { class: 'chat-vazio-icone' }, semNada ? imagemPerola() : icone('atendimento', ICONE.balao)),
+      el('span', { class: `chat-vazio-icone${semNada ? ' perola-sem-fundo' : ''}` }, semNada ? imagemPerola() : icone('atendimento', ICONE.balao)),
       el('div', { class: 'chat-vazio-texto' }, el('strong', {}, titulo), texto));
   }
 
