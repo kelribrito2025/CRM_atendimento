@@ -126,6 +126,24 @@ CREATE TABLE IF NOT EXISTS mensagens (
   FOREIGN KEY (autor_id) REFERENCES usuarios(id)
 );
 
+CREATE TABLE IF NOT EXISTS auditoria_eventos (
+  id ${CHAVE},
+  acao VARCHAR(64) NOT NULL,
+  usuario_id BIGINT,
+  usuario_nome TEXT NOT NULL,
+  usuario_email VARCHAR(191),
+  conversa_id BIGINT,
+  protocolo VARCHAR(32),
+  canal VARCHAR(20),
+  contato_id BIGINT,
+  contato_nome TEXT,
+  criado_em BIGINT NOT NULL,
+  origem_mensagem_id BIGINT UNIQUE,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE SET NULL,
+  FOREIGN KEY (conversa_id) REFERENCES conversas(id) ON DELETE SET NULL,
+  FOREIGN KEY (contato_id) REFERENCES contatos(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS convites (
   token_hash VARCHAR(191) PRIMARY KEY,
   email VARCHAR(191) NOT NULL${SEM_CAIXA},
@@ -209,6 +227,8 @@ const INDICES = [
   ['idx_conversas_canal', 'conversas', 'canal_id, status'],
   ['idx_respostas_atalho', 'respostas_rapidas', 'atalho'],
   ['idx_contatos_site', 'contatos', 'site_id'],
+  ['idx_auditoria_criado', 'auditoria_eventos', 'criado_em'],
+  ['idx_auditoria_usuario', 'auditoria_eventos', 'usuario_id, criado_em'],
 ];
 
 // Acrescenta colunas criadas em versões mais novas sem perder os dados existentes.
@@ -281,6 +301,27 @@ async function limparConversasDeChatVazias(db) {
   await gravarAjuste(db, 'widget_conversa_sob_demanda', '1');
 }
 
+// Versões anteriores guardavam a abertura de conta como nota interna. Esses
+// registros são eventos de segurança: passam para a auditoria, sem permanecer
+// misturados às notas escritas pela equipe. `origem_mensagem_id` torna a
+// migração segura mesmo se duas instâncias iniciarem ao mesmo tempo.
+async function migrarNotasDeAberturaParaAuditoria(db) {
+  const texto = 'Abriu a conta do cliente no site.';
+  await db.transacao(async () => {
+    await db.prepare(`INSERT OR IGNORE INTO auditoria_eventos
+      (acao, usuario_id, usuario_nome, usuario_email, conversa_id, protocolo, canal,
+       contato_id, contato_nome, criado_em, origem_mensagem_id)
+      SELECT 'abrir_conta', m.autor_id, COALESCE(u.nome, 'Atendente removido'), u.email,
+             c.id, c.protocolo, c.canal, ct.id, ct.nome, m.criada_em, m.id
+      FROM mensagens m
+      JOIN conversas c ON c.id = m.conversa_id
+      JOIN contatos ct ON ct.id = c.contato_id
+      LEFT JOIN usuarios u ON u.id = m.autor_id
+      WHERE m.tipo = 'nota' AND m.texto = ?`).run(texto);
+    await db.prepare("DELETE FROM mensagens WHERE tipo = 'nota' AND texto = ?").run(texto);
+  });
+}
+
 async function migrar(db) {
   await garantirColuna(db, 'conversas', 'canal_id', 'BIGINT');
   await garantirColuna(db, 'conversas', 'wa_chatid', 'VARCHAR(191)');
@@ -301,6 +342,7 @@ async function migrar(db) {
   await garantirColuna(db, 'contatos', 'tg_foto_id', 'VARCHAR(255)');
   await garantirColuna(db, 'contatos', 'tg_foto_em', 'BIGINT');
   for (const [nome, tabela, colunas] of INDICES) await db.criarIndice(nome, tabela, colunas);
+  await migrarNotasDeAberturaParaAuditoria(db);
   await limparConversasDeChatVazias(db);
   await renomearEquipe(db, 'Cobrança', 'Admin');
   // Equipes padrão antigas que deixaram de existir (removidas uma única vez).

@@ -288,6 +288,24 @@ function criarRotasApi(db, opcoes = {}) {
     res.json({ usuarios, convites, equipes: await sql.equipes.all() });
   });
 
+  // Registro de segurança somente para leitura. Mantém os dados essenciais em
+  // forma de fotografia para o histórico continuar legível se uma conta,
+  // conversa ou contato for removido depois.
+  r.get('/auditoria', soAdmin, async (req, res) => {
+    const linhas = await db.prepare(`SELECT id, acao, usuario_id, usuario_nome, usuario_email,
+      conversa_id, protocolo, canal, contato_id, contato_nome, criado_em
+      FROM auditoria_eventos ORDER BY criado_em DESC, id DESC LIMIT 200`).all();
+    res.json({ eventos: linhas.map((e) => ({
+      id: Number(e.id),
+      acao: e.acao,
+      descricao: e.acao === 'abrir_conta' ? 'Abriu a conta do cliente no site.' : e.acao,
+      usuario: { id: e.usuario_id == null ? null : Number(e.usuario_id), nome: e.usuario_nome, email: e.usuario_email || null },
+      conversa: { id: e.conversa_id == null ? null : Number(e.conversa_id), protocolo: e.protocolo || null, canal: e.canal || null },
+      contato: { id: e.contato_id == null ? null : Number(e.contato_id), nome: e.contato_nome || null },
+      criadoEm: Number(e.criado_em),
+    })) });
+  });
+
   // Convida alguém por e-mail. O link também volta na resposta, porque enquanto
   // não houver serviço de e-mail configurado é ele que o administrador repassa.
   r.post('/equipe/convites', soAdmin, async (req, res) => {
@@ -681,7 +699,7 @@ function criarRotasApi(db, opcoes = {}) {
 
   // Abre a conta do cliente no site, já logada. Quem está abrindo vem da sessão
   // do CRM (nunca do navegador) e o motivo é obrigatório: os dois vão no pedido
-  // e ficam registrados no site e aqui, na conversa, como nota interna.
+  // e ficam registrados também na auditoria administrativa do CRM.
   r.post('/conversas/:id/abrir-conta', comConversa, async (req, res) => {
     const c = req.conversa;
     if (!abrirConta?.configurado) {
@@ -696,9 +714,12 @@ function criarRotasApi(db, opcoes = {}) {
         atendente: { id: req.usuario.id, nome: req.usuario.nome, email: req.usuario.email },
         motivo,
       });
-      const agora = Date.now();
-      await sql.inserirMensagem.run(c.id, 'nota', req.usuario.id, 'Abriu a conta do cliente no site.', null, agora);
-      await db.prepare('UPDATE conversas SET atualizada_em = ? WHERE id = ?').run(agora, c.id);
+      await db.prepare(`INSERT INTO auditoria_eventos
+        (acao, usuario_id, usuario_nome, usuario_email, conversa_id, protocolo, canal,
+         contato_id, contato_nome, criado_em, origem_mensagem_id)
+        VALUES ('abrir_conta', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`)
+        .run(req.usuario.id, req.usuario.nome, req.usuario.email, c.id, c.protocolo,
+          c.canal, ct.id, ct.nome, Date.now());
       res.json(r2);
     } catch (erro) {
       res.status(erro.status || 502).json({ erro: erro.message });

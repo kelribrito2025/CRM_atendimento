@@ -619,6 +619,27 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 .escolha-equipe.marcada { border-color: var(--verde); background: var(--verde-fundo); color: var(--verde-texto); }
 .config-vazio { font-size: 12.5px; color: var(--texto-suave); padding: 4px 0; }
 
+.auditoria-lista { display: flex; flex-direction: column; gap: 8px; }
+.auditoria-item {
+  display: grid; grid-template-columns: 38px minmax(210px, 1.2fr) minmax(180px, 1fr) auto;
+  align-items: center; gap: 12px; padding: 13px 14px; border-radius: 14px;
+  background: var(--fundo-suave); border: 1px solid var(--borda);
+}
+.auditoria-icone {
+  width: 34px; height: 34px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--verde-texto); background: var(--verde-claro);
+}
+.auditoria-dados, .auditoria-alvo { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.auditoria-dados strong, .auditoria-alvo strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auditoria-dados span, .auditoria-alvo span, .auditoria-item time { font-size: 11.5px; color: var(--texto-suave); }
+.auditoria-item time { white-space: nowrap; text-align: right; }
+
+@media (max-width: 1080px) {
+  .auditoria-item { grid-template-columns: 38px 1fr auto; }
+  .auditoria-alvo { grid-column: 2 / -1; }
+  .auditoria-item time { grid-column: 3; grid-row: 1; }
+}
+
 /* ===== Tema escuro =====
    Só repinta as cores da paleta: o resto da folha usa as variáveis. */
 :root[data-tema="escuro"] {

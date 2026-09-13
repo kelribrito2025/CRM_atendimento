@@ -1820,12 +1820,16 @@ import { deveSalvarNota } from './nota-editor.mjs';
   /* ================================================================
    * Configurações
    * ============================================================== */
-  const config = { aberto: false, secao: 'equipe', dados: null, carregando: false, erro: null };
+  const config = {
+    aberto: false, secao: 'equipe', dados: null, carregando: false, erro: null,
+    auditoria: null, auditoriaCarregando: false, auditoriaErro: null,
+  };
 
   const SECOES_CONFIG = [
     { grupo: 'Atendimento' },
     { id: 'equipe', nome: 'Equipe', icone: 'pessoas', soAdmin: true },
     { id: 'canais', nome: 'Canais', icone: 'elo', soAdmin: true },
+    { id: 'auditoria', nome: 'Auditoria', icone: 'olho', soAdmin: true },
     { id: 'respostas', nome: 'Respostas rápidas', icone: 'raio' },
     { grupo: 'Preferências' },
     { id: 'aparencia', nome: 'Aparência', icone: 'tela' },
@@ -1840,6 +1844,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
     document.querySelector('.rail-btn[title="Atendimento"]')?.classList.remove('ativo');
     renderConfig();
     if (config.secao === 'equipe') carregarEquipe();
+    if (config.secao === 'auditoria') carregarAuditoria();
   }
 
   function fecharConfiguracoes() {
@@ -1854,6 +1859,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
     config.secao = id;
     renderConfig();
     if (id === 'equipe') carregarEquipe();
+    if (id === 'auditoria') carregarAuditoria();
     if (id === 'respostas') carregarRapidas().then(renderConfig).catch((e) => toast(e.message, 5000));
   }
 
@@ -1867,6 +1873,20 @@ import { deveSalvarNota } from './nota-editor.mjs';
       config.erro = e.message;
     } finally {
       config.carregando = false;
+      renderConfig();
+    }
+  }
+
+  async function carregarAuditoria() {
+    config.auditoriaCarregando = true;
+    config.auditoriaErro = null;
+    renderConfig();
+    try {
+      config.auditoria = (await api('/auditoria')).eventos;
+    } catch (e) {
+      config.auditoriaErro = e.message;
+    } finally {
+      config.auditoriaCarregando = false;
       renderConfig();
     }
   }
@@ -1889,7 +1909,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
       }));
 
     const secao = SECOES_CONFIG.find((i) => i.id === config.secao) || SECOES_CONFIG[1];
-    const corpo = { equipe: corpoEquipe, canais: corpoCanaisConfig, respostas: corpoRespostasConfig, aparencia: corpoAparencia }[config.secao];
+    const corpo = { equipe: corpoEquipe, canais: corpoCanaisConfig, auditoria: corpoAuditoria, respostas: corpoRespostasConfig, aparencia: corpoAparencia }[config.secao];
     $('#config-painel').replaceChildren(
       el('div', { class: 'config-topo' },
         el('div', { class: 'titulo' },
@@ -1907,6 +1927,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
       return `${ativos} atendente${ativos === 1 ? '' : 's'} ativo${ativos === 1 ? '' : 's'}`;
     }
     if (config.secao === 'canais') return 'WhatsApp, Telegram e o chat do site.';
+    if (config.secao === 'auditoria') return 'Registro de segurança das ações dos atendentes.';
     if (config.secao === 'aparencia') return 'Vale só para você, neste navegador.';
     if (config.secao === 'respostas') return 'Mensagens prontas para a equipe usar no chat.';
     return '';
@@ -1949,6 +1970,33 @@ import { deveSalvarNota } from './nota-editor.mjs';
         onclick: () => salvarPessoa(u.id, { ativo: !u.ativo }),
       }, svg(u.ativo ? ICONE.cadeado : ICONE.check)),
       el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => editarEquipesDe(u, equipes) }, 'Equipes'));
+  }
+
+  /* ---------------- Configurações › Auditoria ---------------- */
+  function corpoAuditoria() {
+    if (config.auditoriaCarregando && !config.auditoria) return [el('div', { class: 'config-vazio' }, 'Carregando auditoria…')];
+    if (config.auditoriaErro) return [el('div', { class: 'aviso erro' }, config.auditoriaErro)];
+    const eventos = config.auditoria || [];
+
+    return [el('div', { class: 'config-bloco' },
+      el('div', { class: 'cabeca' },
+        el('span', { class: 'rotulo' }, `Atividades recentes · ${eventos.length}`),
+        el('span', { class: 'dica' }, 'Histórico automático e somente para leitura. Os registros não aparecem mais como notas da conversa.')),
+      eventos.length
+        ? el('div', { class: 'auditoria-lista' }, ...eventos.map((evento) => {
+          const quando = new Date(evento.criadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+          const canal = NOME_CANAL[evento.conversa?.canal] || evento.conversa?.canal || 'Canal não informado';
+          return el('div', { class: 'auditoria-item' },
+            el('span', { class: 'auditoria-icone' }, svg(ICONE.olho)),
+            el('div', { class: 'auditoria-dados' },
+              el('strong', {}, evento.descricao),
+              el('span', {}, `${evento.usuario?.nome || 'Atendente removido'}${evento.usuario?.email ? ` · ${evento.usuario.email}` : ''}`)),
+            el('div', { class: 'auditoria-alvo' },
+              el('strong', {}, evento.contato?.nome || 'Cliente não informado'),
+              el('span', {}, `${evento.conversa?.protocolo ? `Protocolo ${evento.conversa.protocolo} · ` : ''}${canal}`)),
+            el('time', { datetime: new Date(evento.criadoEm).toISOString(), title: quando }, quando));
+        }))
+        : el('div', { class: 'config-vazio' }, 'Nenhuma ação auditável registrada ainda.'))];
   }
 
   // Copia o PIN e avisa, para o atendente colar onde precisar.
