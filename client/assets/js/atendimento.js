@@ -740,7 +740,6 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       el('span', { class: 'rotulo' }, 'Caixas de entrada'),
       el('div', { class: 'lista-nav' },
         navItem({ icone: icone('todas', ICONE.inbox), nome: 'Todas', cont: r.caixas.todas, ativo: semEquipe && estado.caixa === 'todas', onclick: () => selecionarCaixa('todas') }),
-        navItem({ icone: icone('minhas', ICONE.pessoa), nome: 'Minhas', cont: r.caixas.minhas, ativo: semEquipe && estado.caixa === 'minhas', onclick: () => selecionarCaixa('minhas') }),
         navItem({ icone: icone('sem-resposta', ICONE.relogio, { classe: 'vermelho' }), nome: 'Sem resposta', cont: r.caixas.semResposta, alerta: true, ativo: semEquipe && estado.caixa === 'sem_resposta', onclick: () => selecionarCaixa('sem_resposta') }),
         navItem({ icone: icone('encerradas', ICONE.checkCaixa), nome: 'Encerradas', cont: r.caixas.encerradas, ativo: semEquipe && estado.caixa === 'encerradas', onclick: () => selecionarCaixa('encerradas') })),
       el('span', { class: 'separador' }),
