@@ -290,19 +290,41 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     const c = estado.conversa;
     if (!c || !texto.trim() || estado.enviando) return;
     estado.enviando = true;
+
+    // A mensagem aparece na hora, marcada como "enviando", e o campo já fica livre.
+    const provisoria = {
+      id: `tmp-${Date.now()}`,
+      tipo: tipo === 'nota' ? 'nota' : 'atendente',
+      texto: texto.trim(),
+      entrega: tipo === 'nota' ? null : 'enviando',
+      criadaEm: Date.now(),
+      autor: { id: estado.resumo?.usuario?.id, nome: estado.resumo?.usuario?.nome, nomeCurto: estado.resumo?.usuario?.nomeCurto || 'Você' },
+      midia: null,
+      provisoria: true,
+    };
+    const textoAnterior = campo ? campo.value : '';
+    if (campo) { campo.value = ''; ajustarAltura(campo); }
+    c.mensagens.push(provisoria);
+    if (tipo === 'nota') estado.modo = 'resposta';
+    aplicarConversa(c);
+    $('#texto-msg')?.focus();
+
     try {
-      const r = await api(`/conversas/${c.id}/mensagens`, { method: 'POST', body: { texto: texto.trim(), tipo } });
-      if (campo) campo.value = '';
+      const r = await api(`/conversas/${c.id}/mensagens`, { method: 'POST', body: { texto: provisoria.texto, tipo } });
       if (r.erroEnvio) toast(`Não foi possível enviar pelo ${NOME_CANAL[c.canal] || c.canal}: ${r.erroEnvio}`, 5000);
-      c.mensagens.push(r.mensagem);
+      const posicao = c.mensagens.findIndex((m) => m.id === provisoria.id);
+      if (posicao >= 0) c.mensagens[posicao] = r.mensagem; else c.mensagens.push(r.mensagem);
       Object.assign(c, { status: r.conversa.status, atendente: r.conversa.atendente, equipe: r.conversa.equipe, atualizadaEm: r.conversa.atualizadaEm });
-      // Depois de salvar a nota, volta a escrever para o cliente.
-      if (tipo === 'nota') estado.modo = 'resposta';
       aplicarConversa(c);
-      $('#texto-msg')?.focus();
       await Promise.all([carregarResumo(), carregarConversas()]);
     } catch (e) {
-      toast(e.message);
+      // Não saiu: a mensagem fica marcada e o texto volta para o campo.
+      const posicao = c.mensagens.findIndex((m) => m.id === provisoria.id);
+      if (posicao >= 0) c.mensagens.splice(posicao, 1);
+      aplicarConversa(c);
+      const volta = $('#texto-msg');
+      if (volta && !volta.value) { volta.value = textoAnterior || provisoria.texto; ajustarAltura(volta); }
+      toast(e.message, 5000);
     } finally {
       estado.enviando = false;
     }
@@ -428,6 +450,12 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     return { todas: 'Todas as conversas', minhas: 'Minhas conversas', sem_resposta: 'Sem resposta' }[estado.caixa];
   }
 
+  // Corta nomes longos na lista, mantendo o nome inteiro no título do item.
+  function encurtar(texto, limite) {
+    const t = String(texto || '').trim();
+    return t.length > limite ? `${t.slice(0, limite - 1).trimEnd()}…` : t;
+  }
+
   function itemConversa(c) {
     const ativa = c.id === estado.conversaId;
     const corAvatar = ativa ? 'verde' : (c.canal === 'telegram' ? 'azul' : 'cinza');
@@ -437,7 +465,6 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     if (c.status === 'resolvida') tag = ['Resolvida', ''];
     else if (c.semResposta) tag = [`Sem resposta ${minutosTexto(c.semRespostaMin)}`, 'vermelho'];
     else if (c.contato.empresa && c.contato.empresa !== c.contato.nome) tag = [c.contato.empresa, 'verde'];
-    else if (c.atendente) tag = [c.atendente.nomeCurto, ''];
 
     const previa = c.ultimaTipo === 'atendente' && c.ultimaAutor
       ? `${c.ultimaAutor.split(' ')[0]}: ${c.ultimaTexto}`
@@ -449,7 +476,8 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         el('span', { class: 'canal-badge', html: ICONE[c.canal]?.(10, corCanal, 2.6) || '' })),
       el('div', { class: 'conversa-corpo' },
         el('div', { class: 'conversa-linha' },
-          el('span', { class: 'conversa-nome' }, c.contato.nome),
+          el('span', { class: 'conversa-nome', title: c.contato.nome }, encurtar(c.contato.nome, 14)),
+          c.atendente ? el('span', { class: 'tag atendente', title: `Em atendimento com ${c.atendente.nome || c.atendente.nomeCurto}` }, c.atendente.nomeCurto) : null,
           el('span', { class: 'conversa-hora' }, horaLista(c.ultimaEm || c.atualizadaEm))),
         el('span', { class: 'conversa-previa' }, previa),
         tag ? el('span', { class: `tag ${tag[1]}`.trim() }, tag[0]) : null),
@@ -813,7 +841,11 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       } else if (m.tipo === 'atendente') {
         nos.push(el('div', { class: 'msg saida' },
           balaoMensagem(m),
-          el('span', { class: 'msg-meta' }, [horaCurta(m.criadaEm), m.autor?.nomeCurto || (m.tipo === 'atendente' ? 'pelo celular' : null), m.entrega === 'falhou' ? 'não enviada ⚠' : m.entrega].filter(Boolean).join(' · '))));
+          el('span', { class: `msg-meta${m.provisoria ? ' enviando' : ''}` }, [
+            horaCurta(m.criadaEm),
+            m.autor?.nomeCurto || (m.tipo === 'atendente' ? 'pelo celular' : null),
+            m.entrega === 'falhou' ? 'não enviada ⚠' : (m.entrega === 'enviando' ? 'enviando…' : m.entrega),
+          ].filter(Boolean).join(' · '))));
       } else {
         nos.push(el('div', { class: 'msg' },
           balaoMensagem(m),
