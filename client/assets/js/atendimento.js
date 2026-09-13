@@ -1,4 +1,5 @@
 import { icone, montarIcones } from './icones.js';
+import { detectarNovasMensagens } from './alerta-mensagem.mjs';
 
 (() => {
   'use strict';
@@ -19,6 +20,12 @@ import { icone, montarIcones } from './icones.js';
   };
 
   const $ = (sel, raiz = document) => raiz.querySelector(sel);
+  const somNovaMensagem = new Audio('/sons/sound4-soft.mp3');
+  somNovaMensagem.preload = 'auto';
+  somNovaMensagem.volume = 0.72;
+  let somLiberado = false;
+  let alertasAtivos = false;
+  let referenciasMensagens = new Map();
 
   /* ================================================================
    * Ícones (SVG estáticos)
@@ -79,6 +86,34 @@ import { icone, montarIcones } from './icones.js';
     t.classList.add('visivel');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove('visivel'), ms);
+  }
+
+  async function liberarSom() {
+    if (somLiberado) return;
+    const volume = somNovaMensagem.volume;
+    somNovaMensagem.volume = 0;
+    try {
+      await somNovaMensagem.play();
+      somNovaMensagem.pause();
+      somNovaMensagem.currentTime = 0;
+      somLiberado = true;
+    } catch {
+      /* O navegador tentará novamente na próxima interação da pessoa. */
+    } finally {
+      somNovaMensagem.volume = volume;
+    }
+  }
+
+  function tocarSomNovaMensagem() {
+    somNovaMensagem.pause();
+    somNovaMensagem.currentTime = 0;
+    somNovaMensagem.play().then(() => { somLiberado = true; }).catch(() => {});
+  }
+
+  function observarMensagens(conversas, avisar) {
+    const resultado = detectarNovasMensagens(conversas, referenciasMensagens, avisar && alertasAtivos);
+    referenciasMensagens = resultado.referencias;
+    if (resultado.recebeuMensagem) tocarSomNovaMensagem();
   }
 
   function iniciais(nome) {
@@ -162,6 +197,7 @@ import { icone, montarIcones } from './icones.js';
 
   async function carregarConversas({ selecionarPrimeira = false } = {}) {
     const { conversas } = await api(`/conversas?${paramsLista()}`);
+    observarMensagens(conversas, false);
     estado.conversas = conversas;
     renderLista();
     const aindaExiste = conversas.some((c) => c.id === estado.conversaId);
@@ -198,6 +234,10 @@ import { icone, montarIcones } from './icones.js';
     try {
       await carregarResumo();
       const { conversas } = await api(`/conversas?${paramsLista()}`);
+      const listaCompleta = estado.caixa === 'todas' && !estado.equipeId && !estado.busca
+        ? conversas
+        : (await api('/conversas?caixa=todas')).conversas;
+      observarMensagens(listaCompleta, true);
       estado.conversas = conversas;
       renderLista();
       if (!estado.conversaId) return;
@@ -1090,6 +1130,8 @@ import { icone, montarIcones } from './icones.js';
    * Eventos globais
    * ============================================================== */
   function ligarEventos() {
+    document.addEventListener('pointerdown', liberarSom, { passive: true });
+    document.addEventListener('keydown', liberarSom);
     let timer = null;
     $('#busca').addEventListener('input', (e) => {
       clearTimeout(timer);
@@ -1126,6 +1168,7 @@ import { icone, montarIcones } from './icones.js';
     try {
       await carregarResumo();
       await carregarConversas({ selecionarPrimeira: true });
+      alertasAtivos = true;
     } catch (e) {
       toast(e.message);
       $('#chat').replaceChildren(el('div', { class: 'chat-vazio' }, el('strong', {}, 'Não foi possível carregar'), el('span', {}, e.message)));

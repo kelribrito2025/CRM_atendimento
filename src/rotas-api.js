@@ -55,10 +55,15 @@ const SQL_CONVERSAS = `
   JOIN contatos ct ON ct.id = c.contato_id
   LEFT JOIN usuarios u ON u.id = c.atendente_id
   LEFT JOIN equipes e ON e.id = c.equipe_id
-  LEFT JOIN mensagens um ON um.id = (
-    SELECT m.id FROM mensagens m
-    WHERE m.conversa_id = c.id AND m.tipo != 'nota'
-    ORDER BY m.criada_em DESC, m.id DESC LIMIT 1)
+  LEFT JOIN (
+    SELECT m.id, m.conversa_id, m.tipo, m.autor_id, m.texto, m.criada_em,
+           ROW_NUMBER() OVER (
+             PARTITION BY m.conversa_id
+             ORDER BY m.criada_em DESC, m.id DESC
+           ) AS posicao
+    FROM mensagens m
+    WHERE m.tipo != 'nota'
+  ) um ON um.conversa_id = c.id AND um.posicao = 1
   LEFT JOIN usuarios ua ON ua.id = um.autor_id
 `;
 
