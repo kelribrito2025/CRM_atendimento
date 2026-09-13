@@ -247,9 +247,11 @@ import { icone, montarIcones } from './icones.js';
     try {
       const r = await api(`/conversas/${c.id}/mensagens`, { method: 'POST', body: { texto: texto.trim(), tipo } });
       if (campo) campo.value = '';
-      if (r.erroEnvio) toast(`Não foi possível enviar pelo WhatsApp: ${r.erroEnvio}`, 5000);
+      if (r.erroEnvio) toast(`Não foi possível enviar pelo ${NOME_CANAL[c.canal] || c.canal}: ${r.erroEnvio}`, 5000);
       c.mensagens.push(r.mensagem);
       Object.assign(c, { status: r.conversa.status, atendente: r.conversa.atendente, equipe: r.conversa.equipe, atualizadaEm: r.conversa.atualizadaEm });
+      // Depois de salvar a nota, volta a escrever para o cliente.
+      if (tipo === 'nota') estado.modo = 'resposta';
       aplicarConversa(c);
       $('#texto-msg')?.focus();
       await Promise.all([carregarResumo(), carregarConversas()]);
@@ -549,15 +551,18 @@ import { icone, montarIcones } from './icones.js';
     const enviar = () => enviarMensagem(textarea.value, modoNota ? 'nota' : 'resposta', textarea);
 
     const compositor = el('div', { class: 'compositor' },
-      el('div', { class: 'abas' },
-        el('button', { type: 'button', class: `aba${!modoNota ? ' ativa' : ''}`, onclick: () => mudarModo('resposta') }, 'Responder'),
-        el('button', { type: 'button', class: `aba${modoNota ? ' ativa' : ''}`, onclick: () => mudarModo('nota') }, 'Nota interna')),
       el('div', { class: `caixa-texto${modoNota ? ' modo-nota' : ''}` },
         textarea,
         el('div', { class: 'compositor-acoes' },
           el('button', { type: 'button', class: 'btn-icone hov', title: 'Anexo', onclick: () => toast('Envio de anexos: em breve.') }, icone('anexo', ICONE.clipe)),
           el('button', { type: 'button', class: 'btn-icone hov', title: 'Respostas rápidas', onclick: () => toast('Respostas rápidas: em breve.') }, icone('raio', ICONE.raio)),
-          modoNota ? null : el('span', { class: 'btn-suave', title: 'Canal desta conversa', html: ICONE[c.canal]?.(14, c.canal === 'telegram' ? '#4FA3DA' : '#12B85C') || '' }, canalNome),
+          el('button', {
+            type: 'button', class: `btn-icone hov nota-toggle${modoNota ? ' ativo' : ''}`,
+            title: modoNota ? 'Voltar a responder o cliente' : 'Escrever nota interna (só a equipe vê)',
+            'aria-pressed': modoNota ? 'true' : 'false',
+            onclick: () => mudarModo(modoNota ? 'resposta' : 'nota'),
+          }, icone('nota', ICONE.lapis)),
+          modoNota ? el('span', { class: 'aviso-nota' }, 'Nota interna: só a equipe vê') : null,
           el('span', { class: 'empurrar' }),
           el('button', { type: 'button', class: 'btn-primario', id: 'btn-enviar', onclick: enviar }, modoNota ? 'Salvar nota' : 'Enviar', modoNota ? null : icone('enviar', ICONE.enviar, { animado: true, classe: 'branco' })))));
 

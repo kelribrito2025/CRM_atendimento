@@ -236,6 +236,9 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .caixa-texto.modo-nota { background: var(--nota-fundo); border: 1px dashed var(--nota-borda); }
 .caixa-texto textarea { border: 0; resize: none; outline: none; font-size: 13.5px; line-height: 1.5; color: var(--texto); background: none; min-height: 44px; max-height: 160px; width: 100%; }
 .compositor-acoes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nota-toggle.ativo { background: var(--nota-fundo); border: 1px solid var(--nota-borda); color: var(--nota-texto); }
+.nota-toggle.ativo .ic { color: var(--nota-texto); }
+.aviso-nota { font-size: 12px; font-weight: 600; color: var(--nota-suave); }
 .btn-suave { height: 34px; padding: 0 12px; border-radius: 10px; background: var(--fundo-suave); border: 1px solid var(--borda); display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--texto); }
 .btn-primario { height: 40px; padding: 0 18px; border-radius: 11px; border: 0; background: var(--verde); color: #fff; font-size: 13.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: background .14s; }
 .btn-primario:hover { background: var(--verde-escuro); }
