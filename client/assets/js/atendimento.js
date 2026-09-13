@@ -1001,6 +1001,14 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   async function recarregarRapidas(lista) {
     rapidas.lista = lista;
     desenharRapidas();
+    if (config.aberto && config.secao === 'respostas') renderConfig();
+  }
+
+  // Busca a lista quando ela ainda não foi carregada nesta sessão.
+  async function carregarRapidas() {
+    if (rapidas.lista) return rapidas.lista;
+    rapidas.lista = (await api('/respostas')).respostas;
+    return rapidas.lista;
   }
 
   // Coloca o texto da resposta no campo de mensagem e fecha o painel.
@@ -1657,6 +1665,40 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 
 
   /* ================================================================
+   * Aparência: tema e lugar da barra de navegação
+   * ============================================================== */
+  const CHAVE_APARENCIA = 'crm_aparencia';
+  const aparencia = { tema: 'sistema', barra: 'lateral' };
+
+  function lerAparencia() {
+    try {
+      const salvo = JSON.parse(localStorage.getItem(CHAVE_APARENCIA) || '{}');
+      if (['claro', 'escuro', 'sistema'].includes(salvo.tema)) aparencia.tema = salvo.tema;
+      if (['lateral', 'topo'].includes(salvo.barra)) aparencia.barra = salvo.barra;
+    } catch { /* navegador sem armazenamento */ }
+  }
+
+  function aplicarAparencia() {
+    const escuroDoSistema = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+    const escuro = aparencia.tema === 'escuro' || (aparencia.tema === 'sistema' && escuroDoSistema);
+    document.documentElement.dataset.tema = escuro ? 'escuro' : 'claro';
+    document.querySelector('.shell')?.classList.toggle('barra-topo', aparencia.barra === 'topo');
+  }
+
+  function mudarAparencia(mudanca) {
+    Object.assign(aparencia, mudanca);
+    try { localStorage.setItem(CHAVE_APARENCIA, JSON.stringify(aparencia)); } catch { /* tudo bem */ }
+    aplicarAparencia();
+    renderConfig();
+  }
+
+  lerAparencia();
+  aplicarAparencia();
+  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
+    if (aparencia.tema === 'sistema') aplicarAparencia();
+  });
+
+  /* ================================================================
    * Configurações
    * ============================================================== */
   const config = { aberto: false, secao: 'equipe', dados: null, carregando: false, erro: null, convite: null, formConvite: null };
@@ -1667,9 +1709,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     { id: 'canais', nome: 'Canais', icone: 'elo', soAdmin: true },
     { id: 'respostas', nome: 'Respostas rápidas', icone: 'raio' },
     { grupo: 'Preferências' },
-    { id: 'aparencia', nome: 'Aparência', icone: 'tela', embreve: true },
-    { id: 'notificacoes', nome: 'Notificações', icone: 'sino', embreve: true },
-    { id: 'conta', nome: 'Conta', icone: 'engrenagem', embreve: true },
+    { id: 'aparencia', nome: 'Aparência', icone: 'tela' },
   ];
 
   function abrirConfiguracoes(secao) {
@@ -1696,7 +1736,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     config.convite = null;
     renderConfig();
     if (id === 'equipe') carregarEquipe();
-    if (id === 'respostas') carregarRapidas().then(renderConfig).catch(() => {});
+    if (id === 'respostas') carregarRapidas().then(renderConfig).catch((e) => toast(e.message, 5000));
   }
 
   async function carregarEquipe() {
@@ -1731,7 +1771,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       }));
 
     const secao = SECOES_CONFIG.find((i) => i.id === config.secao) || SECOES_CONFIG[1];
-    const corpo = { equipe: corpoEquipe, canais: corpoCanaisConfig, respostas: corpoRespostasConfig }[config.secao];
+    const corpo = { equipe: corpoEquipe, canais: corpoCanaisConfig, respostas: corpoRespostasConfig, aparencia: corpoAparencia }[config.secao];
     $('#config-painel').replaceChildren(
       el('div', { class: 'config-topo' },
         el('div', { class: 'titulo' },
@@ -1750,6 +1790,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       return `${ativos} atendente${ativos === 1 ? '' : 's'} ativo${ativos === 1 ? '' : 's'}${convites ? ` · ${convites} convite${convites === 1 ? '' : 's'} pendente${convites === 1 ? '' : 's'}` : ''}`;
     }
     if (config.secao === 'canais') return 'WhatsApp, Telegram e o chat do site.';
+    if (config.secao === 'aparencia') return 'Vale só para você, neste navegador.';
     if (config.secao === 'respostas') return 'Mensagens prontas para a equipe usar no chat.';
     return '';
   }
@@ -1926,6 +1967,63 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     }
   }
 
+  /* ---------------- Configurações › Aparência ---------------- */
+  function cartaoEscolha({ marcado, titulo, texto, onclick, amostra }) {
+    return el('button', { type: 'button', class: `escolha-cartao${marcado ? ' marcado' : ''}`, onclick },
+      amostra,
+      el('div', { class: 'escolha-texto' },
+        el('strong', {}, titulo),
+        texto ? el('span', {}, texto) : null),
+      el('span', { class: `escolha-marca${marcado ? ' ativa' : ''}`, html: marcado ? ICONE.check : '' }));
+  }
+
+  function corpoAparencia() {
+    const amostraTema = (cores) => el('span', { class: 'amostra-tema', style: `background:${cores[0]}` },
+      el('span', { style: `background:${cores[1]}` }), el('span', { style: `background:${cores[2]}` }));
+    const amostraBarra = (topo) => el('span', { class: `amostra-barra${topo ? ' topo' : ''}` },
+      el('span', { class: 'barra' }), el('span', { class: 'corpo' }));
+
+    return [
+      el('div', { class: 'config-bloco' },
+        el('div', { class: 'cabeca' },
+          el('span', { class: 'rotulo' }, 'Tema'),
+          el('span', { class: 'dica' }, 'Fica guardado neste navegador, não muda para a equipe.')),
+        el('div', { class: 'escolhas' },
+          cartaoEscolha({
+            marcado: aparencia.tema === 'claro', titulo: 'Claro', texto: 'O visual de sempre.',
+            amostra: amostraTema(['#EFF4F1', '#FFFFFF', '#12B85C']),
+            onclick: () => mudarAparencia({ tema: 'claro' }),
+          }),
+          cartaoEscolha({
+            marcado: aparencia.tema === 'escuro', titulo: 'Escuro', texto: 'Melhor de noite e com pouca luz.',
+            amostra: amostraTema(['#0B1F14', '#0E2318', '#12B85C']),
+            onclick: () => mudarAparencia({ tema: 'escuro' }),
+          }),
+          cartaoEscolha({
+            marcado: aparencia.tema === 'sistema', titulo: 'Seguir o sistema', texto: 'Acompanha o computador.',
+            amostra: amostraTema(['#EFF4F1', '#0E2318', '#12B85C']),
+            onclick: () => mudarAparencia({ tema: 'sistema' }),
+          }))),
+      el('div', { class: 'config-bloco' },
+        el('div', { class: 'cabeca' },
+          el('span', { class: 'rotulo' }, 'Posição da barra de navegação'),
+          el('span', { class: 'dica' }, 'Onde ficam os ícones do menu.')),
+        el('div', { class: 'escolhas' },
+          cartaoEscolha({
+            marcado: aparencia.barra === 'lateral', titulo: 'Lateral esquerda',
+            texto: 'Barra em pé; sobra mais largura para a conversa.',
+            amostra: amostraBarra(false),
+            onclick: () => mudarAparencia({ barra: 'lateral' }),
+          }),
+          cartaoEscolha({
+            marcado: aparencia.barra === 'topo', titulo: 'Parte superior',
+            texto: 'Barra deitada no topo; o painel ganha altura.',
+            amostra: amostraBarra(true),
+            onclick: () => mudarAparencia({ barra: 'topo' }),
+          }))),
+    ];
+  }
+
   /* ---------------- Configurações › Canais e Respostas ---------------- */
   function corpoCanaisConfig() {
     return [el('div', { class: 'config-bloco' },
@@ -1935,20 +2033,115 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       el('button', { type: 'button', class: 'btn-primario', style: 'align-self:flex-start', onclick: abrirModalCanais }, 'Abrir os canais'))];
   }
 
+  // Respostas rápidas nas configurações: lista completa, com criar, editar e excluir.
+  const confRapidas = { form: null, erro: null };
+
+  function abrirFormConfRapida(r = null) {
+    confRapidas.form = r
+      ? { id: r.id, atalho: r.atalho, titulo: r.titulo, texto: r.texto, escopo: r.escopo, equipeId: r.equipeId }
+      : { id: null, atalho: '', titulo: '', texto: '', escopo: 'todas', equipeId: null };
+    confRapidas.erro = null;
+    renderConfig();
+    document.querySelector('.config-corpo .campo-rapida')?.focus();
+  }
+
+  async function salvarConfRapida() {
+    const f = confRapidas.form;
+    confRapidas.erro = null;
+    try {
+      const corpo = { atalho: f.atalho, titulo: f.titulo, texto: f.texto, escopo: f.escopo, equipeId: f.equipeId };
+      const r = f.id
+        ? await api(`/respostas/${f.id}`, { method: 'PATCH', body: corpo })
+        : await api('/respostas', { method: 'POST', body: corpo });
+      confRapidas.form = null;
+      rapidas.lista = r.respostas;
+      renderConfig();
+      toast(f.id ? 'Resposta rápida atualizada.' : 'Resposta rápida criada.');
+    } catch (e) {
+      confRapidas.erro = e.message;
+      renderConfig();
+    }
+  }
+
+  async function excluirConfRapida(id) {
+    if (!window.confirm('Excluir esta resposta rápida? Ela some para quem podia usar.')) return;
+    try {
+      const r = await api(`/respostas/${id}`, { method: 'DELETE' });
+      confRapidas.form = null;
+      rapidas.lista = r.respostas;
+      renderConfig();
+      toast('Resposta rápida excluída.');
+    } catch (e) {
+      toast(e.message, 5000);
+    }
+  }
+
+  function quemVe(r) {
+    if (r.escopo === 'eu') return 'só eu';
+    if (r.escopo === 'equipe') return `equipe ${r.equipeNome || ''}`.trim();
+    return 'todas as equipes';
+  }
+
   function corpoRespostasConfig() {
     const lista = rapidas.lista || [];
+    if (confRapidas.form) return [formConfRapida()];
+
     return [el('div', { class: 'config-bloco' },
       el('div', { class: 'cabeca' },
         el('span', { class: 'rotulo' }, `Atalhos salvos · ${lista.length}`),
         el('span', { class: 'dica' }, 'No chat, digite / ou use o botão do raio para inserir a mensagem pronta.')),
-      ...(lista.length
-        ? lista.map((rr) => el('div', { class: 'pessoa' },
-          el('span', { class: 'rapida-atalho' }, `/${rr.atalho}`),
-          el('div', { class: 'dados' },
-            el('span', { class: 'nome' }, rr.titulo),
-            el('span', { class: 'email' }, rr.texto)),
-          el('span', { class: 'selo-presenca cinza' }, `${rr.usos} uso${rr.usos === 1 ? '' : 's'}`)))
-        : [el('div', { class: 'config-vazio' }, 'Nenhuma resposta rápida criada ainda. Crie pelo botão do raio no chat.')]))];
+      el('div', { style: 'display:flex;flex-direction:column;gap:8px' },
+        ...(lista.length
+          ? lista.map((rr) => el('div', { class: 'pessoa' },
+            el('span', { class: 'rapida-atalho' }, `/${rr.atalho}`),
+            el('div', { class: 'dados' },
+              el('span', { class: 'nome' }, rr.titulo),
+              el('span', { class: 'email', title: rr.texto }, rr.texto)),
+            el('span', { class: 'papel' }, quemVe(rr)),
+            el('span', { class: 'selo-presenca cinza' }, rr.usos ? `${rr.usos} uso${rr.usos === 1 ? '' : 's'}` : 'não usada'),
+            rr.podeEditar
+              ? el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => abrirFormConfRapida(rr) }, 'Editar')
+              : el('span', { class: 'dica' }, 'de outra pessoa')))
+          : [el('div', { class: 'config-vazio' }, 'Nenhuma resposta rápida criada ainda.')])),
+      el('button', { type: 'button', class: 'btn-primario', style: 'align-self:flex-start', onclick: () => abrirFormConfRapida() },
+        icone('mais', ICONE.mais, { classe: 'branco' }), 'Nova resposta rápida'))];
+  }
+
+  function formConfRapida() {
+    const f = confRapidas.form;
+    const equipes = estado.resumo?.equipes || [];
+    const atalho = el('input', { type: 'text', class: 'campo-rapida atalho', value: f.atalho, placeholder: 'estorno', maxlength: '40', oninput: () => { f.atalho = atalho.value; } });
+    const titulo = el('input', { type: 'text', class: 'campo-rapida', value: f.titulo, placeholder: 'Estorno solicitado', maxlength: '120', oninput: () => { f.titulo = titulo.value; } });
+    const texto = el('textarea', { class: 'campo-rapida area', rows: '6', maxlength: '4000', placeholder: 'Escreva a mensagem que será enviada ao cliente…', oninput: () => { f.texto = texto.value; } }, f.texto);
+    const equipe = el('select', { class: 'campo-rapida', onchange: () => { f.equipeId = Number(equipe.value) || null; } },
+      el('option', { value: '' }, 'Escolha a equipe'),
+      ...equipes.map((e) => el('option', { value: String(e.id), selected: Number(f.equipeId) === e.id ? true : null }, e.nome)));
+    equipe.hidden = f.escopo !== 'equipe';
+
+    const escopo = (valor, rotulo) => el('button', {
+      type: 'button', class: `rapida-escopo${f.escopo === valor ? ' ativo' : ''}`,
+      onclick: () => { f.escopo = valor; renderConfig(); },
+    }, rotulo);
+
+    return el('div', { class: 'config-bloco' },
+      el('div', { class: 'cabeca' },
+        el('span', { class: 'rotulo' }, f.id ? 'Editar resposta rápida' : 'Nova resposta rápida'),
+        el('span', { class: 'dica' }, 'O atalho é o que o atendente digita depois da barra.')),
+      confRapidas.erro ? el('div', { class: 'aviso erro' }, confRapidas.erro) : null,
+      el('div', { class: 'config-form' },
+        el('div', { class: 'config-linha' },
+          el('label', { class: 'config-campo', style: 'max-width:240px' }, el('span', {}, 'Atalho'),
+            el('div', { class: 'rapida-atalho-campo' }, el('span', { class: 'rapida-barra' }, '/'), atalho)),
+          el('label', { class: 'config-campo' }, el('span', {}, 'Título'), titulo)),
+        el('label', { class: 'config-campo' }, el('span', {}, 'Mensagem'), texto),
+        el('div', { class: 'config-campo' },
+          el('span', {}, 'Visível para'),
+          el('div', { class: 'escolha-equipes' }, escopo('todas', 'Todas as equipes'), escopo('equipe', 'Uma equipe'), escopo('eu', 'Só eu')),
+          equipe),
+        el('div', { style: 'display:flex;justify-content:flex-end;gap:8px' },
+          f.id ? el('button', { type: 'button', class: 'btn-suave hov', onclick: () => excluirConfRapida(f.id) }, 'Excluir') : null,
+          el('button', { type: 'button', class: 'btn-suave hov', onclick: () => { confRapidas.form = null; confRapidas.erro = null; renderConfig(); } }, 'Cancelar'),
+          el('button', { type: 'button', class: 'btn-primario', onclick: salvarConfRapida }, f.id ? 'Salvar alterações' : 'Salvar resposta rápida'))));
   }
 
   /* ================================================================

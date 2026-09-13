@@ -277,9 +277,8 @@ O botão da engrenagem, no menu lateral, abre a tela de configurações. Hoje el
 
 - **Equipe** (só administrador): quem trabalha no CRM, com papel, equipes e presença. Dá para convidar alguém por e-mail, mudar de atendente para administrador, bloquear o acesso e escolher em quais equipes a pessoa está. O convite gera um link de sete dias; enquanto não houver serviço de e-mail configurado, o link aparece na própria tela para ser copiado.
 - **Canais**: abre a janela de conexão do WhatsApp e do Telegram.
-- **Respostas rápidas**: lista os atalhos salvos e quantas vezes cada um foi usado.
-
-Aparência (tema claro/escuro), Notificações e Conta ainda não funcionam — aparecem apagados no menu.
+- **Respostas rápidas**: todos os atalhos salvos, com criar, editar e excluir. Quem criou (ou um administrador) pode alterar; os dos outros aparecem só para consulta.
+- **Aparência**: tema **claro**, **escuro** ou **seguir o sistema**, e a barra de navegação **na lateral** ou **no topo**. Vale por navegador, para cada pessoa — não muda nada para a equipe.
 
 Ninguém consegue se trancar do lado de fora: você não pode tirar o seu próprio acesso de administrador nem bloquear a si mesma, e o CRM sempre mantém pelo menos um administrador ativo.
 
