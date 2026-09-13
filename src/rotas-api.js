@@ -388,7 +388,17 @@ function criarRotasApi(db, opcoes = {}) {
     limitadorSaldo.registrarFalha(chave);
 
     try {
-      res.json({ cliente: await saldo.consultarPorPin(pin) });
+      const cliente = await saldo.consultarPorPin(pin);
+      // Consulta que deu certo confere o PIN: guarda no cliente da conversa.
+      let conversa = null;
+      const id = Number(req.body?.conversaId);
+      const linha = Number.isInteger(id) && id > 0 ? buscarConversa(id) : null;
+      if (linha) {
+        db.prepare('UPDATE contatos SET pin = ?, pin_validado_em = ?, pin_validado_por = ? WHERE id = ?')
+          .run(String(pin), Date.now(), req.usuario.id, linha.contato.id);
+        conversa = detalharConversa(buscarConversa(id));
+      }
+      res.json({ cliente, conversa });
     } catch (erro) {
       const status = erro.naoEncontrado ? 404 : (erro.status === 400 ? 400 : 502);
       res.status(status).json({ erro: erro.message, naoEncontrado: Boolean(erro.naoEncontrado) });

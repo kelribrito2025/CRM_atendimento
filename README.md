@@ -99,7 +99,7 @@ Na janela de canais, o botão **Eventos** mostra os últimos avisos que o uazapi
 
 ## Consulta de saldo pelo PIN
 
-No card **PIN do cliente** (painel da direita), o atendente digita o PIN e clica em **Consultar saldo**. Aparecem o saldo, o nome, quantas recargas o cliente tem e avisos de conta bloqueada ou desativada.
+No card **PIN do cliente** (painel da direita), o atendente digita o PIN nos quadradinhos e clica em **Consultar saldo**. Aparecem o saldo, o nome, quantas recargas o cliente tem e avisos de conta bloqueada ou desativada. Quando a consulta dá certo, o PIN fica guardado naquele cliente e o card marca **Conferido**, com a hora e quem conferiu.
 
 Para ligar, coloque a chave do agente no `.env` e reinicie:
 
