@@ -328,7 +328,7 @@ function criarApp(db, opcoes = {}) {
     let resultado;
     try {
       await canais.registrarEvento(db, canal.id, tipo, corpo);
-      resultado = await canais.processarEvento(db, canal, corpo);
+      resultado = await canais.processarEvento(db, canal, corpo, { arquivos: opcoes.arquivos || null });
     } catch (erro) {
       console.error('Erro ao processar webhook do WhatsApp:', erro);
       resultado = { resultado: 'erro', motivo: erro.message };
@@ -340,7 +340,7 @@ function criarApp(db, opcoes = {}) {
 
   app.get('/', exigirLogin, (req, res) => enviarPagina(req, res, 'atendimento.html'));
 
-  app.use('/api', exigirLogin, criarRotasApi(db, { uazapi: opcoes.uazapi || null, telegram: opcoes.telegram || null, saldo: opcoes.saldo || null, urlBase }));
+  app.use('/api', exigirLogin, criarRotasApi(db, { uazapi: opcoes.uazapi || null, telegram: opcoes.telegram || null, saldo: opcoes.saldo || null, arquivos: opcoes.arquivos || null, urlBase }));
 
   app.use((req, res) => {
     if (req.originalUrl.startsWith('/api/') || req.originalUrl.startsWith('/acesso/') || req.originalUrl.startsWith('/webhook/')) {

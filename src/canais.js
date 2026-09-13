@@ -198,13 +198,14 @@ async function guardarMensagem(db, canal, contato, m, tipoCanal) {
   }
   const fromMe = Boolean(m.fromMe);
   const arq = m.arquivo || null;
-  await db.prepare(`INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, entrega, criada_em, externo_id, midia_tipo, midia_id, midia_nome, midia_mime)
+  const inserida = await db.prepare(`INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, entrega, criada_em, externo_id, midia_tipo, midia_id, midia_nome, midia_mime)
     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(conversa.id, fromMe ? 'atendente' : 'cliente', m.texto, fromMe ? 'enviada' : null, m.criadaEm, m.messageid,
       arq?.tipo || null, arq?.id || null, arq?.nome || null, arq?.mime || null);
+  const mensagemId = Number(inserida.lastInsertRowid);
   await db.prepare('UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + ?, wa_chatid = COALESCE(wa_chatid, ?) WHERE id = ?')
     .run(Math.max(m.criadaEm, agora), fromMe ? 0 : 1, m.chatid, conversa.id);
-  return { resultado: 'mensagem', conversaId: conversa.id, contatoId: contato.id, nova, fromMe };
+  return { resultado: 'mensagem', conversaId: conversa.id, contatoId: contato.id, nova, fromMe, mensagemId, midia: arq };
 }
 
 /* ------------------------------ Telegram ------------------------------ */
@@ -309,6 +310,29 @@ async function processarUpdateTelegram(db, canal, update) {
   return await guardarMensagem(db, canal, contato, m, 'telegram');
 }
 
+// Arquivos maiores que isso não são guardados no S3 (o Telegram também não entrega).
+const TAMANHO_MAXIMO_ARQUIVO = 25 * 1024 * 1024;
+
+// Baixa o arquivo do Telegram e guarda no S3; no banco fica só a chave do objeto.
+async function guardarArquivoNoS3(db, { telegram, arquivos }, canal, mensagemId, midia) {
+  if (!arquivos?.configurado || !telegram?.baixarArquivo || !midia?.id) return null;
+  try {
+    const { bytes, tipo } = await telegram.baixarArquivo(canal.instancia_token, midia.id);
+    if (!bytes?.length || bytes.length > TAMANHO_MAXIMO_ARQUIVO) return null;
+    const enviado = await arquivos.enviar(bytes, {
+      nome: midia.nome || `${midia.tipo || 'arquivo'}`,
+      tipo: midia.mime || tipo || 'application/octet-stream',
+      pasta: `canal-${canal.id}`,
+    });
+    await db.prepare('UPDATE mensagens SET midia_chave = ?, midia_tamanho = ?, midia_mime = COALESCE(midia_mime, ?) WHERE id = ?')
+      .run(enviado.chave, enviado.tamanho, midia.mime || tipo || null, mensagemId);
+    return enviado.chave;
+  } catch (erro) {
+    console.error('Não foi possível guardar o arquivo no S3:', erro.message);
+    return null;
+  }
+}
+
 const VALIDADE_FOTO_MS = 24 * 60 * 60 * 1000; // confere a foto do perfil uma vez por dia
 
 // Guarda a foto de perfil do cliente (o arquivo fica no Telegram; aqui só o código dele).
@@ -327,7 +351,7 @@ async function atualizarFotoTelegram(db, telegram, canal, chatid) {
 }
 
 // Começa a receber as mensagens de um bot do Telegram e guarda tudo no banco.
-async function ligarTelegram(db, telegram, canal) {
+async function ligarTelegram(db, telegram, canal, arquivos = null) {
   if (!telegram?.sondagem) return false;
   telegram.sondagem.iniciar(canal, {
     aoReceber: async (update) => {
@@ -335,6 +359,9 @@ async function ligarTelegram(db, telegram, canal) {
       const r = await processarUpdateTelegram(db, canal, update);
       const chatid = update?.message?.chat?.id;
       if (r.resultado === 'mensagem' && chatid) await atualizarFotoTelegram(db, telegram, canal, chatid);
+      if (r.resultado === 'mensagem' && r.midia && r.mensagemId) {
+        await guardarArquivoNoS3(db, { telegram, arquivos }, canal, r.mensagemId, r.midia);
+      }
       return r;
     },
     aoEstado: async (estado) => {
@@ -350,10 +377,10 @@ async function ligarTelegram(db, telegram, canal) {
 }
 
 // Ao iniciar o sistema: religa todos os bots do Telegram que estavam conectados.
-async function ligarTelegramTodos(db, telegram) {
+async function ligarTelegramTodos(db, telegram, arquivos = null) {
   const lista = await db.prepare("SELECT * FROM canais WHERE tipo = 'telegram' AND status = 'connected'").all();
   let n = 0;
-  for (const canal of lista) if (await ligarTelegram(db, telegram, canal)) n += 1;
+  for (const canal of lista) if (await ligarTelegram(db, telegram, canal, arquivos)) n += 1;
   return n;
 }
 
@@ -379,6 +406,7 @@ module.exports = {
   interpretarConexao,
   processarEvento,
   guardarMensagem,
+  guardarArquivoNoS3,
   extrairMensagemTelegram,
   extrairPinTelegram,
   extrairArquivoTelegram,

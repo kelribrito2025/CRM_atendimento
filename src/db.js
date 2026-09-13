@@ -117,6 +117,8 @@ CREATE TABLE IF NOT EXISTS mensagens (
   midia_id VARCHAR(255),
   midia_nome TEXT,
   midia_mime VARCHAR(127),
+  midia_chave VARCHAR(500),
+  midia_tamanho BIGINT,
   FOREIGN KEY (conversa_id) REFERENCES conversas(id) ON DELETE CASCADE,
   FOREIGN KEY (autor_id) REFERENCES usuarios(id)
 );
@@ -206,6 +208,8 @@ async function migrar(db) {
   await garantirColuna(db, 'mensagens', 'midia_id', 'VARCHAR(255)');
   await garantirColuna(db, 'mensagens', 'midia_nome', 'TEXT');
   await garantirColuna(db, 'mensagens', 'midia_mime', 'VARCHAR(127)');
+  await garantirColuna(db, 'mensagens', 'midia_chave', 'VARCHAR(500)');
+  await garantirColuna(db, 'mensagens', 'midia_tamanho', 'BIGINT');
   await garantirColuna(db, 'contatos', 'wa_id', 'VARCHAR(64)');
   await garantirColuna(db, 'contatos', 'tg_id', 'VARCHAR(64)');
   await garantirColuna(db, 'contatos', 'tg_usuario', 'VARCHAR(191)');

@@ -70,6 +70,7 @@ const SQL_CONVERSAS = `
 function criarRotasApi(db, opcoes = {}) {
   const telegram = opcoes.telegram || null;
   const saldo = opcoes.saldo || null;
+  const arquivos = opcoes.arquivos || null;
   const uazapi = opcoes.uazapi || null;
   const urlBase = typeof opcoes.urlBase === 'function' ? opcoes.urlBase : () => '';
   const r = express.Router();
@@ -387,7 +388,24 @@ function criarRotasApi(db, opcoes = {}) {
   r.get('/midia/:id', async (req, res) => {
     const id = idDaRota(req);
     const m = id ? await db.prepare('SELECT m.*, c.canal_id FROM mensagens m JOIN conversas c ON c.id = m.conversa_id WHERE m.id = ?').get(id) : null;
-    if (!m || !m.midia_id) return res.status(404).json({ erro: 'Arquivo não encontrado.' });
+    if (!m || (!m.midia_id && !m.midia_chave)) return res.status(404).json({ erro: 'Arquivo não encontrado.' });
+
+    // Guardado no S3: o CRM busca lá e repassa. O endereço do bucket nunca vai para a tela.
+    if (m.midia_chave && arquivos?.configurado) {
+      try {
+        const { bytes, tipo } = await arquivos.baixar(m.midia_chave);
+        res.setHeader('Content-Type', m.midia_mime || tipo || 'application/octet-stream');
+        res.setHeader('Cache-Control', 'private, max-age=600');
+        if (req.query.baixar === '1') {
+          const nome = String(m.midia_nome || `arquivo-${m.id}`).replace(/[\r\n"]/g, '');
+          res.setHeader('Content-Disposition', `attachment; filename="${nome}"`);
+        }
+        return res.send(bytes);
+      } catch (erro) {
+        console.error('Arquivo no S3 indisponível, tentando o canal:', erro.message);
+      }
+    }
+
     const canal = m.canal_id ? await db.prepare('SELECT * FROM canais WHERE id = ?').get(m.canal_id) : null;
     if (!canal || canal.tipo !== 'telegram') return res.status(400).json({ erro: 'Este canal ainda não entrega arquivos no CRM.' });
     if (!telegram) return res.status(400).json({ erro: 'Integração com Telegram indisponível.' });

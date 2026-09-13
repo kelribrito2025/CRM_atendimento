@@ -14,6 +14,7 @@ const { limparAcessosExpirados } = require('./acesso');
 const { criarUazapi } = require('./uazapi');
 const { criarTelegram } = require('./telegram');
 const { criarSaldo, URL_PADRAO: SALDO_URL_PADRAO } = require('./saldo');
+const { criarS3 } = require('./s3');
 const canais = require('./canais');
 
 const RAIZ = path.join(__dirname, '..');
@@ -35,6 +36,11 @@ function lerConfig() {
     uazapiAdminToken: process.env.UAZAPI_ADMIN_TOKEN || '',
     saldoUrl: process.env.SALDO_URL || SALDO_URL_PADRAO,
     saldoToken: process.env.SALDO_TOKEN || '',
+    s3Bucket: process.env.S3_BUCKET || 'mindi-storage-bucket',
+    s3Regiao: process.env.S3_REGION || 'us-east-1',
+    s3Prefixo: process.env.S3_PREFIXO || 'chat-app-numeros',
+    s3Chave: process.env.S3_ACCESS_KEY_ID || '',
+    s3Segredo: process.env.S3_SECRET_ACCESS_KEY || '',
   };
 }
 
@@ -64,10 +70,18 @@ async function montarSistema(extras = {}) {
   const uazapi = criarUazapi({ url: config.uazapiUrl, adminToken: config.uazapiAdminToken });
   const telegram = criarTelegram();
   const saldo = criarSaldo({ url: config.saldoUrl, token: config.saldoToken });
+  const arquivos = criarS3({
+    bucket: config.s3Bucket,
+    regiao: config.s3Regiao,
+    prefixo: config.s3Prefixo,
+    accessKeyId: config.s3Chave,
+    secretAccessKey: config.s3Segredo,
+  });
   const app = criarApp(db, {
     uazapi,
     telegram,
     saldo,
+    arquivos,
     cookieSeguro: config.cookieSeguro,
     trustProxy: config.trustProxy,
     doisFatores: config.doisFatores,
@@ -85,9 +99,9 @@ async function montarSistema(extras = {}) {
   }, 60 * 60 * 1000).unref();
 
   // Religa os bots do Telegram que já estavam conectados.
-  resultado.botsTelegram = await canais.ligarTelegramTodos(db, telegram);
+  resultado.botsTelegram = await canais.ligarTelegramTodos(db, telegram, arquivos);
 
-  return { app, db, config, resultado, enviador, uazapi, telegram, saldo };
+  return { app, db, config, resultado, enviador, uazapi, telegram, saldo, arquivos };
 }
 
 function mostrarBoasVindas({ config, resultado, db }, endereco) {
@@ -115,6 +129,9 @@ function mostrarBoasVindas({ config, resultado, db }, endereco) {
   console.log(resultado.botsTelegram
     ? `✈️  Telegram: ${resultado.botsTelegram} bot(s) recebendo mensagens.`
     : '✈️  Telegram: conecte um bot pelo menu da conta (avatar) › Conectar canal. Só precisa do token do @BotFather.');
+  console.log(config.s3Chave && config.s3Segredo
+    ? `🗂️  Arquivos das conversas: guardados no S3 (${config.s3Bucket}/${config.s3Prefixo}/).`
+    : '🗂️  Arquivos das conversas: sem S3. Preencha S3_ACCESS_KEY_ID e S3_SECRET_ACCESS_KEY no .env.');
   console.log(config.saldoToken
     ? '💰 Consulta de saldo por PIN: configurada.'
     : '💰 Consulta de saldo por PIN: desligada. Preencha SALDO_TOKEN no .env (a chave fica só no servidor).');

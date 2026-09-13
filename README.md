@@ -122,6 +122,26 @@ O botão **Á**, ao lado das respostas rápidas, liga e desliga a correção, e 
 
 Palavras que mudam de sentido com o acento ficam de fora de propósito: "esta/está", "e/é", "a/à", "de/dê". Para acertar essas seria preciso entender a frase inteira, e um palpite errado mudaria o que a pessoa quis dizer.
 
+## Arquivos das conversas no Amazon S3
+
+Fotos, áudios, vídeos e documentos recebidos podem ser guardados no S3, em vez de serem buscados no canal a cada visualização.
+
+```
+S3_ACCESS_KEY_ID=sua-chave
+S3_SECRET_ACCESS_KEY=seu-segredo
+```
+
+Por padrão o CRM usa o bucket `mindi-storage-bucket`, região `us-east-1`, e grava **somente** dentro da pasta `chat-app-numeros/`. Para mudar, use `S3_BUCKET`, `S3_REGION` e `S3_PREFIXO`.
+
+Como funciona:
+
+- O arquivo vai para o S3 assim que chega; no banco fica só a chave do objeto, o tamanho e o tipo.
+- O bucket continua privado. A tela nunca vê o nome do bucket nem a chave: ela pede o arquivo pela rota `/api/midia/<id>`, que exige login.
+- Para casos em que o arquivo precisa ser aberto direto na AWS, o servidor sabe gerar um link assinado que vale 5 minutos.
+- As credenciais ficam só no servidor, lidas de `S3_ACCESS_KEY_ID` e `S3_SECRET_ACCESS_KEY`.
+- Nada é escrito fora da pasta combinada: qualquer tentativa é recusada antes de sair do CRM.
+- Se o S3 estiver fora do ar, o CRM busca o arquivo no canal, como antes.
+
 ## Consulta de saldo pelo PIN
 
 No card **PIN do cliente** (painel da direita), o atendente digita o PIN nos quadradinhos e clica em **Consultar saldo**. Aparecem o saldo, o nome, quantas recargas o cliente tem e avisos de conta bloqueada ou desativada. Quando a consulta dá certo, o PIN fica guardado naquele cliente e o card marca **Conferido**, com a hora e quem conferiu.
@@ -208,6 +228,7 @@ Copie `.env.example` para `.env` e ajuste:
 | `DOIS_FATORES`  | `true` para pedir um código por e-mail a cada login       |
 | `BASE_URL`      | Endereço público do sistema, usado nos links de convite, nova senha e no webhook do WhatsApp |
 | `SALDO_TOKEN`   | Chave do agente para consultar o saldo pelo PIN (fica só no servidor) |
+| `S3_ACCESS_KEY_ID` e `S3_SECRET_ACCESS_KEY` | Credenciais do S3 onde ficam os arquivos das conversas |
 | `UAZAPI_URL`    | Endereço do servidor uazapi (WhatsApp)                    |
 | `UAZAPI_ADMIN_TOKEN` | Token de administrador do uazapi                     |
 | `COOKIE_SEGURO` | `true` quando o sistema estiver publicado com HTTPS       |
@@ -228,6 +249,7 @@ src/banco.js              conversa com o banco: arquivo SQLite ou MySQL/TiDB
 src/db.js                 tabelas do sistema e dados de exemplo
 src/telegram.js           cliente da Bot API do Telegram e consulta contínua
 src/saldo.js              consulta de saldo do cliente pelo PIN
+src/s3.js                 guarda os arquivos das conversas no Amazon S3
 src/senha.js              hash e verificação de senha
 src/acesso.js             convites, recuperação de senha e verificação em duas etapas
 src/email.js              envio de e-mails (modo de teste: mostra na janela do servidor)
