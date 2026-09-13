@@ -135,6 +135,40 @@ Clicando na resposta, o texto entra no campo de mensagem e o painel fecha. O ate
 
 Ao criar, escolha quem enxerga: **todas as equipes**, **uma equipe** ou **só eu**. Cada pessoa só vê o que lhe cabe, e só quem criou (ou um administrador) pode alterar e excluir. O CRM conta quantas vezes cada atalho foi usado e mostra as mais usadas primeiro.
 
+## Chat do site (estilo Intercom)
+
+O cliente conversa pelo painel dele, no site da empresa, e a conversa cai na mesma caixa de entrada do CRM — com o selo **Chat do site** ao lado do nome.
+
+Para ligar, defina no `.env`:
+
+```
+WIDGET_SEGREDO=<um segredo longo, gerado por você>
+WIDGET_EQUIPE_ID=          # opcional: id da equipe que recebe essas conversas
+```
+
+Gere o segredo com:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+Do lado do site são duas linhas no HTML:
+
+```html
+<script src="https://SEU-CRM/widget.js" defer></script>
+<script>
+  window.addEventListener('load', () => {
+    ChatAtendimento.identificar({ id: '12345', nome: 'Carla Menezes', email: 'carla@empresa.com.br', assinatura: '...' });
+  });
+</script>
+```
+
+A `assinatura` é um HMAC-SHA256 do id do usuário feito **no servidor do site**, com o mesmo `WIDGET_SEGREDO`. É o que impede alguém de trocar o id no navegador e ler a conversa de outro cliente. No logout, o site chama `ChatAtendimento.sair()`.
+
+O passo a passo completo para entregar a quem cuida do site está em **[docs/chat-do-site.md](docs/chat-do-site.md)**.
+
+Nesta primeira versão o chat do site troca texto; fotos e documentos continuam pelo WhatsApp e Telegram.
+
 ## Arquivos das conversas no Amazon S3
 
 Fotos, áudios, vídeos e documentos recebidos podem ser guardados no S3, em vez de serem buscados no canal a cada visualização.
@@ -217,6 +251,7 @@ npm run usuario -- --listar
   - chat com histórico, envio de resposta, nota interna e troca de equipe/atendente;
   - marcar conversa como resolvida ou reabrir;
   - painel do cliente com PIN, dados da conta, alertas e notas.
+- Chat do site (estilo Intercom) para o cliente conversar pelo painel dele, com a conversa caindo na mesma caixa de entrada.
 - Dados de exemplo opcionais (`DADOS_EXEMPLO=true`) para testar a tela.
 - Testes automáticos (`npm test`).
 
@@ -263,6 +298,7 @@ src/db.js                 tabelas do sistema e dados de exemplo
 src/telegram.js           cliente da Bot API do Telegram e consulta contínua
 src/saldo.js              consulta de saldo do cliente pelo PIN
 src/s3.js                 guarda os arquivos das conversas no Amazon S3
+src/widget.js             chat do site: sessões do visitante e mensagens
 src/senha.js              hash e verificação de senha
 src/acesso.js             convites, recuperação de senha e verificação em duas etapas
 src/email.js              envio de e-mails (modo de teste: mostra na janela do servidor)
@@ -274,6 +310,8 @@ client/verificar.html     código de verificação (duas etapas)
 client/recuperar.html     recuperar acesso
 client/nova-senha.html    definir nova senha
 client/atendimento.html   tela de atendimento
+client/widget.html        chat que roda dentro do site do cliente
+client/public/widget.js   arquivo de uma linha que o site do cliente inclui
 client/assets/            CSS, JavaScript e ícones
 client/public/__manus__/  coletor de logs usado pelo Manus
 client/public/icones/     ícones do Iconly (SVG estático e Lottie animado)
@@ -282,6 +320,7 @@ client/assets/js/icones.js carrega os ícones do Iconly com reserva no código
 scripts/criar-usuario.js  gerenciar usuários pelo terminal
 scripts/criar-convite.js  gerar links de convite
 test/                     testes automáticos
+docs/chat-do-site.md      guia do chat do site para entregar ao dev
 ```
 
 ## Comandos úteis

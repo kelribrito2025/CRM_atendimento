@@ -396,6 +396,7 @@ async function registrarEvento(db, canalId, tipo, corpo) {
 
 module.exports = {
   somenteDigitos,
+  proximoProtocolo,
   numeroDoChat,
   ehGrupo,
   formatarNumero,

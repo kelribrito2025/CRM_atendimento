@@ -317,6 +317,74 @@ function criarApp(db, opcoes = {}) {
     res.status(201).json({ ok: true, redirect: '/' });
   });
 
+  /* ------------------------ chat do site (widget) ------------------------ */
+  // Páginas e rotas públicas: quem usa é o cliente final, no site da empresa.
+  const widget = opcoes.widget || null;
+
+  if (widget) {
+    const limitadorWidget = new LimitadorTentativas({ maximo: 40, janelaMs: 5 * 60 * 1000 });
+
+    // O arquivo que o site do cliente inclui numa linha.
+    app.get('/widget.js', (req, res) => {
+      res.type('application/javascript');
+      res.set('Cache-Control', 'public, max-age=300');
+      res.set('Access-Control-Allow-Origin', '*');
+      res.sendFile(path.join(publicoDir, 'widget.js'));
+    });
+
+    // A página que roda dentro do quadro do chat.
+    app.get('/widget', (req, res) => {
+      res.set('Content-Security-Policy', "frame-ancestors *");
+      enviarPagina(req, res, 'widget.html');
+    });
+
+    const tokenDoVisitante = (req) => String(req.get('x-widget-token') || req.body?.token || '');
+
+    async function comSessaoWidget(req, res, next) {
+      try {
+        const sessao = await widget.sessaoDoToken(tokenDoVisitante(req));
+        if (!sessao) return res.status(401).json({ erro: 'Sua conversa expirou. Recarregue a página.' });
+        req.sessaoWidget = sessao;
+        next();
+      } catch (erro) {
+        next(erro);
+      }
+    }
+
+    // O site identifica quem está logado; o CRM devolve a chave da conversa.
+    app.post('/widget/sessao', async (req, res) => {
+      const chave = `widget|${req.ip}`;
+      if (limitadorWidget.bloqueadoPor(chave) > 0) {
+        return res.status(429).json({ erro: 'Muitas tentativas. Tente de novo em alguns minutos.' });
+      }
+      const { id, nome, email, empresa, pin, assinatura } = req.body || {};
+      if (!widget.conferirAssinatura(id, assinatura)) {
+        limitadorWidget.registrarFalha(chave);
+        return res.status(401).json({ erro: 'Assinatura inválida. Confira o segredo do chat no servidor do site.' });
+      }
+      try {
+        const r = await widget.abrirSessao({ id, nome, email, empresa, pin });
+        res.json(r);
+      } catch (erro) {
+        res.status(400).json({ erro: erro.message });
+      }
+    });
+
+    app.get('/widget/mensagens', comSessaoWidget, async (req, res) => {
+      res.set('Cache-Control', 'no-store');
+      res.json({ mensagens: await widget.listarMensagens(req.sessaoWidget, req.query.desde) });
+    });
+
+    app.post('/widget/mensagens', comSessaoWidget, async (req, res) => {
+      try {
+        const mensagem = await widget.enviarMensagem(req.sessaoWidget, req.body?.texto);
+        res.status(201).json({ mensagem });
+      } catch (erro) {
+        res.status(400).json({ erro: erro.message });
+      }
+    });
+  }
+
   /* ------------------------ webhook do WhatsApp (uazapi) ------------------------ */
   // Público, protegido pelo segredo na URL. Sempre responde 200 para o uazapi não reenviar.
   app.post('/webhook/uazapi/:segredo', express.json({ limit: '5mb', type: () => true }), async (req, res) => {

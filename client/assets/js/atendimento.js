@@ -34,6 +34,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   const ICONE = {
     whatsapp: (t, cor, e = 2.2) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="${e}"><path d="M21 11.5a8.4 8.4 0 01-9 8.4 8.9 8.9 0 01-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0121 11.5z"></path></svg>`,
     telegram: (t, cor, e = 2.2) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="${e}"><path d="M21 4L3 11l6 2 2 6z"></path><path d="M21 4l-10 9"></path></svg>`,
+    widget: (t, cor, e = 2.2) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="${e}" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M3 8h18"></path><path d="M9 21h6"></path><path d="M12 17v4"></path></svg>`,
     seta: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"></path></svg>',
     mais: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',
     inbox: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4C6355" stroke-width="2"><path d="M4 4h16v16H4z"></path><path d="M4 13h5l2 3h2l2-3h5"></path></svg>',
@@ -52,7 +53,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     fechar: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18"></path><path d="M6 6l12 12"></path></svg>',
   };
 
-  const NOME_CANAL = { whatsapp: 'WhatsApp', telegram: 'Telegram' };
+  const NOME_CANAL = { whatsapp: 'WhatsApp', telegram: 'Telegram', widget: 'Chat do site' };
 
   /* ================================================================
    * Utilidades
@@ -459,7 +460,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   function itemConversa(c) {
     const ativa = c.id === estado.conversaId;
     const corAvatar = ativa ? 'verde' : (c.canal === 'telegram' ? 'azul' : 'cinza');
-    const corCanal = c.canal === 'telegram' ? '#4FA3DA' : '#12B85C';
+    const corCanal = { telegram: '#4FA3DA', widget: '#1D6FA5' }[c.canal] || '#12B85C';
 
     let tag = null;
     if (c.status === 'resolvida') tag = ['Resolvida', ''];

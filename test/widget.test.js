@@ -1,0 +1,195 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const { semear } = require('../src/db');
+const { abrirBancoDeTeste } = require('./apoio');
+const { criarApp } = require('../src/app');
+const { criarEnviador } = require('../src/email');
+const { criarWidget, assinar } = require('../src/widget');
+
+const ADMIN = { email: 'admin@teste.com', senha: 'segredo123' };
+const PAGINAS = path.join(__dirname, '..', 'client');
+
+async function subirServidor({ segredo = '' } = {}) {
+  const db = await abrirBancoDeTeste();
+  await semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: false });
+  const widget = criarWidget(db, { segredo });
+  const app = criarApp(db, { widget, enviador: criarEnviador({ modo: 'silencioso' }), paginasDir: PAGINAS });
+  const servidor = await new Promise((r) => { const s = app.listen(0, () => r(s)); });
+  const base = `http://127.0.0.1:${servidor.address().port}`;
+
+  const entrar = async () => {
+    const r = await fetch(`${base}/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: ADMIN.email, senha: ADMIN.senha }),
+    });
+    return (r.headers.get('set-cookie') || '').split(';')[0];
+  };
+
+  // Chamada do lado do cliente final (site), com a chave da conversa.
+  const visitante = async (caminho, metodo = 'GET', corpo, token) => {
+    const r = await fetch(`${base}${caminho}`, {
+      method: metodo,
+      headers: { 'Content-Type': 'application/json', ...(token ? { 'x-widget-token': token } : {}) },
+      body: corpo ? JSON.stringify(corpo) : undefined,
+    });
+    return { status: r.status, dados: await r.json().catch(() => ({})) };
+  };
+
+  // Chamada do lado do atendente (CRM autenticado).
+  const cookie = await entrar();
+  const crm = async (caminho, metodo = 'GET', corpo) => {
+    const r = await fetch(`${base}${caminho}`, {
+      method: metodo, headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: corpo ? JSON.stringify(corpo) : undefined,
+    });
+    return { status: r.status, dados: await r.json().catch(() => ({})) };
+  };
+
+  return { db, base, widget, visitante, crm, fechar: async () => { await new Promise((r) => servidor.close(r)); await db.fechar(); } };
+}
+
+test('chat do site: o arquivo de uma linha e a página do quadro ficam públicos', async () => {
+  const s = await subirServidor();
+  try {
+    const script = await fetch(`${s.base}/widget.js`);
+    assert.equal(script.status, 200);
+    assert.match(script.headers.get('content-type') || '', /javascript/);
+    assert.match(await script.text(), /ChatAtendimento/, 'o arquivo precisa expor o comando ChatAtendimento');
+
+    const pagina = await fetch(`${s.base}/widget`);
+    assert.equal(pagina.status, 200);
+    assert.match(await pagina.text(), /widget-chat\.js/);
+    assert.match(pagina.headers.get('content-security-policy') || '', /frame-ancestors/, 'precisa poder abrir dentro do site do cliente');
+  } finally { await s.fechar(); }
+});
+
+test('chat do site: visitante manda mensagem, atendente responde e o visitante recebe', async () => {
+  const s = await subirServidor();
+  try {
+    const sessao = await s.visitante('/widget/sessao', 'POST', { id: 'u-901', nome: 'Carla Menezes', empresa: 'Loja Aurora', pin: '5446' });
+    assert.equal(sessao.status, 200, JSON.stringify(sessao.dados));
+    const token = sessao.dados.token;
+    assert.ok(token && token.length > 20);
+    assert.ok(sessao.dados.protocolo, 'a conversa recebe protocolo como as outras');
+
+    // Conversa começa vazia
+    assert.deepEqual((await s.visitante('/widget/mensagens', 'GET', null, token)).dados.mensagens, []);
+
+    const enviada = await s.visitante('/widget/mensagens', 'POST', { texto: 'Oi, meu saldo não atualizou.' }, token);
+    assert.equal(enviada.status, 201, JSON.stringify(enviada.dados));
+    assert.equal(enviada.dados.mensagem.de, 'voce');
+
+    // A conversa aparece na caixa de entrada do CRM, como canal "widget"
+    const caixa = await s.crm('/api/conversas');
+    const conversa = caixa.dados.conversas.find((c) => c.contato.nome === 'Carla Menezes');
+    assert.ok(conversa, 'a conversa do site precisa aparecer no CRM');
+    assert.equal(conversa.canal, 'widget');
+    assert.equal(conversa.naoLidas, 1);
+    assert.equal(conversa.contato.empresa, 'Loja Aurora');
+    // o PIN que o site mandou já vem preenchido na ficha do cliente
+    assert.equal((await s.crm(`/api/conversas/${conversa.id}`)).dados.conversa.contato.pin, '5446');
+
+    // Atendente responde pelo CRM (sem WhatsApp nem Telegram no meio)
+    const resposta = await s.crm(`/api/conversas/${conversa.id}/mensagens`, 'POST', { texto: 'Oi Carla, já estou verificando!' });
+    assert.equal(resposta.status, 201, JSON.stringify(resposta.dados));
+    assert.equal(resposta.dados.erroEnvio, null, 'conversa do site não tenta enviar por canal externo');
+
+    // Nota interna não pode vazar para o cliente
+    await s.crm(`/api/conversas/${conversa.id}/mensagens`, 'POST', { texto: 'Cliente do plano ouro', tipo: 'nota' });
+
+    const tudo = await s.visitante('/widget/mensagens', 'GET', null, token);
+    assert.deepEqual(tudo.dados.mensagens.map((m) => [m.de, m.texto]), [
+      ['voce', 'Oi, meu saldo não atualizou.'],
+      ['atendimento', 'Oi Carla, já estou verificando!'],
+    ]);
+    assert.equal(tudo.dados.mensagens[1].autor, 'Admin', 'mostra só o primeiro nome do atendente');
+
+    // O `desde` traz só o que é novo
+    const novas = await s.visitante(`/widget/mensagens?desde=${tudo.dados.mensagens[1].id}`, 'GET', null, token);
+    assert.deepEqual(novas.dados.mensagens, []);
+  } finally { await s.fechar(); }
+});
+
+test('chat do site: voltar ao painel continua a mesma conversa, sem duplicar cliente', async () => {
+  const s = await subirServidor();
+  try {
+    const a = await s.visitante('/widget/sessao', 'POST', { id: 'u-901', nome: 'Carla Menezes' });
+    await s.visitante('/widget/mensagens', 'POST', { texto: 'primeira' }, a.dados.token);
+    const b = await s.visitante('/widget/sessao', 'POST', { id: 'u-901', nome: 'Carla M. Menezes' });
+
+    assert.equal(b.dados.conversaId, a.dados.conversaId, 'mesma conversa');
+    assert.equal(b.dados.contato.id, a.dados.contato.id, 'mesmo cliente');
+    assert.equal(b.dados.contato.nome, 'Carla M. Menezes', 'o nome é atualizado pelo site');
+    assert.equal((await s.db.prepare('SELECT COUNT(*) AS n FROM contatos').get()).n, 1);
+    assert.equal((await s.visitante('/widget/mensagens', 'GET', null, b.dados.token)).dados.mensagens.length, 1);
+  } finally { await s.fechar(); }
+});
+
+test('chat do site: cada visitante só vê a conversa dele', async () => {
+  const s = await subirServidor();
+  try {
+    const carla = await s.visitante('/widget/sessao', 'POST', { id: 'u-901', nome: 'Carla' });
+    const bruno = await s.visitante('/widget/sessao', 'POST', { id: 'u-902', nome: 'Bruno' });
+    await s.visitante('/widget/mensagens', 'POST', { texto: 'segredo da Carla' }, carla.dados.token);
+
+    assert.notEqual(carla.dados.conversaId, bruno.dados.conversaId);
+    assert.deepEqual((await s.visitante('/widget/mensagens', 'GET', null, bruno.dados.token)).dados.mensagens, []);
+    assert.equal((await s.visitante('/widget/mensagens', 'GET', null, 'token-inventado')).status, 401);
+    assert.equal((await s.visitante('/widget/mensagens', 'POST', { texto: 'oi' }, 'token-inventado')).status, 401);
+    assert.equal((await s.visitante('/widget/mensagens', 'GET')).status, 401);
+  } finally { await s.fechar(); }
+});
+
+test('chat do site: com segredo definido, só entra quem tem a assinatura certa', async () => {
+  const s = await subirServidor({ segredo: 'segredo-do-site' });
+  try {
+    assert.equal(s.widget.exigeAssinatura, true);
+    assert.equal((await s.visitante('/widget/sessao', 'POST', { id: 'u-901', nome: 'Carla' })).status, 401, 'sem assinatura não entra');
+    assert.equal((await s.visitante('/widget/sessao', 'POST', { id: 'u-901', assinatura: 'errada' })).status, 401);
+    assert.equal((await s.visitante('/widget/sessao', 'POST', { id: 'u-901', assinatura: assinar('outro-segredo', 'u-901') })).status, 401);
+    // assinatura de outro usuário não serve para se passar por este
+    assert.equal((await s.visitante('/widget/sessao', 'POST', { id: 'u-901', assinatura: assinar('segredo-do-site', 'u-902') })).status, 401);
+
+    const ok = await s.visitante('/widget/sessao', 'POST', { id: 'u-901', nome: 'Carla', assinatura: assinar('segredo-do-site', 'u-901') });
+    assert.equal(ok.status, 200, JSON.stringify(ok.dados));
+  } finally { await s.fechar(); }
+});
+
+test('chat do site: mensagem vazia, id ausente e sessão vencida são recusados', async () => {
+  const s = await subirServidor();
+  try {
+    assert.equal((await s.visitante('/widget/sessao', 'POST', { nome: 'Sem id' })).status, 400);
+
+    const sessao = await s.visitante('/widget/sessao', 'POST', { id: 'u-903', nome: 'Vera' });
+    const token = sessao.dados.token;
+    assert.equal((await s.visitante('/widget/mensagens', 'POST', { texto: '   ' }, token)).status, 400);
+
+    // texto muito longo é cortado, não quebra
+    const longa = await s.visitante('/widget/mensagens', 'POST', { texto: 'a'.repeat(5000) }, token);
+    assert.equal(longa.status, 201);
+    assert.equal(longa.dados.mensagem.texto.length, 4000);
+
+    // sessão vencida some e a limpeza apaga o registro
+    await s.db.prepare('UPDATE widget_sessoes SET expira_em = ?').run(Date.now() - 1000);
+    assert.equal((await s.visitante('/widget/mensagens', 'GET', null, token)).status, 401);
+    assert.equal((await s.db.prepare('SELECT COUNT(*) AS n FROM widget_sessoes').get()).n, 0);
+  } finally { await s.fechar(); }
+});
+
+test('chat do site: sem widget ligado, as rotas não existem', async () => {
+  const db = await abrirBancoDeTeste();
+  await semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin', comDadosExemplo: false });
+  const app = criarApp(db, { enviador: criarEnviador({ modo: 'silencioso' }), paginasDir: PAGINAS });
+  const servidor = await new Promise((r) => { const s = app.listen(0, () => r(s)); });
+  const base = `http://127.0.0.1:${servidor.address().port}`;
+  try {
+    assert.equal((await fetch(`${base}/widget.js`)).status, 404);
+    assert.equal((await fetch(`${base}/widget/mensagens`)).status, 404);
+  } finally {
+    await new Promise((r) => servidor.close(r));
+    await db.fechar();
+  }
+});

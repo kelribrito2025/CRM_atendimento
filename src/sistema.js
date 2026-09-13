@@ -15,6 +15,7 @@ const { criarUazapi } = require('./uazapi');
 const { criarTelegram } = require('./telegram');
 const { criarSaldo, URL_PADRAO: SALDO_URL_PADRAO } = require('./saldo');
 const { criarS3 } = require('./s3');
+const { criarWidget } = require('./widget');
 const canais = require('./canais');
 
 const RAIZ = path.join(__dirname, '..');
@@ -41,6 +42,8 @@ function lerConfig() {
     s3Prefixo: process.env.S3_PREFIXO || 'chat-app-numeros',
     s3Chave: process.env.S3_ACCESS_KEY_ID || '',
     s3Segredo: process.env.S3_SECRET_ACCESS_KEY || '',
+    widgetSegredo: process.env.WIDGET_SEGREDO || '',
+    widgetEquipeId: Number(process.env.WIDGET_EQUIPE_ID || 0) || null,
   };
 }
 
@@ -77,11 +80,13 @@ async function montarSistema(extras = {}) {
     accessKeyId: config.s3Chave,
     secretAccessKey: config.s3Segredo,
   });
+  const widget = criarWidget(db, { segredo: config.widgetSegredo, equipePadraoId: config.widgetEquipeId });
   const app = criarApp(db, {
     uazapi,
     telegram,
     saldo,
     arquivos,
+    widget,
     cookieSeguro: config.cookieSeguro,
     trustProxy: config.trustProxy,
     doisFatores: config.doisFatores,
@@ -94,14 +99,14 @@ async function montarSistema(extras = {}) {
 
   // Limpeza periódica de sessões, códigos e links expirados.
   setInterval(() => {
-    Promise.all([limparSessoesExpiradas(db), limparAcessosExpirados(db)])
+    Promise.all([limparSessoesExpiradas(db), limparAcessosExpirados(db), widget.limparSessoesExpiradas()])
       .catch((erro) => console.error('Limpeza automática falhou:', erro.message));
   }, 60 * 60 * 1000).unref();
 
   // Religa os bots do Telegram que já estavam conectados.
   resultado.botsTelegram = await canais.ligarTelegramTodos(db, telegram, arquivos);
 
-  return { app, db, config, resultado, enviador, uazapi, telegram, saldo, arquivos };
+  return { app, db, config, resultado, enviador, uazapi, telegram, saldo, arquivos, widget };
 }
 
 function mostrarBoasVindas({ config, resultado, db }, endereco) {
@@ -132,6 +137,9 @@ function mostrarBoasVindas({ config, resultado, db }, endereco) {
   console.log(config.s3Chave && config.s3Segredo
     ? `🗂️  Arquivos das conversas: guardados no S3 (${config.s3Bucket}/${config.s3Prefixo}/).`
     : '🗂️  Arquivos das conversas: sem S3. Preencha S3_ACCESS_KEY_ID e S3_SECRET_ACCESS_KEY no .env.');
+  console.log(config.widgetSegredo
+    ? '💬 Chat do site: ligado com assinatura (o site precisa assinar o id do usuário).'
+    : '💬 Chat do site: ligado sem assinatura. Defina WIDGET_SEGREDO no .env antes de publicar.');
   console.log(config.saldoToken
     ? '💰 Consulta de saldo por PIN: configurada.'
     : '💰 Consulta de saldo por PIN: desligada. Preencha SALDO_TOKEN no .env (a chave fica só no servidor).');

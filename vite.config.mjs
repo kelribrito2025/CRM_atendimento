@@ -12,7 +12,7 @@ import { defineConfig } from 'vite';
 const require = createRequire(import.meta.url);
 const RAIZ = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(RAIZ, 'client');
-const PAGINAS = ['login', 'atendimento', 'convite', 'verificar', 'recuperar', 'nova-senha'];
+const PAGINAS = ['login', 'atendimento', 'convite', 'verificar', 'recuperar', 'nova-senha', 'widget'];
 
 /* ------------------------- CRM dentro do Vite ------------------------- */
 function pluginCrm() {

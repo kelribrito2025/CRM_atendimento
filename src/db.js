@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS contatos (
   wa_foto_url TEXT,
   tg_id VARCHAR(64),
   tg_usuario VARCHAR(191),
+  site_id VARCHAR(191),
   tg_foto_id VARCHAR(255),
   tg_foto_em BIGINT,
   FOREIGN KEY (pin_validado_por) REFERENCES usuarios(id)
@@ -153,6 +154,16 @@ CREATE TABLE IF NOT EXISTS canal_eventos (
   FOREIGN KEY (canal_id) REFERENCES canais(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS widget_sessoes (
+  token_hash VARCHAR(191) PRIMARY KEY,
+  contato_id BIGINT NOT NULL,
+  conversa_id BIGINT NOT NULL,
+  criado_em BIGINT NOT NULL,
+  expira_em BIGINT NOT NULL,
+  FOREIGN KEY (contato_id) REFERENCES contatos(id) ON DELETE CASCADE,
+  FOREIGN KEY (conversa_id) REFERENCES conversas(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS respostas_rapidas (
   id ${CHAVE},
   atalho VARCHAR(60) NOT NULL,
@@ -192,6 +203,7 @@ const INDICES = [
   ['idx_contatos_tg', 'contatos', 'tg_id'],
   ['idx_conversas_canal', 'conversas', 'canal_id, status'],
   ['idx_respostas_atalho', 'respostas_rapidas', 'atalho'],
+  ['idx_contatos_site', 'contatos', 'site_id'],
 ];
 
 // Acrescenta colunas criadas em versões mais novas sem perder os dados existentes.
@@ -231,6 +243,7 @@ async function migrar(db) {
   await garantirColuna(db, 'contatos', 'wa_id', 'VARCHAR(64)');
   await garantirColuna(db, 'contatos', 'tg_id', 'VARCHAR(64)');
   await garantirColuna(db, 'contatos', 'tg_usuario', 'VARCHAR(191)');
+  await garantirColuna(db, 'contatos', 'site_id', 'VARCHAR(191)');
   await garantirColuna(db, 'contatos', 'wa_foto_url', 'TEXT');
   await garantirColuna(db, 'contatos', 'tg_foto_id', 'VARCHAR(255)');
   await garantirColuna(db, 'contatos', 'tg_foto_em', 'BIGINT');
