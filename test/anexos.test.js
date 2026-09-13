@@ -413,3 +413,34 @@ test('conversa encerrada sai de "Todas" e só a busca ainda encontra', async () 
     assert.equal((await s.chamar('/api/conversas')).dados.conversas.length, 2);
   } finally { await s.fechar(); }
 });
+
+test('inbox por canal: cada cliente cai na caixa da plataforma em que escreveu', async () => {
+  const s = await subirServidor();
+  try {
+    const wa = await conversaDeWhatsapp(s, { nome: 'Ana Prado', numero: '5531977776666' });
+
+    // conversa do chat do site
+    const { criarWidget } = require('../src/widget');
+    const widget = criarWidget(s.db, {});
+    const sessao = await widget.abrirSessao({ id: 'u-55', nome: 'Beto do Site' });
+    await widget.enviarMensagem(await widget.sessaoDoToken(sessao.token), 'Oi pelo site');
+
+    const contagens = (await s.chamar('/api/resumo')).dados.porCanal;
+    assert.deepEqual(contagens, { whatsapp: 1, telegram: 0, widget: 1 });
+
+    const soWa = await s.chamar('/api/conversas?canal=whatsapp');
+    assert.deepEqual(soWa.dados.conversas.map((c) => c.contato.nome), ['Ana Prado']);
+
+    const soSite = await s.chamar('/api/conversas?canal=widget');
+    assert.deepEqual(soSite.dados.conversas.map((c) => c.contato.nome), ['Beto do Site']);
+
+    assert.deepEqual((await s.chamar('/api/conversas?canal=telegram')).dados.conversas, []);
+    // canal inventado é ignorado: mostra tudo
+    assert.equal((await s.chamar('/api/conversas?canal=fax')).dados.conversas.length, 2);
+
+    // encerrar tira da contagem do canal
+    await s.chamar(`/api/conversas/${wa.conversa.id}/status`, 'POST', { status: 'resolvida' });
+    assert.equal((await s.chamar('/api/resumo')).dados.porCanal.whatsapp, 0);
+    assert.deepEqual((await s.chamar('/api/conversas?canal=whatsapp')).dados.conversas, []);
+  } finally { await s.fechar(); }
+});

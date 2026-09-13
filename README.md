@@ -263,6 +263,7 @@ npm run usuario -- --listar
 - Notas internas que podem ser editadas e apagadas por quem escreveu (ou por um administrador), no chat ou na ficha do cliente.
 - Botão de encerrar direto no card, em "Minhas conversas", e o gesto de segurar o card (o card enche de verde da esquerda para a direita) para encerrar sem abrir a conversa.
 - Caixa "Encerradas" com o que foi encerrado nos últimos sete dias.
+- Inbox por canal: caixas separadas de Chat do site, Telegram e WhatsApp, ao lado das equipes.
 - Histórico carregado aos poucos: a conversa abre com as últimas 40 mensagens e busca as anteriores conforme a rolagem sobe.
 - Chat do site (estilo Intercom) para o cliente conversar pelo painel dele, com a conversa caindo na mesma caixa de entrada.
 - Dados de exemplo opcionais (`DADOS_EXEMPLO=true`) para testar a tela.

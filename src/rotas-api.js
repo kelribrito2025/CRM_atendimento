@@ -10,6 +10,8 @@ const { LimitadorTentativas } = require('./limitador');
 const { interpretarStatus } = require('./uazapi');
 
 const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta', 'encerradas']);
+// Por onde o cliente escreve: dá para ver a caixa de cada canal separada.
+const CANAIS_FILTRO = new Set(['whatsapp', 'telegram', 'widget']);
 // Conversas encerradas continuam à mão por uma semana, na caixa "Encerradas".
 const DIAS_ENCERRADAS = 7;
 const STATUS = new Set(['aberta', 'resolvida']);
@@ -302,6 +304,8 @@ function criarRotasApi(db, opcoes = {}) {
         encerradas: todas.filter((c) => c.status === 'resolvida'
           && c.atualizadaEm >= Date.now() - DIAS_ENCERRADAS * 24 * 60 * 60 * 1000).length,
       },
+      // Quantas conversas abertas chegam por cada canal.
+      porCanal: Object.fromEntries([...CANAIS_FILTRO].map((canal) => [canal, abertas.filter((c) => c.canal === canal).length])),
       equipes,
       atendentes,
       primeiraResposta: formatarPrimeiraResposta(media),
@@ -319,6 +323,8 @@ function criarRotasApi(db, opcoes = {}) {
 
     let lista = (await todasConversas()).filter((c) => c.status === 'aberta' || c.atualizadaEm >= limiteResolvidas);
     if (equipeId) lista = lista.filter((c) => c.equipe?.id === equipeId);
+    const canal = CANAIS_FILTRO.has(req.query.canal) ? req.query.canal : null;
+    if (canal) lista = lista.filter((c) => c.canal === canal);
     // "Minhas" e "Sem resposta" mostram só o que está em aberto: ao encerrar, a
     // conversa sai delas e passa para a caixa "Encerradas".
     if (caixa === 'minhas') lista = lista.filter((c) => c.atendente?.id === req.usuario.id);

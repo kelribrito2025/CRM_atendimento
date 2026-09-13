@@ -10,8 +10,9 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
    * ============================================================== */
   const estado = {
     resumo: null,
-    caixa: 'todas',          // todas | minhas | sem_resposta
+    caixa: 'todas',          // todas | minhas | sem_resposta | encerradas
     equipeId: null,
+    canal: null,             // whatsapp | telegram | widget (inbox por canal)
     busca: '',
     conversas: [],
     conversaId: null,
@@ -201,6 +202,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   function paramsLista() {
     const p = new URLSearchParams({ caixa: estado.caixa });
     if (estado.equipeId) p.set('equipe', estado.equipeId);
+    if (estado.canal) p.set('canal', estado.canal);
     if (estado.busca) p.set('q', estado.busca);
     return p.toString();
   }
@@ -305,12 +307,23 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   async function selecionarCaixa(caixa) {
     estado.caixa = caixa;
     estado.equipeId = null;
+    estado.canal = null;
     renderSidebar();
     await carregarConversas({ selecionarPrimeira: true });
   }
 
   async function selecionarEquipe(id) {
     estado.equipeId = id;
+    estado.canal = null;
+    estado.caixa = 'todas';
+    renderSidebar();
+    await carregarConversas({ selecionarPrimeira: true });
+  }
+
+  // Caixa de um canal: só as conversas que chegam pelo WhatsApp, Telegram ou chat do site.
+  async function selecionarCanal(canal) {
+    estado.canal = canal;
+    estado.equipeId = null;
     estado.caixa = 'todas';
     renderSidebar();
     await carregarConversas({ selecionarPrimeira: true });
@@ -715,7 +728,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     const r = estado.resumo;
     if (!r) return;
     const equipeSel = r.equipes.find((e) => e.id === estado.equipeId) || null;
-    const semEquipe = !estado.equipeId;
+    const semEquipe = !estado.equipeId && !estado.canal;
     const membros = equipeSel ? equipeSel.membros : r.atendentes;
 
     $('#sidebar').replaceChildren(
@@ -727,10 +740,18 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         navItem({ icone: icone('encerradas', ICONE.checkCaixa), nome: 'Encerradas', cont: r.caixas.encerradas, ativo: semEquipe && estado.caixa === 'encerradas', onclick: () => selecionarCaixa('encerradas') })),
       el('span', { class: 'separador' }),
       el('div', { class: 'linha-rotulo' },
-        el('span', { class: 'rotulo' }, 'Equipes'),
+        el('span', { class: 'rotulo' }, 'Inbox da equipe'),
         desligar(el('button', { type: 'button', class: 'btn-mini' }, icone('mais', ICONE.mais)), 'Cadastro de equipes: em breve')),
       el('div', { class: 'lista-nav' },
-        ...r.equipes.map((e) => navItem({ cor: e.cor, nome: e.nome, cont: e.abertas, ativo: estado.equipeId === e.id, onclick: () => selecionarEquipe(e.id) }))),
+        ...r.equipes.map((e) => navItem({ cor: e.cor, nome: e.nome, cont: e.abertas, ativo: estado.equipeId === e.id, onclick: () => selecionarEquipe(e.id) })),
+        // Cada canal tem a sua caixa: o cliente cai na do lugar em que escreveu.
+        ...['widget', 'telegram', 'whatsapp'].map((canal) => navItem({
+          icone: el('span', { class: 'selo-canal', style: `background:${COR_CANAL[canal]}`, html: ICONE[canal]?.(11, '#FFFFFF') || '' }),
+          nome: NOME_CANAL[canal],
+          cont: r.porCanal?.[canal] ?? 0,
+          ativo: estado.canal === canal,
+          onclick: () => selecionarCanal(canal),
+        }))),
       el('span', { class: 'separador' }),
       el('span', { class: 'rotulo' }, equipeSel ? `Equipe de ${equipeSel.nome}` : 'Atendentes'),
       el('div', { class: 'membros' },
@@ -750,7 +771,8 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   function tituloLista() {
     const equipeSel = estado.resumo?.equipes.find((e) => e.id === estado.equipeId);
     if (equipeSel) return equipeSel.nome;
-    return { todas: 'Todas as conversas', minhas: 'Minhas conversas', sem_resposta: 'Sem resposta' }[estado.caixa];
+    if (estado.canal) return NOME_CANAL[estado.canal] || estado.canal;
+    return { todas: 'Todas as conversas', minhas: 'Minhas conversas', sem_resposta: 'Sem resposta', encerradas: 'Conversas encerradas' }[estado.caixa];
   }
 
   // Corta nomes longos na lista, mantendo o nome inteiro no título do item.
@@ -849,6 +871,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   function nomeCaixa() {
     const equipeSel = estado.resumo?.equipes.find((e) => e.id === estado.equipeId);
     if (equipeSel) return equipeSel.nome;
+    if (estado.canal) return NOME_CANAL[estado.canal] || estado.canal;
     return { todas: 'Todas', minhas: 'Minhas', sem_resposta: 'Sem resposta', encerradas: 'Encerradas' }[estado.caixa] || 'Todas';
   }
 
