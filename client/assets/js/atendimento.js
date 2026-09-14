@@ -65,6 +65,14 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     check: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>',
     lapisPequeno: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"></path></svg>',
     lixeira: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 13h10l1-13"></path><path d="M9 7V4h6v3"></path></svg>',
+    menos: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"></path></svg>',
+    maisGrande: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',
+    voltar: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h11a5 5 0 010 10H8"></path><path d="M7 4L3 8l4 4"></path></svg>',
+    relogioSuave: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5V12l3.2 2"></path></svg>',
+    desligar: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v7"></path><path d="M6.2 7.4a8 8 0 1011.6 0"></path></svg>',
+    banir: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M5.6 5.6l12.8 12.8"></path></svg>',
+    setaDireita: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>',
+    carrinho: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.6"></circle><circle cx="18" cy="20" r="1.6"></circle><path d="M2 3h3l2.6 12h11L21 7H6"></path></svg>',
   };
 
   const NOME_CANAL = { whatsapp: 'WhatsApp', telegram: 'Telegram', widget: 'Chat do site' };
@@ -1468,7 +1476,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   }
 
   /* ---------------- consulta de saldo pelo PIN ---------------- */
-  const saldo = { conversaId: null, pin: '', carregando: false, cliente: null, erro: null };
+  const saldo = { conversaId: null, pin: '', carregando: false, cliente: null, erro: null, em: 0 };
 
   function limparSaldo(conversaId) {
     Object.assign(saldo, { conversaId, pin: '', carregando: false, cliente: null, erro: null });
@@ -1483,7 +1491,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     renderPainel();
     try {
       const r = await api('/suporte/saldo', { method: 'POST', body: { pin, conversaId: c.id } });
-      Object.assign(saldo, { carregando: false, cliente: r.cliente });
+      Object.assign(saldo, { carregando: false, cliente: r.cliente, em: Date.now() });
       if (r.conversa) c.contato = r.conversa.contato;
     } catch (e) {
       Object.assign(saldo, { carregando: false, erro: e.message });
@@ -1529,23 +1537,6 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   }
 
   // Resultado da consulta, mostrado dentro do card do PIN.
-  function blocoSaldo() {
-    if (saldo.carregando) return el('div', { class: 'saldo-resultado' }, el('span', { class: 'saldo-aguarde' }, 'Consultando saldo…'));
-    if (saldo.erro) return el('div', { class: 'saldo-resultado erro' }, saldo.erro);
-    const cli = saldo.cliente;
-    if (!cli) return null;
-    const avisos = [];
-    if (cli.bloqueada) avisos.push('conta bloqueada');
-    if (cli.status && cli.status !== 'active') avisos.push(`conta ${cli.statusTexto}`);
-    return el('div', { class: 'saldo-resultado' },
-      el('div', { class: 'saldo-linha' },
-        el('span', { class: 'saldo-valor' }, cli.saldo),
-        el('span', { class: 'saldo-nome' }, [cli.nome, cli.pin ? `PIN ${cli.pin}` : null].filter(Boolean).join(' · '))),
-      cli.email ? el('span', { class: 'saldo-info' }, cli.email) : null,
-      el('span', { class: 'saldo-info' }, `${cli.totalRecargas} recarga${cli.totalRecargas === 1 ? '' : 's'}${cli.ultimaRecarga ? ` · última de ${cli.ultimaRecarga.valor}` : ''}`),
-      avisos.length ? el('span', { class: 'saldo-alerta' }, `Atenção: ${avisos.join(' e ')}.`) : null);
-  }
-
   function blocoPin(c) {
     const ct = c.contato;
     const validado = Boolean(ct.pin && ct.pinValidadoEm);
@@ -1585,8 +1576,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
               : (confirmado ? 'PIN informado pelo cliente' : 'Ainda não conferido'),
             html: ICONE.check,
           })),
-        botaoSaldo(() => valorInicial),
-        blocoSaldo());
+      );
     }
 
     const { caixas, pinAtual } = camposPin('');
@@ -1598,8 +1588,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       el('div', { class: 'pin-digitos' }, ...caixas),
       el('div', { class: 'linha-pin' },
         el('span', { class: 'pin-info' }, 'Digite o PIN que o cliente informou.'),
-        botaoSaldo(pinAtual)),
-      blocoSaldo());
+        botaoSaldo(pinAtual)));
   }
 
   // "Abrir conta": entra na conta do cliente no site, já logada. Só existe para
@@ -1637,14 +1626,189 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     }
   }
 
+  /* ================================================================
+   * Ficha do cliente: saldo, ações, abas e zona de risco
+   *
+   * Por enquanto é só a tela. O que depende do sistema do site (histórico
+   * de compras, extrato e as ações que mexem em dinheiro) fica visível mas
+   * desligado, com o aviso de "em breve" — em vez de número inventado, que
+   * o atendente poderia tomar por verdade.
+   * ============================================================== */
+  const ficha = { aba: 'resumo' };
+  const ABAS_FICHA = [['resumo', 'Resumo'], ['compras', 'Compras'], ['transacoes', 'Transações']];
+  const EM_BREVE = 'Em breve: depende da API do site';
+
+  function trocarAba(id) {
+    ficha.aba = id;
+    renderPainel();
+  }
+
+  // "há 2 min" desde a consulta de saldo.
+  function desdeQuando(ms) {
+    if (!ms) return null;
+    const min = Math.floor((Date.now() - ms) / 60000);
+    if (min < 1) return 'agora';
+    if (min < 60) return `há ${min} min`;
+    const horas = Math.floor(min / 60);
+    return horas < 24 ? `há ${horas}h` : 'há mais de um dia';
+  }
+
+  // Bloco escuro do saldo. Enquanto ninguém consultou, ele mesmo convida a
+  // consultar — o número nunca é inventado.
+  function blocoSaldoEscuro(c) {
+    const podeConsultar = Boolean(estado.resumo?.saldoAtivo);
+    const cli = saldo.conversaId === c.id ? saldo.cliente : null;
+    const pin = String(saldo.pin || c.contato.pin || '').trim();
+
+    if (saldo.conversaId === c.id && saldo.carregando) {
+      return el('div', { class: 'saldo-bloco' }, el('span', { class: 'saldo-vazio' }, 'Consultando saldo…'));
+    }
+    if (saldo.conversaId === c.id && saldo.erro) {
+      return el('div', { class: 'saldo-bloco' },
+        el('span', { class: 'saldo-rotulo' }, 'Saldo em conta'),
+        el('span', { class: 'saldo-erro' }, saldo.erro),
+        podeConsultar && pin ? el('button', { type: 'button', class: 'saldo-acao', onclick: () => consultarSaldo(pin) }, 'Tentar de novo') : null);
+    }
+    if (!cli) {
+      const recado = !podeConsultar
+        ? 'Consulta de saldo desligada no servidor.'
+        : (pin ? 'Ainda não consultado.' : 'Confirme o PIN do cliente para ver o saldo.');
+      return el('div', { class: 'saldo-bloco' },
+        el('span', { class: 'saldo-rotulo' }, 'Saldo em conta'),
+        el('span', { class: 'saldo-vazio' }, recado),
+        podeConsultar && pin
+          ? el('button', { type: 'button', class: 'saldo-acao', onclick: () => consultarSaldo(pin) }, 'Consultar saldo')
+          : null);
+    }
+
+    const quando = desdeQuando(saldo.em);
+    const situacao = cli.bloqueada ? 'Conta bloqueada' : (cli.status && cli.status !== 'active' ? `Conta ${cli.statusTexto}` : 'Sem bloqueio');
+    return el('div', { class: 'saldo-bloco' },
+      el('div', { class: 'saldo-linha-topo' },
+        el('div', { class: 'saldo-numero' },
+          el('span', { class: 'saldo-rotulo' }, 'Saldo em conta'),
+          el('span', { class: 'saldo-valor-grande' }, cli.saldo)),
+        quando ? el('span', { class: 'saldo-quando' }, icone('relogio', ICONE.relogioSuave), quando) : null),
+      el('div', { class: 'saldo-rodape' },
+        el('span', {}, `${cli.totalRecargas} recarga${cli.totalRecargas === 1 ? '' : 's'}`),
+        cli.ultimaRecarga ? el('span', { class: 'ponto' }, '·') : null,
+        cli.ultimaRecarga ? el('span', {}, `Última ${cli.ultimaRecarga.valor}`) : null,
+        el('span', { class: 'ponto' }, '·'),
+        el('span', { class: cli.bloqueada ? 'ruim' : 'bom' }, situacao)));
+  }
+
+  // As três ações que mexem no saldo. A tela existe; o que grava, ainda não.
+  function acoesSaldo(c) {
+    const acoes = [
+      ['adicionar', 'Adicionar', ICONE.maisGrande],
+      ['debitar', 'Debitar', ICONE.menos],
+      ['reembolsar', 'Reembolsar', ICONE.voltar],
+    ];
+    return el('div', { class: 'secao' },
+      el('span', { class: 'secao-titulo' }, 'Ações de saldo'),
+      el('div', { class: 'acoes-saldo' },
+        ...acoes.map(([id, nome, marca]) => el('button', {
+          type: 'button', class: 'acao-saldo hov', title: `${nome} saldo — ainda em construção`,
+          onclick: () => abrirFolhaSaldo(id, c),
+        }, icone(id, marca), el('span', {}, nome)))));
+  }
+
+  function abasFicha() {
+    return el('div', { class: 'abas-ficha' },
+      ...ABAS_FICHA.map(([id, nome]) => el('button', {
+        type: 'button', class: `aba-ficha${ficha.aba === id ? ' ativa' : ''}`, onclick: () => trocarAba(id),
+      }, nome)));
+  }
+
+  // Zona de risco, no pé da ficha: desligadas até o backend existir.
+  function zonaDeRisco(c) {
+    return el('div', { class: 'zona-risco' },
+      desligar(el('button', { type: 'button', class: 'btn-risco' }, icone('desativar', ICONE.desligar), 'Desativar'), `Desativar conta — ${EM_BREVE}`),
+      desligar(el('button', { type: 'button', class: 'btn-risco perigo' }, icone('banir', ICONE.banir), 'Banir conta'), `Banir conta — ${EM_BREVE}`));
+  }
+
+  function vazioDaAba(titulo, texto) {
+    return el('div', { class: 'aba-vazia' },
+      el('strong', {}, titulo),
+      el('span', {}, texto));
+  }
+
+  // ===== Folhas laterais das ações de saldo =====
+  // São a tela do que vem depois: mostram o cliente, o saldo de agora e o que
+  // ficaria depois da operação. O botão que confirma está desligado até existir
+  // a API — assim ninguém clica achando que gravou.
+  const TITULOS_FOLHA = {
+    adicionar: ['Adicionar saldo', 'Crédito manual, com motivo registrado'],
+    debitar: ['Debitar saldo', 'Ajuste para menos, com motivo registrado'],
+    reembolsar: ['Reembolsar', 'Selecione a compra a devolver'],
+  };
+  const ATALHOS_VALOR = ['10,00', '20,00', '50,00', '100,00'];
+
+  function abrirFolhaSaldo(tipo, c) {
+    const [titulo, subtitulo] = TITULOS_FOLHA[tipo];
+    const cli = saldo.conversaId === c.id ? saldo.cliente : null;
+    const nome = cli?.nome || c.contato.nome;
+    const pin = String(saldo.pin || c.contato.pin || '').trim();
+
+    const campoValor = el('input', {
+      type: 'text', value: tipo === 'reembolsar' ? '' : '50,00', 'aria-label': 'Valor',
+      class: 'folha-valor', disabled: tipo === 'reembolsar' ? 'disabled' : null,
+    });
+
+    const fundo = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === fundo) fundo.remove(); } },
+      el('div', { class: 'folha', role: 'dialog', 'aria-modal': 'true', 'aria-label': titulo },
+        el('div', { class: 'folha-cab' },
+          el('div', { class: 'folha-titulo' },
+            el('strong', {}, titulo),
+            el('span', {}, `${nome}${pin ? ` · PIN ${pin}` : ''}`)),
+          el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: () => fundo.remove() }, svg(ICONE.fechar))),
+
+        el('div', { class: 'folha-corpo' },
+          el('div', { class: 'aviso-construcao' },
+            icone('alerta', ICONE.alerta),
+            el('span', {}, 'Esta tela ainda não grava nada. A ligação com o sistema do site vem na próxima etapa.')),
+
+          tipo === 'reembolsar'
+            ? el('div', { class: 'folha-campo' },
+              el('span', { class: 'secao-titulo' }, 'Compra'),
+              vazioDaAba('Sem histórico de compras', 'As ativações do cliente vão aparecer aqui quando o sistema do site abrir esses dados.'))
+            : el('div', { class: 'folha-campo' },
+              el('span', { class: 'secao-titulo' }, 'Valor'),
+              el('div', { class: `folha-caixa-valor${tipo === 'debitar' ? ' menos' : ''}` },
+                el('span', { class: 'folha-moeda' }, tipo === 'debitar' ? '− R$' : '+ R$'),
+                campoValor),
+              el('div', { class: 'folha-atalhos' },
+                ...ATALHOS_VALOR.map((v) => el('button', {
+                  type: 'button', class: 'folha-atalho hov', onclick: () => { campoValor.value = v; },
+                }, v)))),
+
+          el('div', { class: 'folha-antes-depois' },
+            el('div', { class: 'lado' }, el('span', { class: 'k' }, 'Saldo atual'), el('span', { class: 'v' }, cli?.saldo || '—')),
+            icone('seta', ICONE.setaDireita),
+            el('div', { class: 'lado fim' }, el('span', { class: 'k' }, 'Fica em'), el('span', { class: 'v verde' }, '—'))),
+
+          el('div', { class: 'folha-campo' },
+            el('span', { class: 'secao-titulo' }, 'Motivo'),
+            el('textarea', {
+              class: 'campo-rapida area', rows: '2', disabled: 'disabled',
+              placeholder: tipo === 'reembolsar' ? 'Ex.: número não recebeu o código de ativação…' : 'Ex.: recarga via PIX não creditada…',
+            }))),
+
+        el('div', { class: 'folha-pe' },
+          el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => fundo.remove() }, 'Fechar'),
+          desligar(el('button', { type: 'button', class: 'btn-verde' }, titulo), `${titulo} — ${EM_BREVE}`))));
+
+    document.body.append(fundo);
+  }
+
   function renderPainel() {
     const painel = $('#painel');
     const c = estado.conversa;
     if (!c) {
       const itens = [
-        ['PIN do cliente', '6 dígitos conferidos no atendimento'],
-        ['Conta e saldo', 'plano, último pagamento e caixa'],
-        ['Notas internas', 'histórico visível só para a equipe'],
+        ['PIN do cliente', '5 dígitos conferidos no atendimento'],
+        ['Saldo e ações', 'consultar, adicionar, debitar e reembolsar'],
+        ['Compras e extrato', 'ativações e movimentações da conta'],
       ];
       painel.replaceChildren(
         el('div', { class: 'painel-topo' },
@@ -1653,12 +1817,13 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
             el('span', { class: 'painel-nome suave' }, 'Ficha do cliente'),
             el('span', { class: 'painel-sub' }, 'Nenhuma conversa aberta'))),
         el('div', { class: 'painel-vazio' },
-          el('span', {}, 'Ao abrir uma conversa, aparecem aqui o PIN de validação, o saldo em caixa, o plano e as notas internas da equipe.'),
+          el('span', {}, 'Ao abrir uma conversa, aparecem aqui o PIN de validação, o saldo em conta, as compras e as notas internas da equipe.'),
           el('div', { class: 'painel-vazio-itens' },
             ...itens.map(([t, sub]) => el('div', { class: 'painel-vazio-item' }, el('strong', {}, t), el('span', {}, sub))))));
       return;
     }
     const ct = c.contato;
+    const cli = saldo.conversaId === c.id ? saldo.cliente : null;
     const notas = c.mensagens.filter((m) => m.tipo === 'nota').slice().reverse();
 
     const textareaNota = el('textarea', {
@@ -1668,33 +1833,67 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     });
     const salvarNota = () => enviarMensagem(acentosLigados ? corrigirTexto(textareaNota.value) : textareaNota.value, 'nota', textareaNota);
 
+    const blocoNotas = el('div', { class: 'secao' },
+      el('span', { class: 'secao-titulo' }, 'Nota interna'),
+      el('div', { class: 'caixa-nota' }, textareaNota,
+        el('div', { class: 'rodape' },
+          el('span', { class: 'dica' }, 'Só a equipe vê.'),
+          el('button', { type: 'button', class: 'btn-escuro', onclick: salvarNota }, 'Salvar nota'))),
+      ...notas.map((n) => el('div', { class: 'nota-item' },
+        editandoAqui(n, 'ficha') ? edicaoDaNota(n) : el('span', { class: 't' }, n.texto),
+        el('div', { class: 'nota-item-pe' },
+          el('span', { class: 'm' }, `${n.autor?.nomeCurto || 'Equipe'} · ${horaLista(n.criadaEm) === horaCurta(n.criadaEm) ? horaCurta(n.criadaEm) : `${horaLista(n.criadaEm)} ${horaCurta(n.criadaEm)}`}${n.editadaEm ? ' · editada' : ''}`),
+          editandoAqui(n, 'ficha') ? null : acoesDaNota(n, 'ficha', 'nota-acoes linha')))),
+      notas.length ? null : el('span', { class: 'nota-vazia' }, 'Nenhuma nota ainda.'));
+
+    // Números que já temos de verdade. O resto do Resumo do desenho (gasto
+    // total, reembolsos, cliente desde) depende da API do site.
+    const numeros = [];
+    if (cli) {
+      numeros.push(['Recargas', String(cli.totalRecargas)]);
+      if (cli.ultimaRecarga) numeros.push(['Última recarga', cli.ultimaRecarga.valor]);
+      numeros.push(['Situação', cli.bloqueada ? 'Bloqueada' : (cli.statusTexto || 'Ativa')]);
+      if (cli.email) numeros.push(['E-mail', cli.email]);
+    }
+
+    const corpoAba = {
+      resumo: () => [
+        c.alerta ? el('div', { class: 'alerta' }, icone('alerta', ICONE.alerta),
+          el('span', {}, el('strong', {}, `${c.alerta.titulo} `), c.alerta.texto)) : null,
+        numeros.length
+          ? el('div', { class: 'secao' },
+            el('span', { class: 'secao-titulo' }, 'Conta do cliente'),
+            el('div', { class: 'grade-numeros' },
+              ...numeros.map(([k, v]) => el('div', { class: 'numero-ficha' },
+                el('span', { class: 'k' }, k), el('span', { class: 'v' }, v)))))
+          : null,
+        ct.dados?.length ? secao('Dados da conversa',
+          el('div', {}, ...ct.dados.map(([k, v, cor]) => el('div', { class: 'linha-dado' },
+            el('span', { class: 'k' }, k), el('span', { class: `v${cor ? ` ${cor}` : ''}` }, v))))) : null,
+        blocoNotas,
+      ],
+      compras: () => [vazioDaAba('Compras do cliente',
+        'Aqui vão aparecer as ativações compradas, com número, valor e situação — e é daqui que sai o reembolso. Falta ligar na API do site.')],
+      transacoes: () => [vazioDaAba('Extrato da conta',
+        'Recargas, compras, reembolsos e ajustes manuais, com o saldo que ficou depois de cada um. Falta ligar na API do site.')],
+    };
+
     painel.replaceChildren(
       el('div', { class: 'painel-topo' },
         c.canal === 'telegram'
           ? el('span', { class: 'avatar-quadrado neutro' }, iconeCanal('telegram', 15))
           : avatarCliente({ canal: c.canal, contato: { iniciais: iniciais(ct.empresa || ct.nome) } }, 'avatar-quadrado neutro'),
         el('div', { class: 'membro-info' },
-          el('span', { class: 'painel-nome suave' }, ct.empresa || 'Ficha do cliente'),
-          el('span', { class: 'painel-sub' }, ct.cnpj || ct.telefone || (ct.telegramUsuario ? `@${ct.telegramUsuario}` : ''))),
+          el('span', { class: 'painel-nome suave' }, ct.empresa || ct.nome || 'Ficha do cliente'),
+          el('span', { class: 'painel-sub' }, cli?.email || ct.cnpj || ct.telefone || (ct.telegramUsuario ? `@${ct.telegramUsuario}` : ''))),
         botaoAbrirConta(c)),
       el('div', { class: 'rolagem painel-corpo' },
         blocoPin(c),
-        ct.dados?.length ? secao('Conta do cliente',
-          el('div', {}, ...ct.dados.map(([k, v, cor]) => el('div', { class: 'linha-dado' },
-            el('span', { class: 'k' }, k), el('span', { class: `v${cor ? ` ${cor}` : ''}` }, v))))) : null,
-        c.alerta ? el('div', { class: 'alerta' }, icone('alerta', ICONE.alerta),
-          el('span', {}, el('strong', {}, `${c.alerta.titulo} `), c.alerta.texto)) : null,
-        el('div', { class: 'secao' },
-          el('div', { class: 'caixa-nota' }, textareaNota,
-            el('div', { class: 'rodape' },
-              el('span', { class: 'dica' }, 'Só a equipe vê.'),
-              el('button', { type: 'button', class: 'btn-escuro', onclick: salvarNota }, 'Salvar nota'))),
-          ...notas.map((n) => el('div', { class: 'nota-item' },
-            editandoAqui(n, 'ficha') ? edicaoDaNota(n) : el('span', { class: 't' }, n.texto),
-            el('div', { class: 'nota-item-pe' },
-              el('span', { class: 'm' }, `${n.autor?.nomeCurto || 'Equipe'} · ${horaLista(n.criadaEm) === horaCurta(n.criadaEm) ? horaCurta(n.criadaEm) : `${horaLista(n.criadaEm)} ${horaCurta(n.criadaEm)}`}${n.editadaEm ? ' · editada' : ''}`),
-              editandoAqui(n, 'ficha') ? null : acoesDaNota(n, 'ficha', 'nota-acoes linha')))),
-          notas.length ? null : el('span', { class: 'dica', style: 'font-size:12px;color:#4C6355' }, 'Nenhuma nota ainda.'))));
+        blocoSaldoEscuro(c),
+        acoesSaldo(c),
+        abasFicha(),
+        ...corpoAba[ficha.aba]()),
+      zonaDeRisco(c));
   }
 
 

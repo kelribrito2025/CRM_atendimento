@@ -396,14 +396,110 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .bloco-pin .cab { display: flex; align-items: center; gap: 8px; }
 .bloco-pin .cab .rotulo { flex: 1; padding: 0; color: var(--verde-texto); }
 .bloco-pin.pendente .cab .rotulo { color: var(--texto-suave); }
-.saldo-resultado { border-radius: 12px; background: var(--superficie); border: 1px solid var(--verde-borda); padding: 11px 12px; display: flex; flex-direction: column; gap: 3px; }
-.saldo-resultado.erro { border-color: var(--vermelho-claro); background: var(--vermelho-claro); color: var(--vermelho); font-size: 12.5px; line-height: 1.45; }
-.saldo-linha { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.saldo-valor { font-size: 18px; font-weight: 700; color: var(--verde-texto); }
-.saldo-nome { font-size: 12.5px; font-weight: 600; color: var(--texto); }
-.saldo-info { font-size: 11.5px; color: var(--texto-suave); }
-.saldo-alerta { font-size: 11.5px; font-weight: 700; color: var(--vermelho); }
-.saldo-aguarde { font-size: 12.5px; color: var(--texto-suave); }
+/* ===== Ficha do cliente: saldo em bloco escuro, ações e abas ===== */
+.saldo-bloco {
+  border-radius: 14px; background: var(--rail); padding: 13px 14px;
+  display: flex; flex-direction: column; gap: 9px; flex-shrink: 0;
+}
+.saldo-linha-topo { display: flex; align-items: flex-end; gap: 9px; }
+.saldo-numero { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.saldo-rotulo { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--rail-icone); }
+.saldo-valor-grande { font-size: 25px; font-weight: 700; letter-spacing: -.03em; color: #fff; }
+.saldo-quando {
+  display: flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 8px;
+  background: rgba(255, 255, 255, .08); font-size: 11px; font-weight: 700; color: var(--verde-texto); flex-shrink: 0;
+}
+.saldo-rodape { display: flex; flex-wrap: wrap; gap: 7px; padding-top: 9px; border-top: 1px solid var(--rail-linha); font-size: 10.5px; font-weight: 600; color: #EAF4EE; }
+.saldo-rodape .ponto { color: var(--rail-linha); }
+.saldo-rodape .bom { color: var(--verde-texto); }
+.saldo-rodape .ruim { color: var(--vermelho); }
+.saldo-vazio { font-size: 12.5px; color: var(--rail-icone); line-height: 1.5; }
+.saldo-erro { font-size: 12.5px; color: var(--vermelho); line-height: 1.45; }
+.saldo-acao {
+  align-self: flex-start; height: 32px; padding: 0 13px; border-radius: 10px; border: 0;
+  background: var(--verde); color: #fff; font-size: 12px; font-weight: 700;
+}
+.saldo-acao:hover { background: var(--verde-escuro); }
+
+.acoes-saldo { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 7px; }
+.acao-saldo {
+  height: 56px; padding: 0 10px; border: 1px solid var(--borda); border-radius: 12px;
+  background: var(--fundo-suave); color: var(--texto);
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 5px;
+  font-size: 11.5px; font-weight: 700; text-align: left;
+}
+.acao-saldo .ic { color: var(--texto); }
+
+.abas-ficha { display: flex; gap: 2px; padding: 3px; border-radius: 11px; background: var(--fundo-suave); border: 1px solid var(--borda); flex-shrink: 0; }
+.aba-ficha {
+  flex: 1; height: 30px; border: 0; border-radius: 8px; background: none;
+  font-size: 11.5px; font-weight: 700; color: var(--texto-suave);
+}
+.aba-ficha:hover { color: var(--texto); }
+.aba-ficha.ativa { background: var(--superficie); color: var(--verde-texto); box-shadow: 0 1px 3px rgba(11, 31, 20, .10); }
+
+.secao-titulo { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--texto-suave); }
+.grade-numeros { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.numero-ficha { padding: 10px 12px; border-radius: 12px; background: var(--fundo-suave); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.numero-ficha .k { font-size: 10.5px; color: var(--texto-suave); }
+.numero-ficha .v { font-size: 13.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nota-vazia { font-size: 12px; color: var(--texto-suave); }
+
+.aba-vazia {
+  display: flex; flex-direction: column; gap: 6px; padding: 18px 16px;
+  border: 1px dashed var(--borda); border-radius: 14px; text-align: center;
+}
+.aba-vazia strong { font-size: 13px; }
+.aba-vazia span { font-size: 12px; line-height: 1.5; color: var(--texto-suave); }
+
+/* Zona de risco, fixa no pé da ficha. */
+.zona-risco { padding: 12px 14px; border-top: 1px solid var(--borda); display: flex; gap: 7px; flex-shrink: 0; }
+.btn-risco {
+  flex: 1; height: 38px; border: 1px solid var(--borda); border-radius: 11px;
+  background: var(--superficie); color: var(--texto-suave);
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  font-size: 12px; font-weight: 700;
+}
+.btn-risco.perigo { border-color: var(--vermelho-claro); background: var(--vermelho-claro); color: var(--vermelho); }
+
+/* ===== Folha lateral das ações de saldo ===== */
+.folha {
+  background: var(--superficie); border-radius: 20px; width: 100%; max-width: 380px;
+  max-height: 92vh; overflow: auto; box-shadow: 0 18px 40px rgba(11, 31, 20, .28);
+  display: flex; flex-direction: column;
+}
+.folha-cab { padding: 16px; border-bottom: 1px solid var(--borda); display: flex; align-items: flex-start; gap: 11px; }
+.folha-titulo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.folha-titulo strong { font-size: 15.5px; letter-spacing: -.02em; }
+.folha-titulo span { font-size: 12px; color: var(--texto-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folha-corpo { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.folha-campo { display: flex; flex-direction: column; gap: 8px; }
+.folha-caixa-valor {
+  display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 14px;
+  border-radius: 13px; background: var(--superficie); border: 1.5px solid var(--verde);
+}
+.folha-caixa-valor.menos { border-color: var(--borda); }
+.folha-moeda { font-size: 15px; font-weight: 700; color: var(--texto-suave); }
+.folha-valor { flex: 1; min-width: 0; border: 0; background: none; font-family: "Courier New", monospace; font-size: 22px; font-weight: 700; color: var(--texto); outline: none; }
+.folha-atalhos { display: flex; gap: 6px; }
+.folha-atalho { flex: 1; height: 30px; border-radius: 9px; background: var(--fundo-suave); border: 1px solid var(--borda); font-size: 11.5px; font-weight: 700; color: var(--texto-suave); }
+.folha-antes-depois { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 13px; background: var(--fundo-suave); }
+.folha-antes-depois .lado { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.folha-antes-depois .lado.fim { align-items: flex-end; }
+.folha-antes-depois .k { font-size: 10.5px; color: var(--texto-suave); }
+.folha-antes-depois .v { font-family: "Courier New", monospace; font-size: 14px; font-weight: 700; }
+.folha-antes-depois .v.verde { color: var(--verde-texto); }
+.folha-pe { padding: 14px 16px; border-top: 1px solid var(--borda); display: flex; gap: 8px; }
+.folha-pe > button { flex: 1; height: 42px; border-radius: 12px; font-size: 13px; font-weight: 700; }
+.folha-pe .btn-contorno { height: 42px; }
+.btn-verde { flex: 1.4; border: 0; background: var(--verde); color: #fff; }
+.btn-verde:hover:not(.desligado) { background: var(--verde-escuro); }
+.aviso-construcao {
+  display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border-radius: 12px;
+  background: var(--nota-fundo); border: 1px dashed var(--nota-borda);
+  font-size: 12px; line-height: 1.45; color: var(--nota-texto);
+}
+.aviso-construcao .ic { color: var(--nota-suave); flex-shrink: 0; }
 .bloco-pin.compacto { gap: 9px; padding: 0; border: 0; border-radius: 0; background: transparent; }
 .pin-pronto.copiavel { cursor: pointer; user-select: none; }
 .pin-pronto.copiavel:hover { border-color: var(--verde); background: var(--verde-fundo); }
