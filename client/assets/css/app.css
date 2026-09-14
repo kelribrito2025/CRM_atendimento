@@ -679,7 +679,15 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 }
 .pessoa.inativa { opacity: .6; }
 .pessoa .dados { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pessoa-nome-linha { min-width: 0; display: flex; align-items: center; gap: 5px; }
 .pessoa .nome { font-size: 13.5px; font-weight: 700; }
+.btn-editar-nome {
+  width: 26px; height: 26px; flex-shrink: 0; border: 0; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--texto-suave); cursor: pointer;
+}
+.btn-editar-nome:hover { color: var(--verde-texto); background: var(--verde-claro); }
+.btn-editar-nome svg { width: 13px; height: 13px; }
 .pessoa .email { font-size: 12px; color: var(--texto-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pessoa .equipes { width: 190px; flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 5px; }
 .pessoa .papel { width: 132px; flex-shrink: 0; }
@@ -714,6 +722,8 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 }
 .escolha-equipe.marcada { border-color: var(--verde); background: var(--verde-fundo); color: var(--verde-texto); }
 .config-vazio { font-size: 12.5px; color: var(--texto-suave); padding: 4px 0; }
+.modal.editar-nome { max-width: 480px; }
+.erro-texto { min-height: 16px; color: var(--vermelho) !important; }
 
 .auditoria-lista { display: flex; flex-direction: column; gap: 8px; }
 .auditoria-item {

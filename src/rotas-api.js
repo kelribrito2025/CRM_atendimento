@@ -346,7 +346,7 @@ function criarRotasApi(db, opcoes = {}) {
     res.json({ ok: true });
   });
 
-  // Papel, acesso e equipes de um atendente.
+  // Nome, papel, acesso e equipes de um atendente.
   r.patch('/equipe/usuarios/:id', soAdmin, async (req, res) => {
     const id = idDaRota(req);
     const alvo = id ? await db.prepare('SELECT * FROM usuarios WHERE id = ?').get(id) : null;
@@ -356,6 +356,13 @@ function criarRotasApi(db, opcoes = {}) {
 
     const campos = [];
     const valores = [];
+    if ('nome' in corpo) {
+      const nome = String(corpo.nome || '').trim().replace(/\s+/g, ' ');
+      if (nome.length < 2) return res.status(400).json({ erro: 'Digite um nome com pelo menos 2 caracteres.' });
+      if (nome.length > 120) return res.status(400).json({ erro: 'O nome pode ter no máximo 120 caracteres.' });
+      campos.push('nome = ?');
+      valores.push(nome);
+    }
     if ('papel' in corpo) {
       const papel = corpo.papel === 'admin' ? 'admin' : 'atendente';
       if (euMesmo && papel !== 'admin') return res.status(400).json({ erro: 'Você não pode tirar o seu próprio acesso de administrador.' });
