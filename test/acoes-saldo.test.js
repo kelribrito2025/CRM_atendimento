@@ -334,3 +334,22 @@ test('rota do CRM: sem login ninguém mexe em saldo', async () => {
     assert.equal(s.chamadas.length, 0, 'nada pode chegar ao sistema do site');
   } finally { await s.fechar(); }
 });
+
+test('a confirmação de valor alto diz o lado certo da operação', () => {
+  // A pergunta antes de mexer no dinheiro estava invertida: a condição comparava
+  // com 'creditar', que é o nome da ação NA API, enquanto o tipo da tela é
+  // 'adicionar'. Resultado: adicionar R$ 500 perguntava "Você está debitando
+  // R$ 500,00. Confirma?". O atendente lia o contrário do que ia fazer.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const tela = fs.readFileSync(path.join(__dirname, '../client/assets/js/atendimento.js'), 'utf8');
+
+  assert.doesNotMatch(tela, /tipo === 'creditar'/, "'creditar' nunca é o tipo da tela");
+  assert.match(tela, /VERBO_DA_CONFIRMACAO = \{ adicionar: 'creditando', debitar: 'debitando' \}/);
+  assert.match(tela, /Você está \$\{VERBO_DA_CONFIRMACAO\[tipo\]\}/);
+
+  // E os tipos da tela e os verbos precisam continuar combinando.
+  const tipos = tela.match(/const ACAO_NA_API = \{([^}]+)\}/)[1].match(/(\w+):/g).map((t) => t.slice(0, -1));
+  const verbos = tela.match(/const VERBO_DA_CONFIRMACAO = \{([^}]+)\}/)[1].match(/(\w+):/g).map((t) => t.slice(0, -1));
+  for (const v of verbos) assert.ok(tipos.includes(v), `${v} não é um tipo da tela`);
+});

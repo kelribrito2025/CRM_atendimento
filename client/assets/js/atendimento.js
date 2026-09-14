@@ -2045,6 +2045,11 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
   const ATALHOS_VALOR = ['10,00', '20,00', '50,00', '100,00'];
   // Na tela é "Adicionar"; na API do site a ação chama "creditar".
   const ACAO_NA_API = { adicionar: 'creditar', debitar: 'debitar', reembolsar: 'reembolsar' };
+  // O verbo da confirmação sai daqui, pelo tipo DA TELA. Escrever a condição à
+  // mão já custou caro: a comparação era com 'creditar', que é o nome da ação
+  // na API e nunca o tipo da tela, então a confirmação de um crédito dizia
+  // "debitando" — a última pergunta antes de mexer no dinheiro, invertida.
+  const VERBO_DA_CONFIRMACAO = { adicionar: 'creditando', debitar: 'debitando' };
   const NOME_DO_FEITO = { adicionar: 'Crédito', debitar: 'Débito', reembolsar: 'Reembolso' };
 
   function emReaisDoCentavo(centavos) {
@@ -2191,7 +2196,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
         const centavos = centavosDoValorFormatado(campoValor.value);
         if (centavos === null) return mostrarAviso('Digite um valor maior que zero.');
         if (centavos > VALOR_QUE_PEDE_CONFIRMACAO
-          && !window.confirm(`Você está ${tipo === 'creditar' ? 'creditando' : 'debitando'} ${emReaisDoCentavo(centavos)}.\n\nConfirma esse valor?`)) return;
+          && !window.confirm(`Você está ${VERBO_DA_CONFIRMACAO[tipo]} ${emReaisDoCentavo(centavos)}.\n\nConfirma esse valor?`)) return;
       }
       enviar();
     }
