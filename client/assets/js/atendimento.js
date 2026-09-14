@@ -1914,8 +1914,8 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
   // atendente ganha uma marca de segurança própria, repetida em toda tentativa
   // daquele clique: é ela que impede creditar duas vezes quando a rede falha.
   const TITULOS_FOLHA = {
-    adicionar: ['Adicionar saldo', 'Crédito manual, com motivo registrado'],
-    debitar: ['Debitar saldo', 'Ajuste para menos, com motivo registrado'],
+    adicionar: ['Adicionar saldo', 'Crédito manual para a conta'],
+    debitar: ['Debitar saldo', 'Ajuste manual para menos'],
     reembolsar: ['Reembolsar', 'Selecione a compra a devolver'],
   };
   const ATALHOS_VALOR = ['10,00', '20,00', '50,00', '100,00'];
@@ -1949,7 +1949,7 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
     const estadoFolha = { marca: novaMarca(), enviando: false, compra: null, erro: null };
 
     const campoValor = el('input', {
-      type: 'text', value: tipo === 'reembolsar' ? '' : '50,00', 'aria-label': 'Valor',
+      type: 'text', value: tipo === 'reembolsar' ? '' : '0,00', 'aria-label': 'Valor',
       inputmode: 'numeric', autocomplete: 'off',
       class: 'folha-valor', disabled: tipo === 'reembolsar' ? 'disabled' : null,
       oninput: () => {
@@ -2058,9 +2058,6 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
 
     function confirmar() {
       if (estadoFolha.enviando) return;
-      if (campoMotivo.value.trim().length < 10) {
-        return mostrarAviso('Escreva o motivo com pelo menos 10 letras — ele fica no registro da operação.');
-      }
       if (tipo === 'reembolsar') {
         if (!estadoFolha.compra) return mostrarAviso('Escolha a compra que será reembolsada.');
         if (estadoFolha.compra.recebeuSms
@@ -2104,9 +2101,9 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
           antesDepois,
 
           el('div', { class: 'folha-campo' },
-            el('span', { class: 'secao-titulo' }, 'Motivo'),
+            el('span', { class: 'secao-titulo' }, 'Motivo (opcional)'),
             campoMotivo,
-            el('span', { class: 'folha-dica' }, 'Fica no registro da operação, aqui e no sistema do site.'))),
+            el('span', { class: 'folha-dica' }, 'Se preenchido, fica no registro da operação, aqui e no sistema do site.'))),
 
         el('div', { class: 'folha-pe' },
           el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => fundo.remove() }, 'Cancelar'),

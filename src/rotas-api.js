@@ -1035,7 +1035,8 @@ function criarRotasApi(db, opcoes = {}) {
 
       // Fica registrado também na auditoria do CRM: o administrador vê quem
       // mexeu no saldo de quem, sem precisar pedir o log do outro lado.
-      const detalhe = `${ROTULO_ACAO[acao]} ${r2.valor}${acao === 'reembolsar' ? ` (compra #${r2.activationId})` : ''} — ${String(req.body?.motivo || '').trim()}`;
+      const motivo = String(req.body?.motivo || '').trim();
+      const detalhe = `${ROTULO_ACAO[acao]} ${r2.valor}${acao === 'reembolsar' ? ` (compra #${r2.activationId})` : ''}${motivo ? ` — ${motivo}` : ''}`;
       await db.prepare(`INSERT INTO auditoria_eventos
         (acao, usuario_id, usuario_nome, usuario_email, conversa_id, protocolo, canal,
          contato_id, contato_nome, criado_em, origem_mensagem_id, detalhe)

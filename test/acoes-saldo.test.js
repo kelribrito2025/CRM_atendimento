@@ -99,6 +99,21 @@ test('reembolso: manda a compra escolhida e nunca o valor', async () => {
   assert.match(r.valor, /^R\$\s12,50$/);
 });
 
+test('motivo é opcional em crédito, débito e reembolso', async () => {
+  const { chamadas, fetchImpl } = apiFalsa(() => ok({ activationId: 555 }));
+  const saldo = criarSaldo({ url: BASE, token: CHAVE, fetchImpl });
+  const base = { pin: 7712, atendente: ATENDENTE };
+
+  await saldo.creditar({ ...base, valorCents: 500, motivo: '', chaveIdempotencia: 'sem-motivo-credito' });
+  await saldo.debitar({ ...base, valorCents: 500, motivo: 'ok', chaveIdempotencia: 'motivo-curto-debito' });
+  await saldo.reembolsar({ ...base, activationId: 555, chaveIdempotencia: 'sem-motivo-reembolso' });
+
+  assert.equal(chamadas.length, 3);
+  assert.equal('motivo' in chamadas[0].corpo, false);
+  assert.equal(chamadas[1].corpo.motivo, 'ok');
+  assert.equal('motivo' in chamadas[2].corpo, false);
+});
+
 test('recusas: cada motivo vira um recado em português, e só duas valem repetir', async () => {
   const casos = [
     ['compra_ja_reembolsada', 409, /já foi reembolsada/i, false],
@@ -135,12 +150,11 @@ test('conta bloqueada e sem permissão: recado do servidor, sem inventar texto',
     /não tem permissão/i);
 });
 
-test('o CRM recusa antes de sair: motivo curto, valor zerado e compra sem escolha', async () => {
+test('o CRM recusa antes de sair: valor zerado, compra sem escolha e atendente inválido', async () => {
   let chamou = false;
   const saldo = criarSaldo({ url: BASE, token: CHAVE, fetchImpl: async () => { chamou = true; return ok(); } });
   const base = { pin: 7712, valorCents: 500, motivo: MOTIVO, atendente: ATENDENTE, chaveIdempotencia: 'm' };
 
-  await assert.rejects(() => saldo.creditar({ ...base, motivo: 'curto' }), /pelo menos 10 letras/i);
   await assert.rejects(() => saldo.creditar({ ...base, valorCents: 0 }), /maior que zero/i);
   await assert.rejects(() => saldo.creditar({ ...base, valorCents: 12.5 }), /maior que zero/i);
   await assert.rejects(() => saldo.reembolsar({ ...base, activationId: null }), /Escolha a compra/i);
@@ -248,6 +262,21 @@ test('rota do CRM: a operação fica na auditoria, com valor e motivo', async ()
 
     const { dados } = await s.chamar('/api/auditoria');
     assert.match(dados.eventos[0].descricao, /Creditou/);
+  } finally { await s.fechar(); }
+});
+
+test('rota do CRM: motivo vazio é aceito e a auditoria não ganha separador vazio', async () => {
+  const s = await subirCrm();
+  try {
+    const r = await s.chamar(`/api/conversas/${s.conversaId}/saldo/debitar`, 'POST', {
+      pin: '7712', valorCents: 500, motivo: '', chaveIdempotencia: 'marca-sem-motivo',
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.dados));
+    assert.equal('motivo' in s.chamadas.at(-1).corpo, false);
+
+    const evento = await s.db.prepare("SELECT detalhe FROM auditoria_eventos WHERE acao = 'saldo_debitar' ORDER BY id DESC LIMIT 1").get();
+    assert.equal(evento.detalhe, 'Debitou R$ 5,00');
+    assert.doesNotMatch(evento.detalhe, /—/);
   } finally { await s.fechar(); }
 });
 

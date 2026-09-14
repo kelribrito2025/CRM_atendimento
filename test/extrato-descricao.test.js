@@ -34,6 +34,21 @@ test('extrato: remove o prefixo antigo mesmo quando não encontra auditoria', ()
   assert.equal(personalizarReembolsos(transacoes)[0].descricao, 'Cliente desistiu da compra');
 });
 
+test('extrato: reembolso sem motivo mostra somente o nome do atendente', () => {
+  const transacoes = [{
+    id: 3,
+    tipo: 'reembolso_manual',
+    ativacaoId: 123,
+    descricao: 'Reembolso do atendimento:',
+  }];
+  const auditorias = [{
+    usuario_nome: 'Kely Brito',
+    detalhe: 'Reembolsou R$ 14,90 (compra #123)',
+  }];
+
+  assert.equal(personalizarReembolsos(transacoes, auditorias)[0].descricao, 'Kely');
+});
+
 test('extrato: não altera compras, recargas ou reembolsos automáticos', () => {
   const transacoes = [
     { tipo: 'compra', descricao: 'Opção 4 - Compra em andamento' },

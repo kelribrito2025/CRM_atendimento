@@ -245,8 +245,8 @@ function criarSaldo({ url = URL_PADRAO, token = '', fetchImpl = globalThis.fetch
     if (!marca || marca.length > 120) throw new ErroSaldo(RECADO_DA_RECUSA.sem_idempotency_key, { status: 400, codigo: 'sem_idempotency_key' });
 
     const razao = String(motivo || '').trim();
-    if (razao.length < 10 || razao.length > 300) {
-      throw new ErroSaldo('Escreva o motivo com pelo menos 10 letras — ele fica no registro da operação.', { status: 400, codigo: 'dados_invalidos' });
+    if (razao.length > 300) {
+      throw new ErroSaldo('O motivo pode ter no máximo 300 caracteres.', { status: 400, codigo: 'dados_invalidos' });
     }
     if (!atendente?.nome || !String(atendente?.email || '').includes('@')) {
       throw new ErroSaldo('Faltou identificar o atendente. Saia e entre de novo no CRM.', { status: 400, codigo: 'dados_invalidos' });
@@ -254,9 +254,9 @@ function criarSaldo({ url = URL_PADRAO, token = '', fetchImpl = globalThis.fetch
 
     const corpo = {
       pin: pinNumero(pin),
-      motivo: razao,
       atendente: { id: String(atendente.id), nome: String(atendente.nome), email: String(atendente.email) },
     };
+    if (razao) corpo.motivo = razao;
     if (nome === 'reembolsar') {
       const id = Number(activationId);
       if (!Number.isSafeInteger(id) || id <= 0) throw new ErroSaldo('Escolha a compra que será reembolsada.', { status: 400, codigo: 'dados_invalidos' });

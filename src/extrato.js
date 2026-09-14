@@ -40,7 +40,7 @@ function personalizarReembolsos(transacoes, auditorias = []) {
     const auditoria = auditoriaPorCompra.get(Number(transacao.ativacaoId));
     const motivo = motivoDaAuditoria(auditoria?.detalhe) || motivoDaDescricao(transacao.descricao);
     const nome = primeiroNome(auditoria?.usuario_nome);
-    const descricao = nome && motivo ? `${nome}: ${motivo}` : (motivo || transacao.descricao);
+    const descricao = nome ? (motivo ? `${nome}: ${motivo}` : nome) : (motivo || 'Reembolso manual');
     return { ...transacao, descricao };
   });
 }

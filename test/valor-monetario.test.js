@@ -32,8 +32,19 @@ test('valor monetário: converte o texto formatado de volta para centavos', asyn
 
 test('ações de saldo: crédito e débito usam a máscara no campo de valor', () => {
   const tela = fs.readFileSync(path.join(raiz, 'client/assets/js/atendimento.js'), 'utf8');
+  const inicioCampo = tela.indexOf("const campoValor = el('input'");
+  const fimCampo = tela.indexOf('const campoMotivo', inicioCampo);
+  const campo = tela.slice(inicioCampo, fimCampo);
+
   assert.match(tela, /formatarValorEmCentavos\(campoValor\.value\)/);
   assert.match(tela, /centavosDoValorFormatado\(campoValor\.value\)/);
   assert.match(tela, /inputmode: 'numeric'/);
+  assert.match(campo, /value: tipo === 'reembolsar' \? '' : '0,00'/);
+  assert.doesNotMatch(campo, /'50,00'/);
   assert.match(tela, /if \(tipo !== 'reembolsar'\) \{[\s\S]*campoValor\.select\(\)/);
+  assert.match(tela, /'Motivo \(opcional\)'/);
+  assert.doesNotMatch(tela, /campoMotivo\.value\.trim\(\)\.length < 10/);
+  assert.match(tela, /'Crédito manual para a conta'/);
+  assert.match(tela, /'Ajuste manual para menos'/);
+  assert.doesNotMatch(tela, /com motivo registrado/);
 });
