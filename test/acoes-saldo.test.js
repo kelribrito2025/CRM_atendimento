@@ -251,6 +251,32 @@ test('rota do CRM: a operação fica na auditoria, com valor e motivo', async ()
   } finally { await s.fechar(); }
 });
 
+test('extrato: reembolso do atendimento mostra primeiro nome e motivo', async () => {
+  const s = await subirCrm({
+    responder: (chamada) => chamada.url.endsWith('/customer/transactions')
+      ? new Response(JSON.stringify({
+        transactions: [{
+          id: 901, tipo: 'reembolso_manual', tipoLegivel: 'Reembolso manual',
+          descricao: `Reembolso do atendimento: ${MOTIVO}`, valorCents: 1250,
+          entrada: true, saldoDepoisCents: 2250, ativacaoId: 555, feitoPorAdmin: true,
+        }],
+        total: 1, proximoCursor: null,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      : ok({ activationId: 555, valorCents: 1250, saldoAtualCents: 2250 }),
+  });
+  try {
+    const reembolso = await s.chamar(`/api/conversas/${s.conversaId}/saldo/reembolsar`, 'POST', {
+      pin: '7712', activationId: 555, motivo: MOTIVO, chaveIdempotencia: 'marca-extrato',
+    });
+    assert.equal(reembolso.status, 200, JSON.stringify(reembolso.dados));
+
+    const extrato = await s.chamar('/api/suporte/transacoes', 'POST', { pin: '7712' });
+    assert.equal(extrato.status, 200, JSON.stringify(extrato.dados));
+    assert.equal(extrato.dados.transacoes[0].descricao, `Marina: ${MOTIVO}`);
+    assert.doesNotMatch(extrato.dados.transacoes[0].descricao, /Reembolso do atendimento/i);
+  } finally { await s.fechar(); }
+});
+
 test('rota do CRM: recusa do site chega à tela com o código, sem virar erro genérico', async () => {
   const s = await subirCrm({ responder: () => recusa(409, 'compra_ja_reembolsada', 'ja existe reembolso') });
   try {

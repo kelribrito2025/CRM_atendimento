@@ -9,6 +9,7 @@ const { normalizarPin } = require('./saldo');
 const { LimitadorTentativas } = require('./limitador');
 const { interpretarStatus } = require('./uazapi');
 const acesso = require('./acesso');
+const { ehReembolsoDoAtendimento, personalizarReembolsos } = require('./extrato');
 
 const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta', 'encerradas']);
 // Por onde o cliente escreve: dá para ver a caixa de cada canal separada.
@@ -1053,7 +1054,23 @@ function criarRotasApi(db, opcoes = {}) {
   });
 
   rotaDeLeitura('/suporte/compras', (pin, opcoes) => saldo.listarCompras(pin, opcoes));
-  rotaDeLeitura('/suporte/transacoes', (pin, opcoes) => saldo.listarTransacoes(pin, opcoes));
+  rotaDeLeitura('/suporte/transacoes', async (pin, opcoes) => {
+    const resultado = await saldo.listarTransacoes(pin, opcoes);
+    const compras = [...new Set(resultado.transacoes
+      .filter((t) => ehReembolsoDoAtendimento(t)
+        && Number.isSafeInteger(Number(t.ativacaoId)) && Number(t.ativacaoId) > 0)
+      .map((t) => Number(t.ativacaoId)))];
+
+    let auditorias = [];
+    if (compras.length) {
+      const filtros = compras.map(() => 'detalhe LIKE ?').join(' OR ');
+      auditorias = await db.prepare(`SELECT usuario_nome, detalhe FROM auditoria_eventos
+        WHERE acao = 'saldo_reembolsar' AND (${filtros}) ORDER BY criado_em DESC, id DESC`)
+        .all(...compras.map((id) => `%(compra #${id})%`));
+    }
+
+    return { ...resultado, transacoes: personalizarReembolsos(resultado.transacoes, auditorias) };
+  });
 
   r.post('/suporte/saldo', async (req, res) => {
     if (!saldo || !saldo.configurado) {
