@@ -1728,7 +1728,6 @@ import { deveSalvarNota } from './nota-editor.mjs';
     transacoes: { conversaId: null, itens: [], total: 0, cursor: null, carregando: false, erro: null },
   };
   const ABAS_FICHA = [['resumo', 'Resumo'], ['compras', 'Compras'], ['transacoes', 'Transações']];
-  const EM_BREVE = 'Em breve: depende da API do site';
 
   function trocarAba(id) {
     ficha.aba = id;
@@ -1774,7 +1773,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
     }
 
     const quando = desdeQuando(saldo.em);
-    const situacao = cli.bloqueada ? 'Conta bloqueada' : (cli.status && cli.status !== 'active' ? `Conta ${cli.statusTexto}` : 'Sem bloqueio');
+    const situacao = situacaoNaTela(cli);
     return el('div', { class: 'saldo-bloco' },
       el('div', { class: 'saldo-linha-topo' },
         el('div', { class: 'saldo-numero' },
@@ -1786,7 +1785,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
         cli.ultimaRecarga ? el('span', { class: 'ponto' }, '·') : null,
         cli.ultimaRecarga ? el('span', {}, `Última ${cli.ultimaRecarga.valor}`) : null,
         el('span', { class: 'ponto' }, '·'),
-        el('span', { class: cli.bloqueada ? 'ruim' : 'bom' }, situacao)));
+        el('span', { class: situacao.ruim ? 'ruim' : 'bom' }, situacao.texto)));
   }
 
   // As três ações que mexem no saldo. A tela existe; o que grava, ainda não.
@@ -1812,11 +1811,62 @@ import { deveSalvarNota } from './nota-editor.mjs';
       }, nome)));
   }
 
-  // Zona de risco, no pé da ficha: desligadas até o backend existir.
+  // Zona de risco, no pé da ficha.
+  //
+  // Quais botões aparecem depende da situação que o site manda pronta, e não de
+  // combinação feita aqui: reativar uma conta banida, por exemplo, teria sucesso
+  // técnico e a conta seguiria bloqueada — o site recusa, e a tela nem oferece.
+  //
+  // Banir e desbanir são só de administrador. Não por serem irreversíveis (o
+  // site devolve as chaves que a ação cortou), mas por não serem decisão de
+  // quem está no meio de um atendimento.
+  function botaoDeRisco(acao, c, perigo = false) {
+    const [titulo] = TITULOS_CONTA[acao];
+    const marca = acao === 'banir' ? ICONE.banir : (acao === 'desativar' ? ICONE.desligar : ICONE.voltar);
+    return el('button', {
+      type: 'button', class: `btn-risco hov${perigo ? ' perigo' : ''}`, title: titulo,
+      onclick: () => abrirFolhaConta(acao, c),
+    }, icone(acao, marca), titulo);
+  }
+
   function zonaDeRisco(c) {
-    return el('div', { class: 'zona-risco' },
-      desligar(el('button', { type: 'button', class: 'btn-risco' }, icone('desativar', ICONE.desligar), 'Desativar'), `Desativar conta — ${EM_BREVE}`),
-      desligar(el('button', { type: 'button', class: 'btn-risco perigo' }, icone('banir', ICONE.banir), 'Banir conta'), `Banir conta — ${EM_BREVE}`));
+    const cli = saldo.conversaId === c.id ? saldo.cliente : null;
+    const admin = estado.resumo?.usuario?.papel === 'admin';
+    const pin = pinDaFicha(c);
+    const ligado = Boolean(estado.resumo?.saldoAtivo);
+
+    // Sem consulta não dá para saber a situação da conta, e oferecer "Desativar"
+    // para uma conta já desativada só renderia recusa do outro lado.
+    if (!cli) {
+      const porque = !ligado ? 'Ações de conta desligadas no servidor'
+        : (pin ? 'Consulte o saldo primeiro: a tela precisa saber a situação da conta' : 'Confirme o PIN do cliente primeiro');
+      return el('div', { class: 'zona-risco' },
+        desligar(el('button', { type: 'button', class: 'btn-risco' }, icone('desativar', ICONE.desligar), 'Desativar conta'), porque),
+        admin ? desligar(el('button', { type: 'button', class: 'btn-risco perigo' }, icone('banir', ICONE.banir), 'Banir conta'), porque) : null);
+    }
+
+    const motivo = cli.situacao?.permitida === false ? (cli.situacao.motivo || null) : null;
+    const botoes = [];
+    if (motivo === 'banida') {
+      // Banida: desativar e reativar o site recusa. Só sair do banimento.
+      if (admin) botoes.push(botaoDeRisco('desbanir', c, true));
+    } else if (motivo === 'encerrada' || cli.encerradaPeloTitular) {
+      // Quem fechou foi o próprio cliente: reabrir é decisão de administrador,
+      // pelo painel do site. Aqui nem aparece, para ninguém desfazer sem querer.
+      if (admin) botoes.push(botaoDeRisco('banir', c, true));
+    } else if (motivo === 'desativada') {
+      botoes.push(botaoDeRisco('reativar', c));
+      if (admin) botoes.push(botaoDeRisco('banir', c, true));
+    } else {
+      botoes.push(botaoDeRisco('desativar', c));
+      if (admin) botoes.push(botaoDeRisco('banir', c, true));
+    }
+
+    if (!botoes.length) {
+      return el('div', { class: 'zona-risco' },
+        el('span', { class: 'zona-nota' }, 'Esta conta está banida. Só um administrador pode tirar o banimento.'));
+    }
+    return el('div', { class: 'zona-risco' }, ...botoes);
   }
 
   function vazioDaAba(titulo, texto) {
@@ -2120,6 +2170,155 @@ import { deveSalvarNota } from './nota-editor.mjs';
     if (tipo !== 'reembolsar') campoValor.focus();
   }
 
+  // ===== Ações que mudam a situação da conta =====
+  //
+  // Quem decide o que a tela mostra é a situação que o site manda pronta, não o
+  // status cru: existem contas marcadas "active" que estão bloqueadas de fato, e
+  // a tela dizia "Ativa / Sem bloqueio" para elas.
+  const TITULOS_CONTA = {
+    desativar: ['Desativar conta', 'O cliente perde o acesso até alguém reativar. As chaves de API dele são cortadas e voltam no reativar.'],
+    reativar: ['Reativar conta', 'Devolve o acesso e as chaves de API que a desativação cortou.'],
+    banir: ['Banir conta', 'Bloqueio por fraude ou abuso. As chaves de API são cortadas e só voltam no desbanir.'],
+    desbanir: ['Tirar o banimento', 'Devolve as chaves de API que o banimento cortou.'],
+  };
+  const EXEMPLO_CONTA = {
+    desativar: 'Ex.: cliente pediu o encerramento temporário da conta…',
+    reativar: 'Ex.: cliente voltou e pediu a conta de volta…',
+    banir: 'Ex.: uso fraudulento confirmado no chamado 1234…',
+    desbanir: 'Ex.: banimento aplicado por engano, conta conferida…',
+  };
+  const FEITO_CONTA = {
+    desativar: 'Conta desativada.', reativar: 'Conta reativada.',
+    banir: 'Conta banida.', desbanir: 'Banimento retirado.',
+  };
+  const ROTULO_SITUACAO = {
+    banida: 'Conta banida',
+    desativada: 'Conta desativada',
+    encerrada: 'Encerrada pelo titular',
+    nao_encontrada: 'Conta não encontrada',
+  };
+
+  // A frase que aparece na ficha. Vem do site; o segundo caminho só existe para
+  // o caso de o site ainda ser antigo e não mandar a decisão pronta.
+  function situacaoNaTela(cli) {
+    const s = cli?.situacao;
+    if (s && s.permitida === false) {
+      return { texto: ROTULO_SITUACAO[s.motivo] || 'Conta bloqueada', ruim: true };
+    }
+    if (s && s.permitida === true) return { texto: 'Sem bloqueio', ruim: false };
+    return cli?.bloqueada
+      ? { texto: 'Conta bloqueada', ruim: true }
+      : { texto: 'Sem bloqueio', ruim: false };
+  }
+
+  function abrirFolhaConta(acao, c) {
+    const [titulo, subtitulo] = TITULOS_CONTA[acao];
+    const cli = saldo.conversaId === c.id ? saldo.cliente : null;
+    const nome = cli?.nome || c.contato.nome;
+    const pin = pinDaFicha(c);
+    // A mesma marca vale para todas as tentativas deste clique.
+    const estadoFolha = { marca: novaMarca(), enviando: false };
+
+    const campoMotivo = el('textarea', {
+      class: 'campo-rapida area', rows: '2', maxlength: '300', placeholder: EXEMPLO_CONTA[acao],
+    });
+    const aviso = el('div', { class: 'folha-aviso', hidden: 'hidden' });
+    const perigosa = acao === 'banir';
+    const botaoConfirmar = el('button', {
+      type: 'button', class: perigosa ? 'btn-perigo' : 'btn-verde', onclick: () => confirmar(),
+    }, titulo);
+
+    function mostrarAviso(texto) {
+      aviso.textContent = texto || '';
+      aviso.hidden = !texto;
+    }
+
+    async function enviar() {
+      estadoFolha.enviando = true;
+      botaoConfirmar.disabled = true;
+      botaoConfirmar.textContent = 'Enviando…';
+      mostrarAviso('');
+      try {
+        const r = await api(`/conversas/${c.id}/conta/${acao}`, {
+          method: 'POST',
+          body: { pin, motivo: campoMotivo.value.trim(), chaveIdempotencia: estadoFolha.marca },
+        });
+        // A situação volta recalculada: a ficha passa a mostrar o estado novo
+        // sem precisar consultar o saldo de novo.
+        if (saldo.conversaId === c.id && saldo.cliente) {
+          saldo.cliente = {
+            ...saldo.cliente,
+            status: r.status, statusTexto: r.statusTexto, bloqueada: r.bloqueada,
+            ativa: r.ativa, encerradaPeloTitular: r.encerradaPeloTitular, situacao: r.situacao,
+          };
+          saldo.em = Date.now();
+        }
+        fundo.remove();
+        renderPainel();
+        toast(recadoDoFeito(acao, r), 6000);
+      } catch (e) {
+        // Recusa do site é resposta, não falha: aparece dentro da folha.
+        mostrarAviso(e.message);
+        botaoConfirmar.textContent = e.podeRepetir ? 'Tentar de novo' : titulo;
+        botaoConfirmar.disabled = false;
+        estadoFolha.enviando = false;
+        return;
+      }
+      estadoFolha.enviando = false;
+    }
+
+    function confirmar() {
+      if (estadoFolha.enviando) return;
+      if (campoMotivo.value.trim().length < 10) {
+        return mostrarAviso('Escreva o motivo com pelo menos 10 letras — ele fica no registro da operação.');
+      }
+      if (perigosa && !window.confirm(`Banir a conta de ${nome}?\n\nO cliente perde o acesso e as chaves de API dele são cortadas na hora.`)) return;
+      enviar();
+    }
+
+    const fundo = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === fundo) fundo.remove(); } },
+      el('div', { class: 'folha', role: 'dialog', 'aria-modal': 'true', 'aria-label': titulo },
+        el('div', { class: 'folha-cab' },
+          el('div', { class: 'folha-titulo' },
+            el('strong', {}, titulo),
+            el('span', {}, `${nome}${pin ? ` · PIN ${pin}` : ''}`)),
+          el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: () => fundo.remove() }, svg(ICONE.fechar))),
+
+        el('div', { class: 'folha-corpo' },
+          el('span', { class: 'folha-sub' }, subtitulo),
+          aviso,
+          el('div', { class: 'folha-campo' },
+            el('span', { class: 'secao-titulo' }, 'Motivo'),
+            campoMotivo,
+            el('span', { class: 'folha-dica' }, 'Fica no registro da operação, aqui e no sistema do site.'))),
+
+        el('div', { class: 'folha-pe' },
+          el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => fundo.remove() }, 'Cancelar'),
+          botaoConfirmar)));
+
+    document.body.append(fundo);
+    campoMotivo.focus();
+  }
+
+  // Desbanir e reativar existem para devolver a conta ao cliente. Quando a ação
+  // dá certo e a conta continua bloqueada por OUTRO motivo — desbanir uma conta
+  // que também estava desativada —, o atendente precisa saber, senão vai avisar
+  // o cliente que resolveu. Em desativar e banir ficar sem acesso é o objetivo,
+  // então ali o aviso só repetiria o que o botão já disse.
+  const DEVOLVEM_A_CONTA = new Set(['reativar', 'desbanir']);
+
+  function recadoDoFeito(acao, r) {
+    if (r.semMudanca) return 'A conta já estava assim — nada foi alterado.';
+    const partes = [FEITO_CONTA[acao]];
+    if (r.chavesRestauradas > 0) partes.push(`${r.chavesRestauradas} chave${r.chavesRestauradas === 1 ? '' : 's'} de API devolvida${r.chavesRestauradas === 1 ? '' : 's'}.`);
+    else if (r.chavesRevogadas > 0) partes.push(`${r.chavesRevogadas} chave${r.chavesRevogadas === 1 ? '' : 's'} de API cortada${r.chavesRevogadas === 1 ? '' : 's'}.`);
+    if (DEVOLVEM_A_CONTA.has(acao) && r.situacao?.permitida === false) {
+      const porque = { banida: 'ela continua banida', desativada: 'ela continua desativada', encerrada: 'ela foi encerrada pelo titular' }[r.situacao.motivo];
+      partes.push(`Atenção: o cliente ainda NÃO tem acesso — ${porque || 'a conta segue bloqueada'}.`);
+    }
+    return partes.join(' ');
+  }
+
   function renderPainel() {
     const painel = $('#painel');
     const c = estado.conversa;
@@ -2174,7 +2373,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
     const numeros = [];
     if (cli) {
       numeros.push(['Reembolsos', Number.isFinite(cli.totalReembolsos) ? String(cli.totalReembolsos) : '—']);
-      numeros.push(['Situação', cli.bloqueada ? 'Banida' : (cli.statusTexto || 'Ativa')]);
+      numeros.push(['Situação', situacaoNaTela(cli).texto]);
     }
 
     const corpoAba = {

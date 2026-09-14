@@ -45,6 +45,35 @@ function centavosDe(cliente) {
 
 const ROTULO_STATUS = { active: 'ativa', deactivated: 'desativada', deleted: 'excluída' };
 
+// A situação da conta vem decidida pelo site, pela mesma função que o login dele
+// usa para barrar — então a nossa tela e o login nunca discordam.
+//
+// Deduzir pelo status cru não funciona: existem contas com status "active" que
+// estão bloqueadas de fato, e a tela mostrava "Ativa / Sem bloqueio" para elas.
+// O trecho abaixo só deduz quando o site é antigo e não manda a decisão.
+function situacaoDoCliente(dados) {
+  const status = dados?.status || null;
+  const banida = Boolean(dados?.banned ?? dados?.banida);
+  const pronta = dados?.situacao;
+  const situacao = pronta && typeof pronta.permitida === 'boolean'
+    ? { permitida: pronta.permitida, motivo: pronta.motivo || null, mensagem: pronta.mensagem || null }
+    : deduzirSituacao({ banida, status });
+  return {
+    status,
+    statusTexto: ROTULO_STATUS[status] || status || null,
+    bloqueada: banida,
+    ativa: typeof dados?.ativa === 'boolean' ? dados.ativa : status === 'active',
+    encerradaPeloTitular: Boolean(dados?.encerradaPeloTitular),
+    situacao,
+  };
+}
+
+function deduzirSituacao({ banida, status }) {
+  if (banida) return { permitida: false, motivo: 'banida', mensagem: 'Esta conta foi bloqueada.' };
+  if (status && status !== 'active') return { permitida: false, motivo: 'desativada', mensagem: 'Esta conta está desativada.' };
+  return { permitida: true, motivo: null, mensagem: null };
+}
+
 // Devolve só o que a tela precisa mostrar.
 function resumirCliente(cliente) {
   const centavos = centavosDe(cliente);
@@ -55,9 +84,7 @@ function resumirCliente(cliente) {
     pin: Number.isFinite(cliente?.pin) ? cliente.pin : null,
     saldoCentavos: centavos,
     saldo: emReais(centavos),
-    status: cliente?.status || null,
-    statusTexto: ROTULO_STATUS[cliente?.status] || cliente?.status || null,
-    bloqueada: Boolean(cliente?.banned),
+    ...situacaoDoCliente(cliente),
     totalRecargas: Number.isFinite(cliente?.totalRecharges) ? cliente.totalRecharges : recargas.length,
     // Quantos reembolsos este cliente já recebeu. O campo ainda não vem da API
     // do site: quando vier, a ficha mostra sozinha, sem mexer na tela.
@@ -143,6 +170,22 @@ const RECADO_DA_RECUSA = {
   compra_ja_reembolsada: 'Esta compra já foi reembolsada — o dinheiro já voltou para o cliente.',
   compra_nao_reembolsavel: 'Esta compra não existe ou não é deste cliente.',
   erro_interno: 'O sistema do site teve um erro. Pode tentar de novo: a operação não foi feita duas vezes.',
+};
+
+// As quatro ações de conta também são irmãs do /customer/lookup.
+const CAMINHO_DA_CONTA = { desativar: 'deactivate', reativar: 'reactivate', banir: 'ban', desbanir: 'unban' };
+
+// A mesma recusa quer dizer coisas diferentes conforme a ação, e o atendente
+// precisa saber o que fazer em seguida — por isso o recado é por ação.
+const RECADO_DA_CONTA = {
+  desativar: {
+    conta_banida: 'Esta conta já está banida, ou seja, já está bloqueada. Desativar não mudaria nada.',
+    conta_encerrada_pelo_titular: 'Esta conta foi encerrada pelo próprio cliente — ela já está fora do ar.',
+  },
+  reativar: {
+    conta_banida: 'Esta conta está banida. Reativar não desbloqueia: é preciso desbanir primeiro.',
+    conta_encerrada_pelo_titular: 'Esta conta foi encerrada pelo próprio cliente. Reabrir é decisão de administrador, pelo painel do site.',
+  },
 };
 
 // Os três endpoints são irmãos: trocam só o último pedaço do endereço.
@@ -233,14 +276,17 @@ function criarSaldo({ url = URL_PADRAO, token = '', fetchImpl = globalThis.fetch
     };
   }
 
-  // ===== Ações que mexem em dinheiro =====
+  // ===== Ações que mudam alguma coisa =====
   //
   // A marca de segurança (Idempotency-Key) vem de fora, criada no clique do
   // atendente: se a rede cair e o CRM repetir, o site devolve o resultado da
-  // primeira em vez de creditar de novo. Por isso ela NUNCA é criada aqui —
+  // primeira em vez de fazer de novo. Por isso ela NUNCA é criada aqui —
   // aqui já seria tarde, cada tentativa ganharia uma marca diferente.
-  async function acaoDeSaldo(nome, { pin, valorCents, activationId, motivo, atendente, chaveIdempotencia }) {
-    if (!configurado) throw new ErroSaldo('Ações de saldo não configuradas. Preencha SALDO_TOKEN no arquivo .env e reinicie o sistema.', { status: 400 });
+  //
+  // Dinheiro e conta seguem o mesmo desenho, então a conferência do pedido e o
+  // envio são os mesmos; muda só o endereço e o que volta na resposta.
+  function conferirPedido({ pin, motivo, atendente, chaveIdempotencia }) {
+    if (!configurado) throw new ErroSaldo('Ações no site não configuradas. Preencha SALDO_TOKEN no arquivo .env e reinicie o sistema.', { status: 400 });
     const marca = String(chaveIdempotencia || '').trim();
     if (!marca || marca.length > 120) throw new ErroSaldo(RECADO_DA_RECUSA.sem_idempotency_key, { status: 400, codigo: 'sem_idempotency_key' });
 
@@ -252,29 +298,24 @@ function criarSaldo({ url = URL_PADRAO, token = '', fetchImpl = globalThis.fetch
       throw new ErroSaldo('Faltou identificar o atendente. Saia e entre de novo no CRM.', { status: 400, codigo: 'dados_invalidos' });
     }
 
-    const corpo = {
-      pin: pinNumero(pin),
-      motivo: razao,
-      atendente: { id: String(atendente.id), nome: String(atendente.nome), email: String(atendente.email) },
+    return {
+      marca,
+      corpo: {
+        pin: pinNumero(pin),
+        motivo: razao,
+        atendente: { id: String(atendente.id), nome: String(atendente.nome), email: String(atendente.email) },
+      },
     };
-    if (nome === 'reembolsar') {
-      const id = Number(activationId);
-      if (!Number.isSafeInteger(id) || id <= 0) throw new ErroSaldo('Escolha a compra que será reembolsada.', { status: 400, codigo: 'dados_invalidos' });
-      corpo.activationId = id;
-      // valorCents no reembolso é ignorado pelo site: quem manda é o preço da compra.
-    } else {
-      const centavos = Number(valorCents);
-      if (!Number.isSafeInteger(centavos) || centavos <= 0) {
-        throw new ErroSaldo('Digite um valor maior que zero.', { status: 400, codigo: 'dados_invalidos' });
-      }
-      corpo.valorCents = centavos;
-    }
+  }
 
+  // Manda o pedido e devolve a resposta já lida. Recusa vira ErroSaldo com o
+  // código do site: quem escolhe o recado da tela é o código, não o texto.
+  async function postar(destino, marca, corpo, recados) {
     const controle = new AbortController();
     const temporizador = setTimeout(() => controle.abort(), timeoutMs);
     let resposta;
     try {
-      resposta = await fetchImpl(enderecoDaAcao(endereco, nome), {
+      resposta = await fetchImpl(destino, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${chave}`,
@@ -307,7 +348,7 @@ function criarSaldo({ url = URL_PADRAO, token = '', fetchImpl = globalThis.fetch
       if (resposta.status === 403) throw new ErroSaldo('A chave do CRM não tem permissão para esta ação. Avise o administrador.', { status: 403, codigo });
       if (resposta.status === 401) throw new ErroSaldo('A chave de acesso ao sistema do site é inválida ou expirou. Avise o administrador.', { status: 401, codigo });
       if (resposta.status === 429) throw new ErroSaldo('Muitas operações seguidas. Espere um minuto e tente de novo.', { status: 429, codigo, podeRepetir: true });
-      const recado = RECADO_DA_RECUSA[codigo] || dados?.message || 'O sistema do site recusou a operação.';
+      const recado = recados[codigo] || RECADO_DA_RECUSA[codigo] || dados?.message || 'O sistema do site recusou a operação.';
       throw new ErroSaldo(recado, {
         status: resposta.status,
         codigo,
@@ -317,7 +358,27 @@ function criarSaldo({ url = URL_PADRAO, token = '', fetchImpl = globalThis.fetch
       });
     }
     if (!dados?.success) throw new ErroSaldo('O sistema do site devolveu uma resposta inesperada.');
+    // Verdadeiro quando o site devolveu o resultado guardado de uma tentativa
+    // anterior, em vez de fazer a operação de novo.
+    return { dados, repetida: resposta.headers.get?.('Idempotency-Replayed') === 'true' };
+  }
 
+  async function acaoDeSaldo(nome, { pin, valorCents, activationId, motivo, atendente, chaveIdempotencia }) {
+    const { marca, corpo } = conferirPedido({ pin, motivo, atendente, chaveIdempotencia });
+    if (nome === 'reembolsar') {
+      const id = Number(activationId);
+      if (!Number.isSafeInteger(id) || id <= 0) throw new ErroSaldo('Escolha a compra que será reembolsada.', { status: 400, codigo: 'dados_invalidos' });
+      corpo.activationId = id;
+      // valorCents no reembolso é ignorado pelo site: quem manda é o preço da compra.
+    } else {
+      const centavos = Number(valorCents);
+      if (!Number.isSafeInteger(centavos) || centavos <= 0) {
+        throw new ErroSaldo('Digite um valor maior que zero.', { status: 400, codigo: 'dados_invalidos' });
+      }
+      corpo.valorCents = centavos;
+    }
+
+    const { dados, repetida } = await postar(enderecoDaAcao(endereco, nome), marca, corpo, {});
     const centavos = Number.isFinite(dados.valorCents) ? Math.round(dados.valorCents) : 0;
     const atual = Number.isFinite(dados.saldoAtualCents) ? Math.round(dados.saldoAtualCents) : 0;
     const anterior = Number.isFinite(dados.saldoAnteriorCents) ? Math.round(dados.saldoAnteriorCents) : null;
@@ -331,9 +392,31 @@ function criarSaldo({ url = URL_PADRAO, token = '', fetchImpl = globalThis.fetch
       saldoAnterior: anterior === null ? null : emReais(anterior),
       saldoAtualCentavos: atual,
       saldoAtual: emReais(atual),
-      // Verdadeiro quando o site devolveu o resultado guardado de uma tentativa
-      // anterior, em vez de mexer no saldo de novo.
-      repetida: resposta.headers.get?.('Idempotency-Replayed') === 'true',
+      repetida,
+    };
+  }
+
+  // ===== Ações que mudam a situação da conta =====
+  //
+  // O site recusa as combinações que não fazem sentido (reativar conta banida,
+  // por exemplo) para a tela não precisar decidir — e para o atendente não
+  // achar que resolveu quando a conta continua bloqueada por outro motivo.
+  async function acaoDeConta(nome, { pin, motivo, atendente, chaveIdempotencia }) {
+    const { marca, corpo } = conferirPedido({ pin, motivo, atendente, chaveIdempotencia });
+    const { dados, repetida } = await postar(
+      enderecoIrmao(endereco, CAMINHO_DA_CONTA[nome]), marca, corpo, RECADO_DA_CONTA[nome] || {});
+    return {
+      acao: nome,
+      clienteId: dados.clienteId ?? null,
+      // A situação vem recalculada DEPOIS da mudança: desbanir uma conta que
+      // também estava desativada devolve banida: false e permitida: false.
+      ...situacaoDoCliente(dados),
+      chavesRevogadas: Number.isFinite(dados.chavesRevogadas) ? dados.chavesRevogadas : 0,
+      chavesRestauradas: Number.isFinite(dados.chavesRestauradas) ? dados.chavesRestauradas : 0,
+      dispositivosRemovidos: Number.isFinite(dados.dispositivosRemovidos) ? dados.dispositivosRemovidos : 0,
+      // A conta já estava no estado pedido: nada foi gravado, nem os acessos cortados.
+      semMudanca: Boolean(dados.semMudanca),
+      repetida,
     };
   }
 
@@ -345,7 +428,11 @@ function criarSaldo({ url = URL_PADRAO, token = '', fetchImpl = globalThis.fetch
     creditar: (dados) => acaoDeSaldo('creditar', dados),
     debitar: (dados) => acaoDeSaldo('debitar', dados),
     reembolsar: (dados) => acaoDeSaldo('reembolsar', dados),
+    desativar: (dados) => acaoDeConta('desativar', dados),
+    reativar: (dados) => acaoDeConta('reativar', dados),
+    banir: (dados) => acaoDeConta('banir', dados),
+    desbanir: (dados) => acaoDeConta('desbanir', dados),
   };
 }
 
-module.exports = { criarSaldo, normalizarPin, resumirCliente, resumirCompra, resumirTransacao, emReais, ErroSaldo, URL_PADRAO };
+module.exports = { criarSaldo, normalizarPin, resumirCliente, resumirCompra, resumirTransacao, situacaoDoCliente, emReais, ErroSaldo, URL_PADRAO };

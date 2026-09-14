@@ -501,6 +501,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
   font-size: 12px; font-weight: 700;
 }
 .btn-risco.perigo { border-color: var(--vermelho-claro); background: var(--vermelho-claro); color: var(--vermelho); }
+.zona-nota { font-size: 12px; color: var(--texto-suave); line-height: 1.45; }
 
 /* ===== Folha lateral das ações de saldo ===== */
 .folha {

@@ -1052,6 +1052,67 @@ function criarRotasApi(db, opcoes = {}) {
     }
   });
 
+  // ===== Ações que mudam a situação da conta do cliente =====
+  //
+  // Desativar e reativar são do dia a dia do atendimento. Banir e desbanir não:
+  // mesmo sendo reversíveis do lado do site, não são decisão de quem está no
+  // meio de um atendimento, então ficam só para administrador. O site também
+  // exige a permissão dele — são duas trancas, de propósito.
+  const ACOES_CONTA = new Set(['desativar', 'reativar', 'banir', 'desbanir']);
+  const SO_ADMIN = new Set(['banir', 'desbanir']);
+  const ROTULO_CONTA = {
+    desativar: 'Desativou a conta', reativar: 'Reativou a conta',
+    banir: 'Baniu a conta', desbanir: 'Tirou o banimento da conta',
+  };
+
+  r.post('/conversas/:id/conta/:acao', comConversa, async (req, res) => {
+    const acao = String(req.params.acao || '');
+    if (!ACOES_CONTA.has(acao)) return res.status(404).json({ erro: 'Ação de conta desconhecida.' });
+    if (SO_ADMIN.has(acao) && req.usuario.papel !== 'admin') {
+      return res.status(403).json({ erro: 'Só um administrador pode banir ou desbanir uma conta.' });
+    }
+    if (!saldo?.configurado) {
+      return res.status(400).json({ erro: 'Ações de conta não configuradas no servidor. Avise o administrador.' });
+    }
+
+    // Mesmo teto das ações de saldo, e contado junto: são as operações que
+    // mexem na vida do cliente, e o limite existe para o caso de algo disparar
+    // em sequência sem ninguém perceber.
+    const chave = `acao-saldo:${req.usuario.id}`;
+    const bloqueio = limitadorAcaoSaldo.bloqueadoPor(chave);
+    if (bloqueio > 0) {
+      return res.status(429).json({ erro: `Muitas operações seguidas. Tente de novo em ${Math.ceil(bloqueio / 60000)} minuto(s).` });
+    }
+    limitadorAcaoSaldo.registrarFalha(chave);
+
+    const c = req.conversa;
+    try {
+      const r2 = await saldo[acao]({
+        pin: req.body?.pin,
+        motivo: req.body?.motivo,
+        chaveIdempotencia: req.body?.chaveIdempotencia,
+        atendente: { id: req.usuario.id, nome: req.usuario.nome, email: req.usuario.email },
+      });
+
+      const nada = r2.semMudanca ? ' (já estava assim)' : '';
+      const detalhe = `${ROTULO_CONTA[acao]}${nada} — ${String(req.body?.motivo || '').trim()}`;
+      await db.prepare(`INSERT INTO auditoria_eventos
+        (acao, usuario_id, usuario_nome, usuario_email, conversa_id, protocolo, canal,
+         contato_id, contato_nome, criado_em, origem_mensagem_id, detalhe)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`)
+        .run(`conta_${acao}`, req.usuario.id, req.usuario.nome, req.usuario.email, c.id, c.protocolo,
+          c.canal, c.contato.id, c.contato.nome, Date.now(), detalhe.slice(0, 500));
+
+      res.json(r2);
+    } catch (erro) {
+      res.status(erro.status || 502).json({
+        erro: erro.message,
+        codigo: erro.codigo || null,
+        podeRepetir: Boolean(erro.podeRepetir),
+      });
+    }
+  });
+
   rotaDeLeitura('/suporte/compras', (pin, opcoes) => saldo.listarCompras(pin, opcoes));
   rotaDeLeitura('/suporte/transacoes', (pin, opcoes) => saldo.listarTransacoes(pin, opcoes));
 

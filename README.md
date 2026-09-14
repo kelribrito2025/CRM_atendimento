@@ -207,7 +207,13 @@ Para ligar, coloque a chave do agente no `.env` e reinicie:
 SALDO_TOKEN=sua-chave-do-agente
 ```
 
-A chave dá acesso a reembolso e cancelamento, não só à consulta. Por isso ela **fica só no servidor**: a tela manda apenas o PIN para o CRM, o CRM consulta e devolve somente o que aparece na tela. Sem a chave, o botão não aparece.
+A chave dá acesso a muito mais do que a consulta: crédito, reembolso, e desativar ou banir a conta do cliente. Por isso ela **fica só no servidor**: a tela manda apenas o PIN para o CRM, o CRM consulta e devolve somente o que aparece na tela. Sem a chave, os botões não aparecem.
+
+Cada ação depende de uma permissão própria na chave, ligada no painel do site. Desligue o que a sua operação não usa: a permissão que não existe na chave não pode ser usada por engano.
+
+**Banir e desbanir são só de administrador**, travados no próprio CRM. Não por serem irreversíveis — o site devolve as chaves de API que a ação cortou —, mas por não serem decisão de quem está no meio de um atendimento.
+
+A situação da conta (ativa, desativada, banida, encerrada pelo titular) vem **decidida pelo site**, pela mesma função que o login dele usa para barrar. O CRM não deduz nada pelo status: existem contas marcadas `active` que estão bloqueadas de fato, e deduzir fazia a tela dizer "Sem bloqueio" para elas.
 
 Cada atendente pode fazer até 60 consultas a cada 5 minutos, para evitar consulta em massa (todas as chamadas ficam registradas do outro lado). PIN não encontrado aparece como aviso na tela, não como erro do sistema.
 
