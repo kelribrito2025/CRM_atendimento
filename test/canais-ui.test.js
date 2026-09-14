@@ -40,6 +40,16 @@ test('canais: tem a seção "Novo número de WhatsApp" com QR Code', () => {
   assert.match(css, /\.campo-canal/);
 });
 
+test('canais: novo WhatsApp escolhe a cor usada somente no avatar do cliente', () => {
+  assert.match(javascript, /type: 'color', value: '#12B85C'/);
+  assert.match(javascript, /'Cor do avatar'/);
+  assert.match(javascript, /body: \{ nome: nome\.value\.trim\(\) \|\| 'WhatsApp', cor: cor\.value \}/);
+  assert.match(javascript, /import \{ estiloAvatarDoCanal \} from '\.\/cor-avatar\.mjs'/);
+  assert.match(javascript, /style: estiloAvatarDoCanal\(c\)/);
+  assert.doesNotMatch(javascript, /class: `conversa[^`]*canalCor/);
+  assert.match(css, /\.campo-canal\.cor-avatar/);
+});
+
 test('canais: a sondagem do QR code para quando se sai da página', () => {
   assert.match(javascript, /if \(!conexao\.canalId \|\| !naPaginaDeCanais\(\)\) return pararSondagem\(\);/);
   assert.match(javascript, /function fecharConfiguracoes\(\) \{\n    pararSondagem\(\);/);

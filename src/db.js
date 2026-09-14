@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS canais (
   id ${CHAVE},
   tipo VARCHAR(20) NOT NULL DEFAULT 'whatsapp',
   nome TEXT NOT NULL,
+  cor VARCHAR(7) NOT NULL DEFAULT '#12B85C',
   instancia_id VARCHAR(191),
   instancia_token TEXT,
   webhook_segredo VARCHAR(191) NOT NULL UNIQUE,
@@ -323,6 +324,7 @@ async function migrarNotasDeAberturaParaAuditoria(db) {
 }
 
 async function migrar(db) {
+  await garantirColuna(db, 'canais', 'cor', "VARCHAR(7) NOT NULL DEFAULT '#12B85C'");
   await garantirColuna(db, 'conversas', 'canal_id', 'BIGINT');
   await garantirColuna(db, 'conversas', 'wa_chatid', 'VARCHAR(191)');
   await garantirColuna(db, 'mensagens', 'externo_id', 'VARCHAR(191)');

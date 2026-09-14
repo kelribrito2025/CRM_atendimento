@@ -5,6 +5,7 @@ import { capturarCompositor, restaurarCompositor } from './foco-compositor.mjs';
 import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notificacoes.mjs';
 import { deveSalvarNota } from './nota-editor.mjs';
 import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monetario.mjs';
+import { estiloAvatarDoCanal } from './cor-avatar.mjs';
 
 (() => {
   'use strict';
@@ -1545,7 +1546,7 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
     const ini = String(c.contato.iniciais || '');
     const soLetras = ini && !/[^A-Za-zÀ-ÿ0-9]/.test(ini);
     const dentro = soLetras ? ini : iconeCanal(c.canal, classe.includes('g') ? 20 : 15);
-    const avatar = el('span', { class: classe }, dentro);
+    const avatar = el('span', { class: classe, style: estiloAvatarDoCanal(c) }, dentro);
     // Foto do perfil do cliente; se não carregar, ficam as iniciais.
     if (c.contato.foto) {
       const foto = el('img', {
@@ -2917,11 +2918,12 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
   /* ---------------- novo WhatsApp e novo bot do Telegram ---------------- */
   function blocoNovoWhatsapp() {
     const nome = el('input', { type: 'text', placeholder: 'Ex.: WhatsApp principal', maxlength: '60', 'aria-label': 'Nome do canal' });
+    const cor = el('input', { type: 'color', value: '#12B85C', 'aria-label': 'Cor do avatar dos clientes deste canal', title: 'Escolher cor do avatar' });
     const tel = el('input', { type: 'tel', placeholder: '55 11 98842-1075', 'aria-label': 'Número com DDD (opcional)' });
     const botao = el('button', { type: 'button', class: 'btn-primario', onclick: async () => {
       botao.disabled = true;
       try {
-        const { canal } = await api('/canais', { method: 'POST', body: { nome: nome.value.trim() || 'WhatsApp' } });
+        const { canal } = await api('/canais', { method: 'POST', body: { nome: nome.value.trim() || 'WhatsApp', cor: cor.value } });
         const numero = tel.value.trim();
         config.canalAberto = null;
         config.eventosDoCanal = null;
@@ -2942,6 +2944,7 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
         el('span', { class: 'dica' }, 'A conexão é feita lendo o QR Code no aplicativo do número. Se preferir digitar um código no celular, preencha o número aqui.')),
       el('div', { class: 'linha-campos' },
         el('label', { class: 'campo-canal' }, el('span', {}, 'Nome do canal'), nome),
+        el('label', { class: 'campo-canal cor-avatar' }, el('span', {}, 'Cor do avatar'), cor),
         el('label', { class: 'campo-canal estreito' }, el('span', {}, 'Número com DDD (opcional)'), tel),
         botao));
   }

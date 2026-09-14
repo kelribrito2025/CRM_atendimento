@@ -93,7 +93,9 @@ test('whatsapp: foto do contato é guardada quando o servidor manda o endereço'
   const s = await subirServidor();
   try {
     const criado = await s.chamar('/api/canais', 'POST', { nome: 'WhatsApp principal' });
+    assert.equal(criado.dados.canal.cor, '#12B85C', 'canais existentes ou sem escolha continuam verdes');
     const canal = await s.db.prepare('SELECT * FROM canais WHERE id = ?').get(criado.dados.canal.id);
+    assert.equal(canal.cor, '#12B85C');
     await canais.processarEvento(s.db, canal, {
       EventType: 'messages',
       message: { messageid: 'A1', chatid: '5531988887777@s.whatsapp.net', fromMe: false, text: 'oi', senderName: 'Carla', messageTimestamp: Date.now() },
@@ -117,10 +119,16 @@ test('whatsapp: criar canal, conectar por QR e por número, receber e responder 
     const negado = await fetch(`${s.base}/api/canais`, { method: 'POST', headers: { Cookie: cookieMarina, 'Content-Type': 'application/json' }, body: '{}' });
     assert.equal(negado.status, 403);
 
+    const corInvalida = await s.chamar('/api/canais', 'POST', { nome: 'Cor inválida', cor: 'verde' });
+    assert.equal(corInvalida.status, 400);
+    assert.match(corInvalida.dados.erro, /cor válida/i);
+    assert.equal(s.uazapi.chamadas.filter((c) => c[0] === 'init').length, 0, 'cor inválida não cria instância');
+
     // criar canal
-    const criado = await s.chamar('/api/canais', 'POST', { nome: 'WhatsApp principal' });
+    const criado = await s.chamar('/api/canais', 'POST', { nome: 'WhatsApp principal', cor: '#7c3aed' });
     assert.equal(criado.status, 201);
     const canal = criado.dados.canal;
+    assert.equal(canal.cor, '#7C3AED');
     assert.equal(canal.status, 'disconnected');
     assert.match(canal.webhookUrl, /^https:\/\/crm\.exemplo\.com\.br\/webhook\/uazapi\/[a-f0-9]{32}$/);
     assert.equal(canal.webhookAviso, null);
@@ -164,6 +172,7 @@ test('whatsapp: criar canal, conectar por QR e por número, receber e responder 
     assert.equal(lista.dados.conversas.length, 1);
     const conversa = lista.dados.conversas[0];
     assert.equal(conversa.canal, 'whatsapp');
+    assert.equal(conversa.canalCor, '#7C3AED');
     assert.equal(conversa.semResposta, true);
     assert.equal(conversa.naoLidas, 1);
     assert.equal(conversa.contato.telefone, '+55 31 98888-7777');
