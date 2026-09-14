@@ -4,6 +4,9 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 import { capturarCompositor, restaurarCompositor } from './foco-compositor.mjs';
 import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notificacoes.mjs';
 import { deveSalvarNota } from './nota-editor.mjs';
+import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monetario.mjs';
+import { estiloAvatarDoCanal } from './cor-avatar.mjs';
+import { formatarDataHoraCompra } from './data-compra.mjs';
 
 (() => {
   'use strict';
@@ -77,6 +80,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
     banir: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M5.6 5.6l12.8 12.8"></path></svg>',
     setaDireita: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>',
     carrinho: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.6"></circle><circle cx="18" cy="20" r="1.6"></circle><path d="M2 3h3l2.6 12h11L21 7H6"></path></svg>',
+    copiar: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"></path></svg>',
   };
 
   const NOME_CANAL = { whatsapp: 'WhatsApp', telegram: 'Telegram', widget: 'Chat do site' };
@@ -1268,7 +1272,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
     campo.setSelectionRange(fim, fim);
   }
 
-  /* ---------------- acentuação automática ---------------- */
+  /* ---------------- correção automática: acentos e abreviações ---------------- */
   const CHAVE_ACENTOS = 'crm_acentos';
   let acentosLigados = true;
   try { acentosLigados = localStorage.getItem(CHAVE_ACENTOS) !== 'off'; } catch { /* navegador sem armazenamento */ }
@@ -1276,7 +1280,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
   function alternarAcentos() {
     acentosLigados = !acentosLigados;
     try { localStorage.setItem(CHAVE_ACENTOS, acentosLigados ? 'on' : 'off'); } catch { /* tudo bem */ }
-    toast(acentosLigados ? 'Acentuação automática ligada.' : 'Acentuação automática desligada.');
+    toast(acentosLigados ? 'Correção automática ligada.' : 'Correção automática desligada.');
     renderChat();
   }
 
@@ -1288,7 +1292,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
     const antes = campo.value.slice(0, fim);
     const separador = /[\s.,;:!?)\]}"'…]$/.test(antes);
     if (!separador) return;
-    const m = /([A-Za-z]+)([\s.,;:!?)\]}"'…])$/.exec(antes);
+    const m = /(\p{L}+)([\s.,;:!?)\]}"'…])$/u.exec(antes);
     if (!m) return;
     const corrigida = corrigirPalavra(m[1]);
     if (!corrigida) return;
@@ -1507,7 +1511,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
             type: 'button', class: `btn-icone hov acentos-toggle${acentosLigados ? ' ativo' : ''}`,
             'aria-pressed': acentosLigados ? 'true' : 'false',
             onclick: alternarAcentos,
-          }, 'Á'), 'acentos', acentosLigados ? 'Acentuação automática ligada' : 'Acentuação automática desligada'),
+          }, 'Á'), 'acentos', acentosLigados ? 'Correção automática ligada (acentos e abreviações)' : 'Correção automática desligada'),
           comDica(el('button', {
             type: 'button', class: `btn-icone hov nota-toggle${modoNota ? ' ativo' : ''}`,
             'aria-pressed': modoNota ? 'true' : 'false',
@@ -1544,7 +1548,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
     const ini = String(c.contato.iniciais || '');
     const soLetras = ini && !/[^A-Za-zÀ-ÿ0-9]/.test(ini);
     const dentro = soLetras ? ini : iconeCanal(c.canal, classe.includes('g') ? 20 : 15);
-    const avatar = el('span', { class: classe }, dentro);
+    const avatar = el('span', { class: classe, style: estiloAvatarDoCanal(c) }, dentro);
     // Foto do perfil do cliente; se não carregar, ficam as iniciais.
     if (c.contato.foto) {
       const foto = el('img', {
@@ -1936,14 +1940,32 @@ import { deveSalvarNota } from './nota-editor.mjs';
   }
 
   function itemCompra(compra) {
-    const selo = compra.reembolsada ? 'reembolsada' : (compra.status === 'completed' || compra.status === 'active' ? 'ok' : 'neutro');
+    const cancelada = compra.status === 'cancelled' || String(compra.statusTexto || '').toLowerCase() === 'cancelada';
+    const selo = cancelada ? 'cancelada' : (compra.reembolsada ? 'reembolsada' : (compra.status === 'completed' || compra.status === 'active' ? 'ok' : 'neutro'));
+    const dataHora = formatarDataHoraCompra(compra.data);
     return el('div', { class: 'compra-item' },
       el('div', { class: 'linha' },
         el('span', { class: 'nome' }, compra.descricao),
         el('span', { class: 'valor' }, compra.valor)),
       el('div', { class: 'linha' },
-        el('span', { class: 'numero' }, compra.numero || '—'),
-        el('span', { class: `selo-compra ${selo}` }, compra.reembolsada ? `${compra.statusTexto} · reembolsada` : compra.statusTexto)));
+        compra.numero
+          ? el('span', { class: 'numero-compra' },
+            el('span', { class: 'numero' }, compra.numero),
+            el('button', {
+              type: 'button', class: 'copiar-numero hov', title: 'Copiar número', 'aria-label': `Copiar número ${compra.numero}`,
+              onclick: async (evento) => {
+                evento.stopPropagation();
+                try {
+                  await navigator.clipboard.writeText(String(compra.numero));
+                  toast('Número copiado.');
+                } catch {
+                  toast('Não consegui copiar. Selecione o número e use Ctrl+C.');
+                }
+              },
+            }, svg(ICONE.copiar)))
+          : el('span', { class: 'numero' }, '—'),
+        el('span', { class: `selo-compra ${selo}` }, compra.reembolsada ? `${compra.statusTexto} · reembolsada` : compra.statusTexto)),
+      dataHora ? el('span', { class: 'data-compra' }, `Comprada em ${dataHora}`) : null);
   }
 
   function itemTransacao(t) {
@@ -1962,22 +1984,14 @@ import { deveSalvarNota } from './nota-editor.mjs';
   // atendente ganha uma marca de segurança própria, repetida em toda tentativa
   // daquele clique: é ela que impede creditar duas vezes quando a rede falha.
   const TITULOS_FOLHA = {
-    adicionar: ['Adicionar saldo', 'Crédito manual, com motivo registrado'],
-    debitar: ['Debitar saldo', 'Ajuste para menos, com motivo registrado'],
+    adicionar: ['Adicionar saldo', 'Crédito manual para a conta'],
+    debitar: ['Debitar saldo', 'Ajuste manual para menos'],
     reembolsar: ['Reembolsar', 'Selecione a compra a devolver'],
   };
   const ATALHOS_VALOR = ['10,00', '20,00', '50,00', '100,00'];
   // Na tela é "Adicionar"; na API do site a ação chama "creditar".
   const ACAO_NA_API = { adicionar: 'creditar', debitar: 'debitar', reembolsar: 'reembolsar' };
   const NOME_DO_FEITO = { adicionar: 'Crédito', debitar: 'Débito', reembolsar: 'Reembolso' };
-
-  // Converte "1.234,56" (ou "1234.56") em centavos inteiros.
-  function centavosDoTexto(texto) {
-    const limpo = String(texto || '').replace(/[^0-9,.]/g, '').replace(/\.(?=\d{3}\b)/g, '').replace(',', '.');
-    const numero = Number(limpo);
-    if (!Number.isFinite(numero) || numero <= 0) return null;
-    return Math.round(numero * 100);
-  }
 
   function emReaisDoCentavo(centavos) {
     return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -2005,9 +2019,14 @@ import { deveSalvarNota } from './nota-editor.mjs';
     const estadoFolha = { marca: novaMarca(), enviando: false, compra: null, erro: null };
 
     const campoValor = el('input', {
-      type: 'text', value: tipo === 'reembolsar' ? '' : '50,00', 'aria-label': 'Valor',
+      type: 'text', value: tipo === 'reembolsar' ? '' : '0,00', 'aria-label': 'Valor',
+      inputmode: 'numeric', autocomplete: 'off',
       class: 'folha-valor', disabled: tipo === 'reembolsar' ? 'disabled' : null,
-      oninput: () => desenharPrevisao(),
+      oninput: () => {
+        campoValor.value = formatarValorEmCentavos(campoValor.value);
+        campoValor.setSelectionRange?.(campoValor.value.length, campoValor.value.length);
+        desenharPrevisao();
+      },
     });
     const campoMotivo = el('textarea', {
       class: 'campo-rapida area', rows: '2', maxlength: '300',
@@ -2023,7 +2042,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
       const atual = cli?.saldoCentavos ?? null;
       const centavos = tipo === 'reembolsar'
         ? (estadoFolha.compra ? estadoFolha.compra.valorCentavos : null)
-        : centavosDoTexto(campoValor.value);
+        : centavosDoValorFormatado(campoValor.value);
       const sinal = tipo === 'debitar' ? -1 : 1;
       const depois = atual !== null && centavos !== null ? atual + sinal * centavos : null;
       antesDepois.replaceChildren(
@@ -2074,7 +2093,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
         chaveIdempotencia: estadoFolha.marca,
       };
       if (tipo === 'reembolsar') corpo.activationId = estadoFolha.compra?.id;
-      else corpo.valorCents = centavosDoTexto(campoValor.value);
+      else corpo.valorCents = centavosDoValorFormatado(campoValor.value);
 
       estadoFolha.enviando = true;
       botaoConfirmar.disabled = true;
@@ -2109,15 +2128,12 @@ import { deveSalvarNota } from './nota-editor.mjs';
 
     function confirmar() {
       if (estadoFolha.enviando) return;
-      if (campoMotivo.value.trim().length < 10) {
-        return mostrarAviso('Escreva o motivo com pelo menos 10 letras — ele fica no registro da operação.');
-      }
       if (tipo === 'reembolsar') {
         if (!estadoFolha.compra) return mostrarAviso('Escolha a compra que será reembolsada.');
         if (estadoFolha.compra.recebeuSms
           && !window.confirm(`Esta compra ENTREGOU o código ao cliente (${estadoFolha.compra.numero || 'número'}).\n\nReembolsar mesmo assim?`)) return;
       } else {
-        const centavos = centavosDoTexto(campoValor.value);
+        const centavos = centavosDoValorFormatado(campoValor.value);
         if (centavos === null) return mostrarAviso('Digite um valor maior que zero.');
         if (centavos > VALOR_QUE_PEDE_CONFIRMACAO
           && !window.confirm(`Você está ${tipo === 'creditar' ? 'creditando' : 'debitando'} ${emReaisDoCentavo(centavos)}.\n\nConfirma esse valor?`)) return;
@@ -2155,9 +2171,9 @@ import { deveSalvarNota } from './nota-editor.mjs';
           antesDepois,
 
           el('div', { class: 'folha-campo' },
-            el('span', { class: 'secao-titulo' }, 'Motivo'),
+            el('span', { class: 'secao-titulo' }, 'Motivo (opcional)'),
             campoMotivo,
-            el('span', { class: 'folha-dica' }, 'Fica no registro da operação, aqui e no sistema do site.'))),
+            el('span', { class: 'folha-dica' }, 'Se preenchido, fica no registro da operação, aqui e no sistema do site.'))),
 
         el('div', { class: 'folha-pe' },
           el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => fundo.remove() }, 'Cancelar'),
@@ -2167,7 +2183,10 @@ import { deveSalvarNota } from './nota-editor.mjs';
     desenharCompras();
     desenharPrevisao();
     document.body.append(fundo);
-    if (tipo !== 'reembolsar') campoValor.focus();
+    if (tipo !== 'reembolsar') {
+      campoValor.focus();
+      campoValor.select();
+    }
   }
 
   // ===== Ações que mudam a situação da conta =====
@@ -2403,6 +2422,12 @@ import { deveSalvarNota } from './nota-editor.mjs';
         desenhar: itemTransacao,
       }),
     };
+    // Antes da consulta, a ficha continua mostrando notas, alertas e dados da
+    // conversa. Controles financeiros e histórico da conta só aparecem depois
+    // que a API confirmou o cliente e devolveu o saldo desta conversa.
+    const conteudoFinanceiro = cli
+      ? [acoesSaldo(c), abasFicha(), ...corpoAba[ficha.aba]()]
+      : corpoAba.resumo();
 
     painel.replaceChildren(
       el('div', { class: 'painel-topo' },
@@ -2419,9 +2444,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
       el('div', { class: 'rolagem painel-corpo' },
         blocoPin(c),
         blocoSaldoEscuro(c),
-        acoesSaldo(c),
-        abasFicha(),
-        ...corpoAba[ficha.aba]()),
+        ...conteudoFinanceiro),
       zonaDeRisco(c));
     ajustarAltura(textareaNota);
   }
@@ -3113,11 +3136,12 @@ import { deveSalvarNota } from './nota-editor.mjs';
   /* ---------------- novo WhatsApp e novo bot do Telegram ---------------- */
   function blocoNovoWhatsapp() {
     const nome = el('input', { type: 'text', placeholder: 'Ex.: WhatsApp principal', maxlength: '60', 'aria-label': 'Nome do canal' });
+    const cor = el('input', { type: 'color', value: '#12B85C', 'aria-label': 'Cor do avatar dos clientes deste canal', title: 'Escolher cor do avatar' });
     const tel = el('input', { type: 'tel', placeholder: '55 11 98842-1075', 'aria-label': 'Número com DDD (opcional)' });
     const botao = el('button', { type: 'button', class: 'btn-primario', onclick: async () => {
       botao.disabled = true;
       try {
-        const { canal } = await api('/canais', { method: 'POST', body: { nome: nome.value.trim() || 'WhatsApp' } });
+        const { canal } = await api('/canais', { method: 'POST', body: { nome: nome.value.trim() || 'WhatsApp', cor: cor.value } });
         const numero = tel.value.trim();
         config.canalAberto = null;
         config.eventosDoCanal = null;
@@ -3138,6 +3162,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
         el('span', { class: 'dica' }, 'A conexão é feita lendo o QR Code no aplicativo do número. Se preferir digitar um código no celular, preencha o número aqui.')),
       el('div', { class: 'linha-campos' },
         el('label', { class: 'campo-canal' }, el('span', {}, 'Nome do canal'), nome),
+        el('label', { class: 'campo-canal cor-avatar' }, el('span', {}, 'Cor do avatar'), cor),
         el('label', { class: 'campo-canal estreito' }, el('span', {}, 'Número com DDD (opcional)'), tel),
         botao));
   }

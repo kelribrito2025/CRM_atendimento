@@ -50,7 +50,12 @@ function criarApp(db, opcoes = {}) {
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('X-Frame-Options', 'DENY');
     res.set('Referrer-Policy', 'same-origin');
+    res.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet, noimageindex');
     next();
+  });
+
+  app.get('/robots.txt', (req, res) => {
+    res.type('text/plain').send('User-agent: *\nDisallow: /\n');
   });
 
   // Lista dos ícones do Iconly disponíveis na pasta (o navegador só pede os que existem)

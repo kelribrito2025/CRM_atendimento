@@ -9,6 +9,7 @@ const { normalizarPin } = require('./saldo');
 const { LimitadorTentativas } = require('./limitador');
 const { interpretarStatus } = require('./uazapi');
 const acesso = require('./acesso');
+const { ehReembolsoDoAtendimento, personalizarReembolsos } = require('./extrato');
 
 const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta', 'encerradas']);
 // Por onde o cliente escreve: dá para ver a caixa de cada canal separada.
@@ -52,9 +53,18 @@ function formatarPrimeiraResposta(ms) {
   return `${min}min${String(seg).padStart(2, '0')}s`;
 }
 
+const COR_CANAL_PADRAO = '#12B85C';
+
+function normalizarCorCanal(valor, usarPadrao = true) {
+  const cor = String(valor || '').trim().toUpperCase();
+  if (!cor && usarPadrao) return COR_CANAL_PADRAO;
+  return /^#[0-9A-F]{6}$/.test(cor) ? cor : null;
+}
+
 const SQL_CONVERSAS = `
   SELECT c.id, c.protocolo, c.canal, c.status, c.alerta, c.nao_lidas, c.criada_em, c.atualizada_em,
          c.equipe_id, c.atendente_id, c.canal_id, c.wa_chatid,
+         ca.cor AS canal_cor,
          ct.id AS contato_id, ct.nome AS contato_nome, ct.empresa, ct.cnpj, ct.telefone, ct.email, ct.tg_usuario, ct.tg_id, ct.tg_foto_id, ct.wa_foto_url, ct.site_id,
          u.nome AS atendente_nome,
          e.nome AS equipe_nome, e.cor AS equipe_cor,
@@ -62,6 +72,7 @@ const SQL_CONVERSAS = `
          ua.nome AS ultima_autor
   FROM conversas c
   JOIN contatos ct ON ct.id = c.contato_id
+  LEFT JOIN canais ca ON ca.id = c.canal_id
   LEFT JOIN usuarios u ON u.id = c.atendente_id
   LEFT JOIN equipes e ON e.id = c.equipe_id
   LEFT JOIN (
@@ -143,6 +154,7 @@ function criarRotasApi(db, opcoes = {}) {
       id: row.id,
       protocolo: row.protocolo,
       canal: row.canal,
+      canalCor: row.canal === 'whatsapp' ? (normalizarCorCanal(row.canal_cor) || COR_CANAL_PADRAO) : null,
       status: row.status,
       naoLidas: row.nao_lidas,
       criadaEm: row.criada_em,
@@ -1034,7 +1046,8 @@ function criarRotasApi(db, opcoes = {}) {
 
       // Fica registrado também na auditoria do CRM: o administrador vê quem
       // mexeu no saldo de quem, sem precisar pedir o log do outro lado.
-      const detalhe = `${ROTULO_ACAO[acao]} ${r2.valor}${acao === 'reembolsar' ? ` (compra #${r2.activationId})` : ''} — ${String(req.body?.motivo || '').trim()}`;
+      const motivo = String(req.body?.motivo || '').trim();
+      const detalhe = `${ROTULO_ACAO[acao]} ${r2.valor}${acao === 'reembolsar' ? ` (compra #${r2.activationId})` : ''}${motivo ? ` — ${motivo}` : ''}`;
       await db.prepare(`INSERT INTO auditoria_eventos
         (acao, usuario_id, usuario_nome, usuario_email, conversa_id, protocolo, canal,
          contato_id, contato_nome, criado_em, origem_mensagem_id, detalhe)
@@ -1114,7 +1127,23 @@ function criarRotasApi(db, opcoes = {}) {
   });
 
   rotaDeLeitura('/suporte/compras', (pin, opcoes) => saldo.listarCompras(pin, opcoes));
-  rotaDeLeitura('/suporte/transacoes', (pin, opcoes) => saldo.listarTransacoes(pin, opcoes));
+  rotaDeLeitura('/suporte/transacoes', async (pin, opcoes) => {
+    const resultado = await saldo.listarTransacoes(pin, opcoes);
+    const compras = [...new Set(resultado.transacoes
+      .filter((t) => ehReembolsoDoAtendimento(t)
+        && Number.isSafeInteger(Number(t.ativacaoId)) && Number(t.ativacaoId) > 0)
+      .map((t) => Number(t.ativacaoId)))];
+
+    let auditorias = [];
+    if (compras.length) {
+      const filtros = compras.map(() => 'detalhe LIKE ?').join(' OR ');
+      auditorias = await db.prepare(`SELECT usuario_nome, detalhe FROM auditoria_eventos
+        WHERE acao = 'saldo_reembolsar' AND (${filtros}) ORDER BY criado_em DESC, id DESC`)
+        .all(...compras.map((id) => `%(compra #${id})%`));
+    }
+
+    return { ...resultado, transacoes: personalizarReembolsos(resultado.transacoes, auditorias) };
+  });
 
   r.post('/suporte/saldo', async (req, res) => {
     if (!saldo || !saldo.configurado) {
@@ -1192,6 +1221,7 @@ function criarRotasApi(db, opcoes = {}) {
       id: row.id,
       tipo: row.tipo,
       nome: row.nome,
+      cor: row.tipo === 'whatsapp' ? (normalizarCorCanal(row.cor) || COR_CANAL_PADRAO) : null,
       status: row.status,
       numero: row.numero,
       numeroFormatado: row.numero ? (ehTelegram ? `@${row.numero}` : canais.formatarNumero(row.numero)) : null,
@@ -1255,6 +1285,8 @@ function criarRotasApi(db, opcoes = {}) {
 
   r.post('/canais', exigirAdmin, exigirUazapi, async (req, res) => {
     const nome = String(req.body?.nome || '').trim().slice(0, 60) || 'WhatsApp';
+    const cor = normalizarCorCanal(req.body?.cor);
+    if (!cor) return res.status(400).json({ erro: 'Escolha uma cor válida para o avatar.' });
     let resposta;
     try {
       resposta = await uazapi.criarInstancia(nome);
@@ -1267,9 +1299,9 @@ function criarRotasApi(db, opcoes = {}) {
 
     const agora = Date.now();
     const id = Number((await db.prepare(`
-      INSERT INTO canais (tipo, nome, instancia_id, instancia_token, webhook_segredo, status, criado_em, atualizado_em)
-      VALUES ('whatsapp', ?, ?, ?, ?, 'disconnected', ?, ?)`)
-      .run(nome, inst.id || null, String(token), canais.novoSegredo(), agora, agora)).lastInsertRowid);
+      INSERT INTO canais (tipo, nome, cor, instancia_id, instancia_token, webhook_segredo, status, criado_em, atualizado_em)
+      VALUES ('whatsapp', ?, ?, ?, ?, ?, 'disconnected', ?, ?)`)
+      .run(nome, cor, inst.id || null, String(token), canais.novoSegredo(), agora, agora)).lastInsertRowid);
     const row = await sqlCanal.get(id);
     try {
       await configurarWebhookDoCanal(req, row);
