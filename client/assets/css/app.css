@@ -20,6 +20,10 @@
   --vermelho: #8E1F16;
   --vermelho-badge: #E5544A;
   --vermelho-claro: #FDECEA;
+  --extrato-verde: #008A45;
+  --extrato-verde-fundo: #DDF7E8;
+  --extrato-vermelho: #C62838;
+  --extrato-vermelho-fundo: #FCE5E8;
   --azul: #1D6FA5;
   --azul-claro: #E3EEF6;
   --azul-icone: #4FA3DA;
@@ -468,6 +472,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .compra-item .numero { font-family: "Courier New", monospace; font-size: 10.5px; color: var(--texto-suave); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .selo-compra { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 3px 7px; border-radius: 6px; flex-shrink: 0; background: var(--cinza); color: var(--texto-suave); }
 .selo-compra.ok { background: var(--verde-fundo); color: var(--verde-texto); }
+.selo-compra.cancelada { background: var(--extrato-vermelho-fundo); color: var(--extrato-vermelho); }
 .selo-compra.reembolsada { background: var(--nota-fundo); color: var(--nota-suave); }
 
 /* Extrato */
@@ -475,14 +480,15 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .transacao-item { display: flex; align-items: center; gap: 9px; padding: 9px 0; border-bottom: 1px solid var(--borda); }
 .transacao-item:last-child { border-bottom: 0; }
 .transacao-ic { width: 26px; height: 26px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--cinza); color: var(--texto-suave); }
-.transacao-ic.entrada { background: var(--verde-fundo); color: var(--verde-texto); }
+.transacao-ic.entrada { background: var(--extrato-verde-fundo); color: var(--extrato-verde); }
+.transacao-ic.saida { background: var(--extrato-vermelho-fundo); color: var(--extrato-vermelho); }
 .transacao-texto { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .transacao-texto .tipo { font-size: 12px; font-weight: 700; }
 .transacao-texto .desc { font-size: 10.5px; color: var(--texto-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .transacao-valores { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
 .transacao-valores .valor { font-family: "Courier New", monospace; font-size: 12px; font-weight: 700; }
-.transacao-valores .valor.entrada { color: var(--verde-texto); }
-.transacao-valores .valor.saida { color: var(--vermelho); }
+.transacao-valores .valor.entrada { color: var(--extrato-verde); }
+.transacao-valores .valor.saida { color: var(--extrato-vermelho); }
 .transacao-valores .depois { font-family: "Courier New", monospace; font-size: 10.5px; color: var(--texto-suave); }
 
 .aba-vazia {
@@ -846,6 +852,10 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
   --vermelho: #FFB4A8;
   --vermelho-badge: #E5544A;
   --vermelho-claro: #3A1A16;
+  --extrato-verde: #39E079;
+  --extrato-verde-fundo: #143B26;
+  --extrato-vermelho: #FF6B75;
+  --extrato-vermelho-fundo: #421D23;
   --azul: #7FC2EE;
   --azul-claro: #17384F;
   --azul-icone: #7FC2EE;

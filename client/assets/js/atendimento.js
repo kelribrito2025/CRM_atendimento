@@ -1887,7 +1887,8 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
   }
 
   function itemCompra(compra) {
-    const selo = compra.reembolsada ? 'reembolsada' : (compra.status === 'completed' || compra.status === 'active' ? 'ok' : 'neutro');
+    const cancelada = compra.status === 'cancelled' || String(compra.statusTexto || '').toLowerCase() === 'cancelada';
+    const selo = cancelada ? 'cancelada' : (compra.reembolsada ? 'reembolsada' : (compra.status === 'completed' || compra.status === 'active' ? 'ok' : 'neutro'));
     return el('div', { class: 'compra-item' },
       el('div', { class: 'linha' },
         el('span', { class: 'nome' }, compra.descricao),
