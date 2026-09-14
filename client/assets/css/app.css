@@ -434,6 +434,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .saldo-cabecalho-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; padding-top: 2px; }
 .saldo-linha-topo { display: flex; align-items: flex-end; gap: 9px; }
 .saldo-numero { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.saldo-atualizacao { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
 .saldo-rotulo { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--rail-icone); }
 .saldo-valor-grande { font-size: 25px; font-weight: 700; letter-spacing: -.03em; color: #fff; }
 .saldo-quando {

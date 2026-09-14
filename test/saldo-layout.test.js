@@ -18,6 +18,9 @@ test('ficha: consultar saldo fica à direita do título na mesma linha', () => {
   assert.match(bloco, /class: 'saldo-rotulo' \}, 'Saldo em conta'/);
   assert.match(bloco, /cabecalho\(recado, podeConsultar && pin \? 'Consultar saldo' : null\)/);
   assert.match(bloco, /cabecalho\(saldo\.erro, podeConsultar && pin \? 'Tentar de novo' : null, 'saldo-erro'\)/);
+  assert.match(bloco, /class: 'saldo-atualizacao'/);
+  assert.match(bloco, /consultarSaldo\(pin, \{ forcar: true \}\)/);
+  assert.match(bloco, /'Atualizar saldo'/);
   assert.match(css, /\.saldo-cabecalho \{[^}]*display: flex;[^}]*justify-content: space-between;/);
   assert.match(css, /\.saldo-cabecalho-texto \{[^}]*flex-direction: column;[^}]*gap: 3px;/);
   assert.match(css, /\.saldo-acao \{\s*flex-shrink: 0;/);

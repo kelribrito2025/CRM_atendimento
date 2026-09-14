@@ -7,6 +7,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
 import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monetario.mjs';
 import { estiloAvatarDoCanal } from './cor-avatar.mjs';
 import { formatarDataHoraCompra } from './data-compra.mjs';
+import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 
 (() => {
   'use strict';
@@ -286,6 +287,7 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
     renderLista();
     renderChat();
     renderPainel();
+    consultarSaldoAutomaticamente(conversa);
   }
 
   // Atualização periódica sem atrapalhar quem está digitando
@@ -1575,26 +1577,63 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
 
   /* ---------------- consulta de saldo pelo PIN ---------------- */
   const saldo = { conversaId: null, pin: '', carregando: false, cliente: null, erro: null, em: 0 };
+  const cacheSaldos = new Map();
+  let sequenciaConsultaSaldo = 0;
 
   function limparSaldo(conversaId) {
-    Object.assign(saldo, { conversaId, pin: '', carregando: false, cliente: null, erro: null });
+    Object.assign(saldo, { conversaId, pin: '', carregando: false, cliente: null, erro: null, em: 0 });
   }
 
-  async function consultarSaldo(pinDigitado) {
+  function guardarSaldoNoCache(c, { pin, cliente = null, contato = null, erro = null, em = Date.now() }) {
+    cacheSaldos.set(c.id, criarEntradaCacheSaldo({ conversaId: c.id, pin, cliente, contato, erro, em }));
+  }
+
+  function restaurarSaldoDoCache(c, pin) {
+    const entrada = cacheSaldos.get(c.id);
+    if (!cacheSaldoValido(entrada, { conversaId: c.id, pin })) {
+      if (entrada) cacheSaldos.delete(c.id);
+      return false;
+    }
+    Object.assign(saldo, {
+      conversaId: c.id, pin: entrada.pin, carregando: false,
+      cliente: entrada.cliente, erro: entrada.erro, em: entrada.em,
+    });
+    if (entrada.contato) c.contato = { ...c.contato, ...entrada.contato };
+    return true;
+  }
+
+  async function consultarSaldo(pinDigitado, { forcar = true } = {}) {
     const c = estado.conversa;
-    if (!c || saldo.carregando) return;
+    if (!c || (saldo.carregando && saldo.conversaId === c.id)) return;
     const pin = String(pinDigitado || '').replace(/\D/g, '');
     if (!pin) return toast('Digite o PIN do cliente nos quadradinhos para consultar o saldo.');
+    if (!forcar && restaurarSaldoDoCache(c, pin)) {
+      renderPainel();
+      return;
+    }
+    const conversaId = c.id;
+    const consulta = ++sequenciaConsultaSaldo;
     Object.assign(saldo, { conversaId: c.id, pin, carregando: true, cliente: null, erro: null });
     renderPainel();
     try {
       const r = await api('/suporte/saldo', { method: 'POST', body: { pin, conversaId: c.id } });
-      Object.assign(saldo, { carregando: false, cliente: r.cliente, em: Date.now() });
+      const em = Date.now();
       if (r.conversa) c.contato = r.conversa.contato;
+      guardarSaldoNoCache(c, { pin, cliente: r.cliente, contato: r.conversa?.contato || null, em });
+      if (estado.conversaId !== conversaId || consulta !== sequenciaConsultaSaldo) return;
+      Object.assign(saldo, { carregando: false, cliente: r.cliente, erro: null, em });
     } catch (e) {
+      guardarSaldoNoCache(c, { pin, erro: e.message });
+      if (estado.conversaId !== conversaId || consulta !== sequenciaConsultaSaldo) return;
       Object.assign(saldo, { carregando: false, erro: e.message });
     }
     renderPainel();
+  }
+
+  function consultarSaldoAutomaticamente(c) {
+    const pin = String(c?.contato?.pin || '').replace(/\D/g, '');
+    if (!estado.resumo?.saldoAtivo || !pin) return;
+    consultarSaldo(pin, { forcar: false });
   }
 
   // Os quadradinhos do PIN: o atendente digita ali o PIN informado pelo cliente.
@@ -1644,8 +1683,8 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
     const valorInicial = String(saldo.pin || ct.pin || doCanal || '').trim();
     const podeConsultar = Boolean(estado.resumo?.saldoAtivo);
     const botaoSaldo = (ler) => (podeConsultar
-      ? el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => consultarSaldo(ler()) },
-        saldo.cliente || saldo.erro ? 'Consultar de novo' : 'Consultar saldo')
+      ? el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => consultarSaldo(ler(), { forcar: true }) },
+        saldo.erro ? 'Tentar de novo' : (saldo.cliente ? 'Atualizar saldo' : 'Consultar saldo'))
       : null);
 
     // Já tem PIN: card enxuto, só com o número e o sinal de conferido.
@@ -1791,7 +1830,14 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
         el('div', { class: 'saldo-numero' },
           el('span', { class: 'saldo-rotulo' }, 'Saldo em conta'),
           el('span', { class: 'saldo-valor-grande' }, cli.saldo)),
-        quando ? el('span', { class: 'saldo-quando' }, icone('relogio', ICONE.relogioSuave), quando) : null),
+        el('div', { class: 'saldo-atualizacao' },
+          quando ? el('span', { class: 'saldo-quando' }, icone('relogio', ICONE.relogioSuave), quando) : null,
+          podeConsultar && pin
+            ? el('button', {
+              type: 'button', class: 'saldo-acao',
+              onclick: () => consultarSaldo(pin, { forcar: true }),
+            }, 'Atualizar saldo')
+            : null)),
       el('div', { class: 'saldo-rodape' },
         el('span', {}, `${cli.totalRecargas} recarga${cli.totalRecargas === 1 ? '' : 's'}`),
         cli.ultimaRecarga ? el('span', { class: 'ponto' }, '·') : null,
@@ -2113,6 +2159,7 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
         if (saldo.conversaId === c.id && saldo.cliente) {
           saldo.cliente = { ...saldo.cliente, saldo: r.saldoAtual, saldoCentavos: r.saldoAtualCentavos };
           saldo.em = Date.now();
+          guardarSaldoNoCache(c, { pin: saldo.pin, cliente: saldo.cliente, contato: c.contato, em: saldo.em });
         }
         // Compras e extrato mudaram: busca de novo quando a aba for aberta.
         ficha.compras.conversaId = null;
@@ -2279,6 +2326,7 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
             ativa: r.ativa, encerradaPeloTitular: r.encerradaPeloTitular, situacao: r.situacao,
           };
           saldo.em = Date.now();
+          guardarSaldoNoCache(c, { pin: saldo.pin, cliente: saldo.cliente, contato: c.contato, em: saldo.em });
         }
         fundo.remove();
         renderPainel();
