@@ -1745,25 +1745,25 @@ import { deveSalvarNota } from './nota-editor.mjs';
     const podeConsultar = Boolean(estado.resumo?.saldoAtivo);
     const cli = saldo.conversaId === c.id ? saldo.cliente : null;
     const pin = String(saldo.pin || c.contato.pin || '').trim();
-    const cabecalho = (textoBotao = null) => el('div', { class: 'saldo-cabecalho' },
-      el('span', { class: 'saldo-rotulo' }, 'Saldo em conta'),
+    const cabecalho = (detalhe, textoBotao = null, classeDetalhe = 'saldo-vazio') => el('div', { class: 'saldo-cabecalho' },
+      el('div', { class: 'saldo-cabecalho-texto' },
+        el('span', { class: 'saldo-rotulo' }, 'Saldo em conta'),
+        detalhe ? el('span', { class: classeDetalhe }, detalhe) : null),
       textoBotao ? el('button', { type: 'button', class: 'saldo-acao', onclick: () => consultarSaldo(pin) }, textoBotao) : null);
 
     if (saldo.conversaId === c.id && saldo.carregando) {
-      return el('div', { class: 'saldo-bloco' }, cabecalho(), el('span', { class: 'saldo-vazio' }, 'Consultando saldo…'));
+      return el('div', { class: 'saldo-bloco' }, cabecalho('Consultando saldo…'));
     }
     if (saldo.conversaId === c.id && saldo.erro) {
       return el('div', { class: 'saldo-bloco' },
-        cabecalho(podeConsultar && pin ? 'Tentar de novo' : null),
-        el('span', { class: 'saldo-erro' }, saldo.erro));
+        cabecalho(saldo.erro, podeConsultar && pin ? 'Tentar de novo' : null, 'saldo-erro'));
     }
     if (!cli) {
       const recado = !podeConsultar
         ? 'Consulta de saldo desligada no servidor.'
         : (pin ? 'Ainda não consultado.' : 'Confirme o PIN do cliente para ver o saldo.');
       return el('div', { class: 'saldo-bloco' },
-        cabecalho(podeConsultar && pin ? 'Consultar saldo' : null),
-        el('span', { class: 'saldo-vazio' }, recado));
+        cabecalho(recado, podeConsultar && pin ? 'Consultar saldo' : null));
     }
 
     const quando = desdeQuando(saldo.em);
