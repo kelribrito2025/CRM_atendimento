@@ -4,6 +4,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 import { capturarCompositor, restaurarCompositor } from './foco-compositor.mjs';
 import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notificacoes.mjs';
 import { deveSalvarNota } from './nota-editor.mjs';
+import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monetario.mjs';
 
 (() => {
   'use strict';
@@ -1921,14 +1922,6 @@ import { deveSalvarNota } from './nota-editor.mjs';
   const ACAO_NA_API = { adicionar: 'creditar', debitar: 'debitar', reembolsar: 'reembolsar' };
   const NOME_DO_FEITO = { adicionar: 'Crédito', debitar: 'Débito', reembolsar: 'Reembolso' };
 
-  // Converte "1.234,56" (ou "1234.56") em centavos inteiros.
-  function centavosDoTexto(texto) {
-    const limpo = String(texto || '').replace(/[^0-9,.]/g, '').replace(/\.(?=\d{3}\b)/g, '').replace(',', '.');
-    const numero = Number(limpo);
-    if (!Number.isFinite(numero) || numero <= 0) return null;
-    return Math.round(numero * 100);
-  }
-
   function emReaisDoCentavo(centavos) {
     return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   }
@@ -1956,8 +1949,13 @@ import { deveSalvarNota } from './nota-editor.mjs';
 
     const campoValor = el('input', {
       type: 'text', value: tipo === 'reembolsar' ? '' : '50,00', 'aria-label': 'Valor',
+      inputmode: 'numeric', autocomplete: 'off',
       class: 'folha-valor', disabled: tipo === 'reembolsar' ? 'disabled' : null,
-      oninput: () => desenharPrevisao(),
+      oninput: () => {
+        campoValor.value = formatarValorEmCentavos(campoValor.value);
+        campoValor.setSelectionRange?.(campoValor.value.length, campoValor.value.length);
+        desenharPrevisao();
+      },
     });
     const campoMotivo = el('textarea', {
       class: 'campo-rapida area', rows: '2', maxlength: '300',
@@ -1973,7 +1971,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
       const atual = cli?.saldoCentavos ?? null;
       const centavos = tipo === 'reembolsar'
         ? (estadoFolha.compra ? estadoFolha.compra.valorCentavos : null)
-        : centavosDoTexto(campoValor.value);
+        : centavosDoValorFormatado(campoValor.value);
       const sinal = tipo === 'debitar' ? -1 : 1;
       const depois = atual !== null && centavos !== null ? atual + sinal * centavos : null;
       antesDepois.replaceChildren(
@@ -2024,7 +2022,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
         chaveIdempotencia: estadoFolha.marca,
       };
       if (tipo === 'reembolsar') corpo.activationId = estadoFolha.compra?.id;
-      else corpo.valorCents = centavosDoTexto(campoValor.value);
+      else corpo.valorCents = centavosDoValorFormatado(campoValor.value);
 
       estadoFolha.enviando = true;
       botaoConfirmar.disabled = true;
@@ -2067,7 +2065,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
         if (estadoFolha.compra.recebeuSms
           && !window.confirm(`Esta compra ENTREGOU o código ao cliente (${estadoFolha.compra.numero || 'número'}).\n\nReembolsar mesmo assim?`)) return;
       } else {
-        const centavos = centavosDoTexto(campoValor.value);
+        const centavos = centavosDoValorFormatado(campoValor.value);
         if (centavos === null) return mostrarAviso('Digite um valor maior que zero.');
         if (centavos > VALOR_QUE_PEDE_CONFIRMACAO
           && !window.confirm(`Você está ${tipo === 'creditar' ? 'creditando' : 'debitando'} ${emReaisDoCentavo(centavos)}.\n\nConfirma esse valor?`)) return;
@@ -2117,7 +2115,10 @@ import { deveSalvarNota } from './nota-editor.mjs';
     desenharCompras();
     desenharPrevisao();
     document.body.append(fundo);
-    if (tipo !== 'reembolsar') campoValor.focus();
+    if (tipo !== 'reembolsar') {
+      campoValor.focus();
+      campoValor.select();
+    }
   }
 
   function renderPainel() {
