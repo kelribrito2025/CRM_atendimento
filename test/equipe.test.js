@@ -123,6 +123,28 @@ test('equipe: muda papel, equipes e bloqueia o acesso de alguém', async () => {
   } finally { await s.fechar(); }
 });
 
+test('equipe: administrador edita o próprio nome e o nome de outro atendente', async () => {
+  const s = await subirServidor();
+  try {
+    const eu = (await s.chamar('/api/me')).dados.usuario.id;
+    const outro = await s.criarPessoa('Bruno Alves', 'bruno@teste.com');
+
+    const meuNome = await s.chamar(`/api/equipe/usuarios/${eu}`, 'PATCH', { nome: '  Kely   Brito  ' });
+    assert.equal(meuNome.status, 200, JSON.stringify(meuNome.dados));
+    assert.equal(meuNome.dados.usuario.nome, 'Kely Brito');
+    assert.equal((await s.chamar('/api/resumo')).dados.usuario.nome, 'Kely Brito');
+
+    const outroNome = await s.chamar(`/api/equipe/usuarios/${outro}`, 'PATCH', { nome: 'Bruno Cardoso' });
+    assert.equal(outroNome.status, 200, JSON.stringify(outroNome.dados));
+    assert.equal(outroNome.dados.usuario.nome, 'Bruno Cardoso');
+    assert.equal((await s.chamar('/api/equipe')).dados.usuarios.find((u) => Number(u.id) === Number(outro)).nome, 'Bruno Cardoso');
+
+    for (const nome of ['', 'A', 'x'.repeat(121)]) {
+      assert.equal((await s.chamar(`/api/equipe/usuarios/${outro}`, 'PATCH', { nome })).status, 400);
+    }
+  } finally { await s.fechar(); }
+});
+
 test('equipe: ninguém se tranca do lado de fora', async () => {
   const s = await subirServidor();
   try {
@@ -149,7 +171,7 @@ test('equipe: atendente comum não entra nas configurações da equipe', async (
       ['/api/equipe', 'GET', null],
       ['/api/equipe/convites', 'POST', { email: 'x@y.com' }],
       ['/api/equipe/convites/abc', 'DELETE', null],
-      ['/api/equipe/usuarios/1', 'PATCH', { papel: 'admin' }],
+      ['/api/equipe/usuarios/1', 'PATCH', { nome: 'Nome alterado' }],
     ]) {
       assert.equal((await s.chamar(caminho, metodo, corpo, dele)).status, 403, `${metodo} ${caminho}`);
     }

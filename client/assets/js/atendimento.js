@@ -1738,26 +1738,25 @@ import { deveSalvarNota } from './nota-editor.mjs';
     const podeConsultar = Boolean(estado.resumo?.saldoAtivo);
     const cli = saldo.conversaId === c.id ? saldo.cliente : null;
     const pin = String(saldo.pin || c.contato.pin || '').trim();
+    const cabecalho = (textoBotao = null) => el('div', { class: 'saldo-cabecalho' },
+      el('span', { class: 'saldo-rotulo' }, 'Saldo em conta'),
+      textoBotao ? el('button', { type: 'button', class: 'saldo-acao', onclick: () => consultarSaldo(pin) }, textoBotao) : null);
 
     if (saldo.conversaId === c.id && saldo.carregando) {
-      return el('div', { class: 'saldo-bloco' }, el('span', { class: 'saldo-vazio' }, 'Consultando saldo…'));
+      return el('div', { class: 'saldo-bloco' }, cabecalho(), el('span', { class: 'saldo-vazio' }, 'Consultando saldo…'));
     }
     if (saldo.conversaId === c.id && saldo.erro) {
       return el('div', { class: 'saldo-bloco' },
-        el('span', { class: 'saldo-rotulo' }, 'Saldo em conta'),
-        el('span', { class: 'saldo-erro' }, saldo.erro),
-        podeConsultar && pin ? el('button', { type: 'button', class: 'saldo-acao', onclick: () => consultarSaldo(pin) }, 'Tentar de novo') : null);
+        cabecalho(podeConsultar && pin ? 'Tentar de novo' : null),
+        el('span', { class: 'saldo-erro' }, saldo.erro));
     }
     if (!cli) {
       const recado = !podeConsultar
         ? 'Consulta de saldo desligada no servidor.'
         : (pin ? 'Ainda não consultado.' : 'Confirme o PIN do cliente para ver o saldo.');
       return el('div', { class: 'saldo-bloco' },
-        el('span', { class: 'saldo-rotulo' }, 'Saldo em conta'),
-        el('span', { class: 'saldo-vazio' }, recado),
-        podeConsultar && pin
-          ? el('button', { type: 'button', class: 'saldo-acao', onclick: () => consultarSaldo(pin) }, 'Consultar saldo')
-          : null);
+        cabecalho(podeConsultar && pin ? 'Consultar saldo' : null),
+        el('span', { class: 'saldo-vazio' }, recado));
     }
 
     const quando = desdeQuando(saldo.em);
@@ -2153,7 +2152,12 @@ import { deveSalvarNota } from './nota-editor.mjs';
     return el('div', { class: `pessoa${u.ativo ? '' : ' inativa'}` },
       el('span', { class: 'avatar p' }, u.iniciais),
       el('div', { class: 'dados' },
-        el('span', { class: 'nome' }, u.nome, eu ? ' (você)' : ''),
+        el('div', { class: 'pessoa-nome-linha' },
+          el('span', { class: 'nome' }, u.nome, eu ? ' (você)' : ''),
+          el('button', {
+            type: 'button', class: 'btn-editar-nome hov', title: `Editar nome de ${u.nome}`,
+            'aria-label': `Editar nome de ${u.nome}`, onclick: () => editarNomeDe(u),
+          }, svg(ICONE.lapisPequeno))),
         el('span', { class: 'email' }, u.email)),
       el('div', { class: 'equipes' }, ...(u.equipes.length
         ? u.equipes.map((e) => el('span', { class: 'selo-equipe' }, el('span', { class: 'ponto', style: `background:${e.cor}` }), e.nome))
@@ -2169,6 +2173,64 @@ import { deveSalvarNota } from './nota-editor.mjs';
         onclick: () => salvarPessoa(u.id, { ativo: !u.ativo }),
       }, svg(u.ativo ? ICONE.cadeado : ICONE.check)),
       el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => editarEquipesDe(u, equipes) }, 'Equipes'));
+  }
+
+  function editarNomeDe(u) {
+    const erro = el('span', { class: 'dica erro-texto', 'aria-live': 'polite' });
+    const campo = el('input', {
+      type: 'text', value: u.nome, maxlength: '120', autocomplete: 'name',
+      'aria-label': 'Nome do atendente',
+    });
+    const fundo = el('div', { class: 'modal-fundo', onclick: (ev) => { if (ev.target === fundo) fundo.remove(); } });
+    let salvando = false;
+    const cancelar = el('button', { type: 'button', class: 'btn-suave hov', onclick: () => fundo.remove() }, 'Cancelar');
+    const salvar = el('button', { type: 'button', class: 'btn-primario' }, 'Salvar nome');
+
+    async function concluir() {
+      if (salvando) return;
+      const nome = campo.value.trim().replace(/\s+/g, ' ');
+      if (nome.length < 2) {
+        erro.textContent = 'Digite um nome com pelo menos 2 caracteres.';
+        campo.focus();
+        return;
+      }
+      salvando = true;
+      salvar.disabled = true;
+      cancelar.disabled = true;
+      erro.textContent = '';
+      try {
+        await api(`/equipe/usuarios/${u.id}`, { method: 'PATCH', body: { nome } });
+        fundo.remove();
+        await carregarEquipe();
+        await carregarResumo();
+        toast('Nome atualizado.');
+      } catch (e) {
+        salvando = false;
+        salvar.disabled = false;
+        cancelar.disabled = false;
+        erro.textContent = e.message;
+        campo.focus();
+      }
+    }
+
+    campo.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') fundo.remove();
+      if (ev.key === 'Enter' && !ev.isComposing) {
+        ev.preventDefault();
+        concluir();
+      }
+    });
+    salvar.addEventListener('click', concluir);
+    fundo.append(el('div', { class: 'modal editar-nome', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': `editar-nome-${u.id}` },
+      el('div', { class: 'modal-corpo' },
+        el('div', { class: 'modal-cab' },
+          el('div', {}, el('h2', { id: `editar-nome-${u.id}` }, 'Editar nome'), el('p', {}, `Altere como ${u.email} aparece no atendimento.`)),
+          el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: () => fundo.remove() }, svg(ICONE.fechar))),
+        el('label', { class: 'config-campo' }, el('span', {}, 'Nome do atendente'), campo, erro),
+        el('div', { class: 'modal-acoes' }, cancelar, salvar))));
+    document.body.append(fundo);
+    campo.focus();
+    campo.select();
   }
 
   /* ---------------- Configurações › Auditoria ---------------- */

@@ -410,6 +410,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
   border-radius: 14px; background: var(--rail); padding: 13px 14px;
   display: flex; flex-direction: column; gap: 9px; flex-shrink: 0;
 }
+.saldo-cabecalho { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; }
 .saldo-linha-topo { display: flex; align-items: flex-end; gap: 9px; }
 .saldo-numero { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .saldo-rotulo { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--rail-icone); }
@@ -425,7 +426,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .saldo-vazio { font-size: 12.5px; color: var(--rail-icone); line-height: 1.5; }
 .saldo-erro { font-size: 12.5px; color: var(--vermelho); line-height: 1.45; }
 .saldo-acao {
-  align-self: flex-start; height: 32px; padding: 0 13px; border-radius: 10px; border: 0;
+  flex-shrink: 0; height: 32px; padding: 0 13px; border-radius: 10px; border: 0;
   background: var(--verde); color: #fff; font-size: 12px; font-weight: 700;
 }
 .saldo-acao:hover { background: var(--verde-escuro); }
@@ -679,7 +680,15 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 }
 .pessoa.inativa { opacity: .6; }
 .pessoa .dados { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pessoa-nome-linha { min-width: 0; display: flex; align-items: center; gap: 5px; }
 .pessoa .nome { font-size: 13.5px; font-weight: 700; }
+.btn-editar-nome {
+  width: 26px; height: 26px; flex-shrink: 0; border: 0; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--texto-suave); cursor: pointer;
+}
+.btn-editar-nome:hover { color: var(--verde-texto); background: var(--verde-claro); }
+.btn-editar-nome svg { width: 13px; height: 13px; }
 .pessoa .email { font-size: 12px; color: var(--texto-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pessoa .equipes { width: 190px; flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 5px; }
 .pessoa .papel { width: 132px; flex-shrink: 0; }
@@ -714,6 +723,8 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 }
 .escolha-equipe.marcada { border-color: var(--verde); background: var(--verde-fundo); color: var(--verde-texto); }
 .config-vazio { font-size: 12.5px; color: var(--texto-suave); padding: 4px 0; }
+.modal.editar-nome { max-width: 480px; }
+.erro-texto { min-height: 16px; color: var(--vermelho) !important; }
 
 .auditoria-lista { display: flex; flex-direction: column; gap: 8px; }
 .auditoria-item {
