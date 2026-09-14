@@ -86,7 +86,7 @@ O CRM recebe e responde mensagens de WhatsApp pela API não oficial **uazapi**.
    UAZAPI_ADMIN_TOKEN=cole-aqui-o-token
    BASE_URL=https://endereco-publico-do-crm
    ```
-3. Reinicie o sistema, entre como administrador e clique no seu avatar (canto inferior esquerdo) e em **Conectar canal**.
+3. Reinicie o sistema, entre como administrador e abra **Configurações › Canais** (pelo botão de engrenagem, ou pelo avatar › **Conectar canal**).
 4. Clique em **Adicionar WhatsApp** e conecte de um dos dois jeitos:
    - **Ler QR code**: no celular, WhatsApp › Aparelhos conectados › Conectar um aparelho › aponte para o QR code.
    - **Digitar número**: informe o número com DDD, gere o código e digite no celular em Aparelhos conectados › Conectar um aparelho › Conectar com número de telefone.
@@ -95,7 +95,7 @@ Quando conectar, o menu da conta (avatar) mostra "WhatsApp conectado" com o núm
 
 **Importante: o `BASE_URL` precisa ser um endereço público na internet.** O servidor do uazapi entrega as mensagens chamando `BASE_URL/webhook/uazapi/...`. Em `http://localhost` isso não funciona: dá para conectar e enviar, mas as mensagens recebidas não chegam. Para testar em casa, use um túnel (por exemplo, Cloudflare Tunnel ou ngrok) e coloque o endereço do túnel em `BASE_URL`; no Manus, use o endereço público da prévia.
 
-Na janela de canais, o botão **Eventos** mostra os últimos avisos que o uazapi enviou ao CRM, o que ajuda a diagnosticar problemas. Mensagens de grupos são ignoradas. Fotos, áudios e documentos aparecem por enquanto como texto (por exemplo, "[Imagem]").
+Em **Configurações › Canais**, dentro de **Gerenciar**, o botão **Ver eventos** mostra os últimos avisos que o uazapi enviou ao CRM, o que ajuda a diagnosticar problemas. Mensagens de grupos são ignoradas. Fotos, áudios e documentos aparecem por enquanto como texto (por exemplo, "[Imagem]").
 
 ## Onde os dados ficam guardados
 
@@ -217,10 +217,10 @@ O Telegram é o canal mais simples de ligar: só precisa do **token de um bot**,
 
 1. No Telegram, abra o **@BotFather** e envie `/newbot`. Escolha um nome (ex.: Bigteck Atendimento) e um usuário terminado em "bot".
 2. Copie o token que ele mostra (formato `123456789:AAF…`).
-3. No CRM, entre como administrador, clique no avatar › **Conectar canal** › cole o token em **Adicionar Telegram**.
+3. No CRM, entre como administrador, abra **Configurações › Canais** e cole o token em **Novo bot do Telegram** › **Adicionar Telegram**.
 4. Divulgue o @usuário do bot para os clientes. Tudo o que eles mandarem ao bot aparece na lista de conversas, e as respostas do chat vão para o Telegram deles.
 
-O CRM recebe as mensagens por consulta contínua à API do Telegram. Se o mesmo bot for usado por dois sistemas ao mesmo tempo (por exemplo, o CRM local e o publicado), o Telegram recusa um deles e a janela de canais mostra o erro. Mensagens de grupos são ignoradas.
+O CRM recebe as mensagens por consulta contínua à API do Telegram. Se o mesmo bot for usado por dois sistemas ao mesmo tempo (por exemplo, o CRM local e o publicado), o Telegram recusa um deles e a página de Canais mostra o erro. Mensagens de grupos são ignoradas.
 
 ## Ícones (Iconly)
 

@@ -669,23 +669,41 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 .btn-perigo { border: 0; border-radius: 11px; background: var(--vermelho); color: #fff; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; transition: background .14s, transform .14s; }
 .btn-perigo:hover { background: #B9342E; }
 .btn-perigo:active { transform: scale(.97); }
-.canais-lista { display: flex; flex-direction: column; gap: 8px; }
-.canal-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--borda); border-radius: 14px; flex-wrap: wrap; }
-.canal-item .status-ponto { width: 10px; height: 10px; border-radius: 50%; background: #C9D4CD; flex-shrink: 0; }
-.canal-item .status-ponto.connected { background: var(--verde); }
-.canal-item .status-ponto.connecting { background: #E0A800; }
-.canal-item .canal-info { display: flex; flex-direction: column; min-width: 160px; flex: 1; gap: 2px; }
-.canal-item .canal-nome { font-size: 13.5px; font-weight: 700; }
-.canal-item .canal-sub { font-size: 12px; color: var(--texto-suave); }
-.canal-item .canal-acoes { display: flex; gap: 6px; flex-wrap: wrap; }
-.canal-item .canal-aviso { flex-basis: 100%; font-size: 12px; color: var(--vermelho); background: var(--vermelho-claro); padding: 8px 10px; border-radius: 9px; line-height: 1.45; }
-.canal-item .canal-nota { flex-basis: 100%; font-size: 11.5px; color: var(--texto-suave); word-break: break-all; }
-.novo-canal { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* ===== Configurações › Canais ===== */
+.lista-canais { display: flex; flex-direction: column; gap: 10px; }
+.cartao-canal { border: 1px solid var(--borda); border-radius: 16px; background: var(--fundo-suave); overflow: hidden; }
+.cartao-canal.aberto { border-color: var(--verde-borda); }
+.linha-canal { display: flex; align-items: center; gap: 13px; padding: 15px 16px; flex-wrap: wrap; }
+.marca-canal { width: 42px; height: 42px; border-radius: 13px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; }
+.marca-canal.whatsapp { background: var(--verde); }
+.marca-canal.telegram { background: #2AA0DA; }
+.marca-canal.site { background: var(--rail); }
+.marca-canal.site svg { width: 21px; height: 21px; }
+.quem-canal { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 3px; }
+.nome-linha { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.nome-canal { font-size: 14.5px; font-weight: 700; }
+.sub-canal { font-size: 12px; color: var(--texto-suave); }
+.estado-canal { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 7px; background: var(--cinza); font-size: 11px; font-weight: 700; color: var(--texto-suave); }
+.estado-canal .bolinha { width: 6px; height: 6px; border-radius: 50%; background: #C9D4CD; }
+.estado-canal.ok { background: var(--verde-claro); color: var(--verde-texto); }
+.estado-canal.ok .bolinha { background: var(--verde); }
+.acoes-canal { display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
+.acoes-canal .btn-primario.pequeno, .acoes-canal .btn-branco.pequeno { height: 38px; }
+.gerenciar-canal { border-top: 1px solid var(--borda); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; background: var(--superficie); }
+.botoes-gerenciar { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-suave.perigo { color: var(--vermelho); }
+.canal-aviso { font-size: 12px; color: var(--vermelho); background: var(--vermelho-claro); padding: 8px 10px; border-radius: 9px; line-height: 1.45; }
+.canal-nota { font-size: 11.5px; color: var(--texto-suave); word-break: break-all; line-height: 1.5; }
+.cartao-canal .conexao { border: 0; border-top: 1px solid var(--verde-borda); border-radius: 0; }
+.linha-campos { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.campo-canal { flex: 1; min-width: 190px; display: flex; flex-direction: column; gap: 7px; font-size: 11.5px; color: var(--texto-suave); }
+.campo-canal.estreito { flex: 0 0 220px; }
+.campo-canal input { height: 46px; border-radius: 12px; border: 1px solid var(--borda); background: var(--fundo-suave); padding: 0 14px; font-size: 13.5px; color: var(--texto); outline: none; }
+.campo-canal input:focus { border-color: var(--verde); }
+.linha-campos .btn-primario { height: 46px; flex-shrink: 0; }
 .novo-canal-ajuda { font-size: 12px; color: var(--texto-suave); line-height: 1.55; }
 .novo-canal-ajuda ol { margin: 4px 0 0; padding-left: 18px; }
 .novo-canal-ajuda li { margin-bottom: 2px; }
-.novo-canal input { flex: 1; min-width: 200px; height: 40px; border-radius: 11px; border: 1px solid var(--borda); padding: 0 12px; font-size: 13px; outline: none; }
-.novo-canal input:focus { border-color: var(--verde); }
 .conexao { border: 1.5px solid var(--verde); background: var(--verde-fundo); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
 .conexao-corpo { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
 .conexao-passos { flex: 1; min-width: 240px; font-size: 13px; line-height: 1.6; color: var(--texto); }

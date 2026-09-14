@@ -318,3 +318,20 @@ test('chat do site: conversas vazias de antes somem na atualização', async () 
     assert.equal((await s.db.prepare('SELECT COUNT(*) AS n FROM contatos').get()).n, 2);
   } finally { await s.fechar(); }
 });
+
+test('chat do site: o resumo do CRM diz se o chat está ligado', async () => {
+  const ligado = await subirServidor();
+  try {
+    assert.equal((await ligado.crm('/api/resumo')).dados.widgetAtivo, true);
+  } finally {
+    await ligado.fechar();
+  }
+
+  // Sem o segredo no servidor, o chat fica desligado e a tela de Canais avisa.
+  const desligado = await subirServidor({ segredo: '' });
+  try {
+    assert.equal((await desligado.crm('/api/resumo')).dados.widgetAtivo, false);
+  } finally {
+    await desligado.fechar();
+  }
+});

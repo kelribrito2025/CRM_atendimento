@@ -2268,6 +2268,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
   const config = {
     aberto: false, secao: 'equipe', dados: null, carregando: false, erro: null,
     auditoria: null, auditoriaCarregando: false, auditoriaErro: null,
+    canais: null, canaisCarregando: false, canaisErro: null, canalAberto: null, eventosDoCanal: null,
   };
 
   const SECOES_CONFIG = [
@@ -2289,10 +2290,12 @@ import { deveSalvarNota } from './nota-editor.mjs';
     document.querySelector('.rail-btn[title="Atendimento"]')?.classList.remove('ativo');
     renderConfig();
     if (config.secao === 'equipe') carregarEquipe();
+    if (config.secao === 'canais') carregarCanais();
     if (config.secao === 'auditoria') carregarAuditoria();
   }
 
   function fecharConfiguracoes() {
+    pararSondagem();
     config.aberto = false;
     $('#area-config').hidden = true;
     document.querySelector('.area:not(.config)').hidden = false;
@@ -2301,9 +2304,11 @@ import { deveSalvarNota } from './nota-editor.mjs';
   }
 
   function escolherSecao(id) {
+    if (config.secao === 'canais' && id !== 'canais') pararSondagem();
     config.secao = id;
     renderConfig();
     if (id === 'equipe') carregarEquipe();
+    if (id === 'canais') carregarCanais();
     if (id === 'auditoria') carregarAuditoria();
     if (id === 'respostas') carregarRapidas().then(renderConfig).catch((e) => toast(e.message, 5000));
   }
@@ -2371,7 +2376,16 @@ import { deveSalvarNota } from './nota-editor.mjs';
       const ativos = d.usuarios.filter((u) => u.ativo).length;
       return `${ativos} atendente${ativos === 1 ? '' : 's'} ativo${ativos === 1 ? '' : 's'}`;
     }
-    if (config.secao === 'canais') return 'WhatsApp, Telegram e o chat do site.';
+    if (config.secao === 'canais') {
+      const d = config.canais;
+      if (!d) return 'WhatsApp, Telegram e o chat do site.';
+      const total = d.canais.length + 1; // +1 = o chat do site
+      const ligados = d.canais.filter((c) => c.status === 'connected').length + (estado.resumo?.widgetAtivo ? 1 : 0);
+      const livres = total - ligados;
+      const partes = [`${ligados} ${ligados === 1 ? 'canal conectado' : 'canais conectados'}`];
+      if (livres > 0) partes.push(`${livres} ${livres === 1 ? 'disponível' : 'disponíveis'}`);
+      return partes.join(' · ');
+    }
     if (config.secao === 'auditoria') return 'Registro de segurança das ações dos atendentes.';
     if (config.secao === 'aparencia') return 'Vale só para você, neste navegador.';
     if (config.secao === 'respostas') return 'Mensagens prontas para a equipe usar no chat.';
@@ -2612,14 +2626,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
     ];
   }
 
-  /* ---------------- Configurações › Canais e Respostas ---------------- */
-  function corpoCanaisConfig() {
-    return [el('div', { class: 'config-bloco' },
-      el('div', { class: 'cabeca' },
-        el('span', { class: 'rotulo' }, 'Canais de mensagem'),
-        el('span', { class: 'dica' }, 'WhatsApp e Telegram podem ficar ligados ao mesmo tempo: as conversas chegam na mesma caixa, com o selo do canal no avatar.')),
-      el('button', { type: 'button', class: 'btn-primario', style: 'align-self:flex-start', onclick: abrirModalCanais }, 'Abrir os canais'))];
-  }
+  /* ---------------- Configurações › Respostas rápidas ---------------- */
 
   // Respostas rápidas nas configurações: lista completa, com criar, editar e excluir.
   const confRapidas = { form: null, erro: null };
@@ -2733,9 +2740,12 @@ import { deveSalvarNota } from './nota-editor.mjs';
   }
 
   /* ================================================================
-   * Canais (WhatsApp via uazapi)
+   * Canais (WhatsApp via uazapi, Telegram e o chat do site)
+   *
+   * Tudo isso mora dentro de Configurações › Canais. Antes era uma janela
+   * flutuante; agora é página, para caber a lista de canais e o bloco de
+   * "Novo número de WhatsApp" na mesma tela, sem tapar o atendimento.
    * ============================================================== */
-  let modalCanais = null;
   let sondagem = null;
   const conexao = { canalId: null, modo: 'qr', qrcode: null, paircode: null, telefone: '', status: null, erro: null, ocupado: false };
 
@@ -2744,22 +2754,35 @@ import { deveSalvarNota } from './nota-editor.mjs';
     sondagem = null;
   }
 
-  function fecharModalCanais() {
-    pararSondagem();
-    if (modalCanais) modalCanais.remove();
-    modalCanais = null;
-    conexao.canalId = null;
-    carregarResumo().catch(() => {});
+  function naPaginaDeCanais() {
+    return config.aberto && config.secao === 'canais';
   }
 
-  async function abrirModalCanais() {
-    if (estado.resumo?.usuario?.papel !== 'admin') return toast('Peça a um administrador para conectar os canais.');
-    if (modalCanais) return;
-    modalCanais = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === modalCanais) fecharModalCanais(); } },
-      el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Canais de atendimento' },
-        el('div', { class: 'modal-corpo', id: 'modal-corpo' }, el('div', { class: 'vazio' }, 'Carregando…'))));
-    document.body.append(modalCanais);
-    await renderCanais();
+  // Primeira carga da página: mostra "Carregando…" enquanto busca.
+  async function carregarCanais() {
+    config.canaisCarregando = true;
+    config.canaisErro = null;
+    renderConfig();
+    try {
+      config.canais = await api('/canais');
+    } catch (e) {
+      config.canaisErro = e.message;
+    } finally {
+      config.canaisCarregando = false;
+      renderConfig();
+    }
+  }
+
+  // Recargas seguintes: busca de novo e redesenha sem piscar a tela.
+  async function renderCanais() {
+    if (!naPaginaDeCanais()) return;
+    try {
+      config.canais = await api('/canais');
+      config.canaisErro = null;
+    } catch (e) {
+      config.canaisErro = e.message;
+    }
+    renderConfig();
   }
 
   function formatarPair(codigo) {
@@ -2767,73 +2790,162 @@ import { deveSalvarNota } from './nota-editor.mjs';
     return c.length === 8 ? `${c.slice(0, 4)}-${c.slice(4)}` : (codigo || '');
   }
 
-  async function renderCanais() {
-    const corpo = $('#modal-corpo');
-    if (!corpo) return;
-    let dados;
-    try {
-      dados = await api('/canais');
-    } catch (e) {
-      corpo.replaceChildren(el('div', { class: 'modal-cab' }, el('div', {}, el('h2', {}, 'Canais de atendimento')), el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: fecharModalCanais }, svg(ICONE.fechar))), el('div', { class: 'aviso erro' }, e.message));
-      return;
-    }
-    const partes = [
-      el('div', { class: 'modal-cab' },
-        el('div', {}, el('h2', {}, 'Canais de atendimento'), el('p', {}, 'Conecte o WhatsApp e o Telegram da empresa para receber e responder as mensagens aqui no CRM.')),
-        el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: fecharModalCanais }, svg(ICONE.fechar))),
-    ];
-    const whats = dados.canais.filter((c) => c.tipo !== 'telegram');
-    const bots = dados.canais.filter((c) => c.tipo === 'telegram');
-    const lista = el('div', { class: 'canais-lista' }, ...whats.map(itemCanal));
-    if (!whats.length) lista.append(el('div', { class: 'vazio' }, 'Nenhum WhatsApp conectado ainda.'));
-    partes.push(el('div', { class: 'secao' }, el('span', { class: 'rotulo' }, 'WhatsApp'),
-      dados.configurado ? null : el('div', { class: 'aviso erro' }, 'Servidor do WhatsApp não configurado. Preencha UAZAPI_URL e UAZAPI_ADMIN_TOKEN no arquivo .env e reinicie o sistema.'),
-      lista, dados.configurado ? formNovoCanal() : null));
-    const canalConexao = whats.find((c) => c.id === conexao.canalId);
-    if (canalConexao) partes.push(painelConexao(canalConexao));
-    const listaTg = el('div', { class: 'canais-lista' }, ...bots.map(itemTelegram));
-    if (!bots.length) listaTg.append(el('div', { class: 'vazio' }, 'Nenhum bot do Telegram conectado ainda.'));
-    partes.push(el('div', { class: 'secao' }, el('span', { class: 'rotulo' }, 'Telegram'), listaTg, dados.telegram ? formNovoTelegram() : null));
-    corpo.replaceChildren(...partes);
+  function corpoCanaisConfig() {
+    if (config.canaisCarregando && !config.canais) return [el('div', { class: 'config-vazio' }, 'Carregando…')];
+    if (config.canaisErro && !config.canais) return [el('div', { class: 'aviso erro' }, config.canaisErro)];
+    const d = config.canais;
+    if (!d) return [el('div', { class: 'config-vazio' }, 'Nada por aqui.')];
+
+    const whats = d.canais.filter((c) => c.tipo !== 'telegram');
+    const bots = d.canais.filter((c) => c.tipo === 'telegram');
+
+    const partes = [el('div', { class: 'config-bloco' },
+      el('div', { class: 'cabeca' },
+        el('span', { class: 'rotulo' }, 'Canais de mensagem'),
+        el('span', { class: 'dica' }, 'Todos podem ficar ligados ao mesmo tempo: as conversas chegam na mesma caixa, com o selo do canal no avatar.')),
+      config.canaisErro ? el('div', { class: 'aviso erro' }, config.canaisErro) : null,
+      d.configurado ? null : el('div', { class: 'aviso erro' }, 'Servidor do WhatsApp não configurado. Preencha UAZAPI_URL e UAZAPI_ADMIN_TOKEN no arquivo .env e reinicie o sistema.'),
+      el('div', { class: 'lista-canais' },
+        ...whats.map(cartaoCanal),
+        ...bots.map(cartaoCanal),
+        cartaoChatDoSite()))];
+
+    if (d.configurado) partes.push(blocoNovoWhatsapp());
+    if (d.telegram) partes.push(blocoNovoTelegram());
+    return partes;
   }
 
-  function itemCanal(c) {
-    const rotulo = { connected: 'Conectado', connecting: 'Conectando…', disconnected: 'Desconectado' }[c.status] || c.status;
-    const sub = [rotulo, c.numeroFormatado, c.perfil].filter(Boolean).join(' · ');
-    return el('div', { class: 'canal-item' },
-      el('span', { class: `status-ponto ${c.status}` }),
-      el('div', { class: 'canal-info' }, el('span', { class: 'canal-nome' }, c.nome), el('span', { class: 'canal-sub' }, sub)),
-      el('div', { class: 'canal-acoes' },
-        c.status === 'connected'
-          ? el('button', { type: 'button', class: 'btn-suave hov', onclick: () => acaoCanal(c.id, 'desconectar') }, 'Desconectar')
-          : el('button', { type: 'button', class: 'btn-primario pequeno', style: 'height:34px', onclick: () => iniciarConexao(c.id, 'qr') }, 'Conectar'),
-        el('button', { type: 'button', class: 'btn-suave hov', title: 'Reenviar a configuração do webhook ao servidor do WhatsApp', onclick: () => acaoCanal(c.id, 'webhook') }, 'Reconfigurar'),
-        el('button', { type: 'button', class: 'btn-suave hov', onclick: () => verEventos(c) }, 'Eventos'),
-        el('button', { type: 'button', class: 'btn-suave hov', onclick: () => excluirCanal(c) }, 'Excluir')),
+  function selo(texto, ok) {
+    return el('span', { class: `estado-canal${ok ? ' ok' : ''}` }, el('span', { class: 'bolinha' }), texto);
+  }
+
+  function alternarGerenciar(id) {
+    config.canalAberto = config.canalAberto === id ? null : id;
+    config.eventosDoCanal = null;
+    renderConfig();
+  }
+
+  function cartaoCanal(c) {
+    const tg = c.tipo === 'telegram';
+    const conectado = c.status === 'connected';
+    const rotulo = conectado
+      ? (tg && c.recebendo === false ? 'conectado · aguardando reinício' : 'conectado')
+      : (c.status === 'connecting' ? 'conectando…' : 'desconectado');
+    const detalhes = [c.numeroFormatado, c.perfil && c.perfil !== c.nome ? c.perfil : null].filter(Boolean).join(' · ')
+      || (tg ? 'bot do Telegram' : 'nenhum número conectado ainda');
+    const aberto = config.canalAberto === c.id;
+    const conectando = conexao.canalId === c.id;
+    const eventos = config.eventosDoCanal?.canalId === c.id ? config.eventosDoCanal.itens : null;
+
+    const cartao = el('div', { class: `cartao-canal${aberto || conectando || eventos ? ' aberto' : ''}` },
+      el('div', { class: 'linha-canal' },
+        el('span', { class: `marca-canal ${tg ? 'telegram' : 'whatsapp'}` }, iconeCanal(tg ? 'telegram' : 'whatsapp', 22)),
+        el('div', { class: 'quem-canal' },
+          el('div', { class: 'nome-linha' }, el('span', { class: 'nome-canal' }, c.nome), selo(rotulo, conectado)),
+          el('span', { class: 'sub-canal' }, detalhes)),
+        el('div', { class: 'acoes-canal' },
+          conectado ? null : el('button', { type: 'button', class: 'btn-primario pequeno', onclick: () => (tg ? acaoCanal(c.id, 'conectar') : iniciarConexao(c.id, 'qr')) }, tg ? 'Conectar' : 'Gerar QR Code'),
+          el('button', { type: 'button', class: 'btn-branco pequeno hov', onclick: () => alternarGerenciar(c.id) }, aberto ? 'Fechar' : 'Gerenciar'))));
+
+    if (conectando) cartao.append(painelConexao(c));
+    if (eventos) cartao.append(listaDeEventos(c, eventos));
+    else if (aberto) cartao.append(painelGerenciar(c, tg));
+    return cartao;
+  }
+
+  function painelGerenciar(c, tg) {
+    return el('div', { class: 'gerenciar-canal' },
       c.ultimoErro ? el('div', { class: 'canal-aviso' }, `Último erro: ${c.ultimoErro}`) : null,
       c.webhookAviso ? el('div', { class: 'canal-aviso' }, c.webhookAviso) : null,
-      el('div', { class: 'canal-nota' }, `Endereço que recebe as mensagens: ${c.webhookUrl}`));
-  }
-
-  function itemTelegram(c) {
-    const rotulo = c.status === 'connected' ? (c.recebendo === false ? 'Conectado (aguardando reinício)' : 'Conectado') : 'Desconectado';
-    const sub = [rotulo, c.numeroFormatado, c.perfil && c.perfil !== c.nome ? c.perfil : null].filter(Boolean).join(' · ');
-    return el('div', { class: 'canal-item' },
-      el('span', { class: `status-ponto ${c.status}` }),
-      el('div', { class: 'canal-info' }, el('span', { class: 'canal-nome' }, c.nome), el('span', { class: 'canal-sub' }, sub)),
-      el('div', { class: 'canal-acoes' },
+      el('div', { class: 'botoes-gerenciar' },
         c.status === 'connected'
           ? el('button', { type: 'button', class: 'btn-suave hov', onclick: () => acaoCanal(c.id, 'desconectar') }, 'Desconectar')
-          : el('button', { type: 'button', class: 'btn-primario pequeno', style: 'height:34px', onclick: () => acaoCanal(c.id, 'conectar') }, 'Conectar'),
-        el('button', { type: 'button', class: 'btn-suave hov', onclick: () => verEventos(c) }, 'Eventos'),
-        el('button', { type: 'button', class: 'btn-suave hov', onclick: () => excluirCanal(c) }, 'Excluir')),
-      c.ultimoErro ? el('div', { class: 'canal-aviso' }, `Último erro: ${c.ultimoErro}`) : null,
-      el('div', { class: 'canal-nota' }, 'As mensagens enviadas ao bot chegam aqui automaticamente, sem precisar de endereço público.'));
+          : null,
+        tg ? null : el('button', { type: 'button', class: 'btn-suave hov', title: 'Reenviar a configuração do webhook ao servidor do WhatsApp', onclick: () => acaoCanal(c.id, 'webhook') }, 'Reconfigurar webhook'),
+        el('button', { type: 'button', class: 'btn-suave hov', onclick: () => verEventos(c) }, 'Ver eventos'),
+        el('button', { type: 'button', class: 'btn-suave hov perigo', onclick: () => excluirCanal(c) }, 'Excluir canal')),
+      el('div', { class: 'canal-nota' }, tg
+        ? 'As mensagens enviadas ao bot chegam aqui automaticamente, sem precisar de endereço público.'
+        : `Endereço que recebe as mensagens: ${c.webhookUrl}`));
   }
 
-  function formNovoTelegram() {
-    const input = el('input', { type: 'text', placeholder: 'Token do bot (ex.: 123456789:AAF…)', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Token do bot do Telegram' });
-    const botao = el('button', { type: 'button', class: 'btn-primario pequeno', style: 'height:40px', onclick: async () => {
+  // O chat do site não é um canal cadastrado: liga ou desliga pelo WIDGET_SEGREDO
+  // do servidor. Aqui ele aparece junto dos outros para a pessoa ver tudo de uma vez.
+  function cartaoChatDoSite() {
+    const ativo = Boolean(estado.resumo?.widgetAtivo);
+    const aberto = config.canalAberto === 'widget';
+    const cartao = el('div', { class: `cartao-canal${aberto ? ' aberto' : ''}` },
+      el('div', { class: 'linha-canal' },
+        el('span', { class: 'marca-canal site' }, svg(ICONE.tela)),
+        el('div', { class: 'quem-canal' },
+          el('div', { class: 'nome-linha' }, el('span', { class: 'nome-canal' }, 'Chat do site'), selo(ativo ? 'ligado' : 'desligado', ativo)),
+          el('span', { class: 'sub-canal' }, ativo ? 'bolha de conversa no rodapé do seu site' : 'ainda não configurado no servidor')),
+        el('div', { class: 'acoes-canal' },
+          el('button', { type: 'button', class: 'btn-branco pequeno hov', onclick: () => alternarGerenciar('widget') }, aberto ? 'Fechar' : 'Gerenciar'))));
+    if (aberto) cartao.append(painelChatDoSite(ativo));
+    return cartao;
+  }
+
+  function painelChatDoSite(ativo) {
+    const trecho = `<script src="${location.origin}/widget.js" defer><\/script>`;
+    return el('div', { class: 'gerenciar-canal' },
+      ativo
+        ? null
+        : el('div', { class: 'canal-aviso' }, 'Desligado: falta o WIDGET_SEGREDO no arquivo .env do servidor. Sem ele o chat do site não abre para ninguém.'),
+      el('div', { class: 'novo-canal-ajuda' },
+        el('strong', {}, 'Para colocar no site:'),
+        el('ol', {},
+          el('li', {}, 'Copie a linha abaixo.'),
+          el('li', {}, 'Cole antes de </body> em todas as páginas do site.'),
+          el('li', {}, 'A bolha aparece no canto de baixo à direita.'))),
+      el('div', { class: 'evento-item' }, trecho),
+      el('div', { class: 'botoes-gerenciar' },
+        el('button', { type: 'button', class: 'btn-suave hov', onclick: async () => {
+          try {
+            await navigator.clipboard.writeText(trecho);
+            toast('Linha copiada.');
+          } catch {
+            toast('Não deu para copiar aqui. Selecione o texto e copie à mão.', 5000);
+          }
+        } }, 'Copiar a linha')),
+      el('div', { class: 'canal-nota' }, 'As conversas do site chegam na mesma caixa, com o selo de monitor no avatar.'));
+  }
+
+  /* ---------------- novo WhatsApp e novo bot do Telegram ---------------- */
+  function blocoNovoWhatsapp() {
+    const nome = el('input', { type: 'text', placeholder: 'Ex.: WhatsApp principal', maxlength: '60', 'aria-label': 'Nome do canal' });
+    const tel = el('input', { type: 'tel', placeholder: '55 11 98842-1075', 'aria-label': 'Número com DDD (opcional)' });
+    const botao = el('button', { type: 'button', class: 'btn-primario', onclick: async () => {
+      botao.disabled = true;
+      try {
+        const { canal } = await api('/canais', { method: 'POST', body: { nome: nome.value.trim() || 'WhatsApp' } });
+        const numero = tel.value.trim();
+        config.canalAberto = null;
+        config.eventosDoCanal = null;
+        if (numero && numero.replace(/\D/g, '').length >= 10) await iniciarConexao(canal.id, 'numero', numero);
+        else await iniciarConexao(canal.id, 'qr');
+      } catch (e) {
+        toast(e.message, 5000);
+      } finally {
+        botao.disabled = false;
+      }
+    } }, 'Gerar QR Code');
+    nome.addEventListener('keydown', (e) => { if (e.key === 'Enter') botao.click(); });
+    tel.addEventListener('keydown', (e) => { if (e.key === 'Enter') botao.click(); });
+
+    return el('div', { class: 'config-bloco' },
+      el('div', { class: 'cabeca' },
+        el('span', { class: 'rotulo' }, 'Novo número de WhatsApp'),
+        el('span', { class: 'dica' }, 'A conexão é feita lendo o QR Code no aplicativo do número. Se preferir digitar um código no celular, preencha o número aqui.')),
+      el('div', { class: 'linha-campos' },
+        el('label', { class: 'campo-canal' }, el('span', {}, 'Nome do canal'), nome),
+        el('label', { class: 'campo-canal estreito' }, el('span', {}, 'Número com DDD (opcional)'), tel),
+        botao));
+  }
+
+  function blocoNovoTelegram() {
+    const input = el('input', { type: 'text', placeholder: '123456789:AAF…', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Token do bot do Telegram' });
+    const botao = el('button', { type: 'button', class: 'btn-primario', onclick: async () => {
       const token = input.value.trim();
       if (!token) return toast('Cole o token do bot fornecido pelo @BotFather.');
       botao.disabled = true;
@@ -2850,8 +2962,14 @@ import { deveSalvarNota } from './nota-editor.mjs';
       }
     } }, 'Adicionar Telegram');
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') botao.click(); });
-    return el('div', { class: 'secao' },
-      el('div', { class: 'novo-canal' }, input, botao),
+
+    return el('div', { class: 'config-bloco' },
+      el('div', { class: 'cabeca' },
+        el('span', { class: 'rotulo' }, 'Novo bot do Telegram'),
+        el('span', { class: 'dica' }, 'Aqui não tem QR Code: o Telegram usa um token que o @BotFather entrega para você.')),
+      el('div', { class: 'linha-campos' },
+        el('label', { class: 'campo-canal' }, el('span', {}, 'Token do bot'), input),
+        botao),
       el('div', { class: 'novo-canal-ajuda' },
         el('strong', {}, 'Como criar o bot (leva 1 minuto):'),
         el('ol', {},
@@ -2860,22 +2978,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
           el('li', {}, 'Copie o token que ele mostra e cole no campo acima. Depois, divulgue o @usuário do bot para os clientes.'))));
   }
 
-  function formNovoCanal() {
-    const input = el('input', { type: 'text', placeholder: 'Nome do canal (ex.: WhatsApp principal)', maxlength: '60' });
-    const botao = el('button', { type: 'button', class: 'btn-primario pequeno', style: 'height:40px', onclick: async () => {
-      botao.disabled = true;
-      try {
-        const { canal } = await api('/canais', { method: 'POST', body: { nome: input.value.trim() || 'WhatsApp' } });
-        toast('Canal criado. Agora conecte o WhatsApp.');
-        await iniciarConexao(canal.id, 'qr');
-      } catch (e) {
-        toast(e.message, 5000);
-        botao.disabled = false;
-      }
-    } }, 'Adicionar WhatsApp');
-    return el('div', { class: 'novo-canal' }, input, botao);
-  }
-
+  /* ---------------- ações em um canal ---------------- */
   async function acaoCanal(id, acao) {
     try {
       await api(`/canais/${id}/${acao}`, { method: 'POST', body: {} });
@@ -2893,8 +2996,11 @@ import { deveSalvarNota } from './nota-editor.mjs';
     try {
       await api(`/canais/${c.id}`, { method: 'DELETE' });
       if (conexao.canalId === c.id) { pararSondagem(); conexao.canalId = null; }
+      if (config.canalAberto === c.id) config.canalAberto = null;
+      config.eventosDoCanal = null;
       toast('Canal excluído.');
       await renderCanais();
+      carregarResumo().catch(() => {});
     } catch (e) {
       toast(e.message, 5000);
     }
@@ -2903,21 +3009,27 @@ import { deveSalvarNota } from './nota-editor.mjs';
   async function verEventos(c) {
     try {
       const { eventos } = await api(`/canais/${c.id}/eventos`);
-      const corpo = $('#modal-corpo');
-      const lista = el('div', { class: 'eventos-lista' }, ...eventos.map((e) => el('div', { class: 'evento-item' },
-        el('span', { class: 'm' }, `${new Date(e.recebidoEm).toLocaleString('pt-BR')} · ${e.tipo || 'sem tipo'}`),
-        typeof e.corpo === 'string' ? e.corpo : JSON.stringify(e.corpo, null, 1).slice(0, 1500))));
-      if (!eventos.length) lista.append(el('div', { class: 'vazio' }, 'Nenhum evento recebido ainda. Quando alguém mandar mensagem para este canal, o evento aparece aqui.'));
-      corpo.replaceChildren(
-        el('div', { class: 'modal-cab' }, el('div', {}, el('h2', {}, `Eventos recebidos · ${c.nome}`), el('p', {}, 'Últimos 50 avisos que este canal entregou ao CRM. Útil para diagnosticar problemas.')),
-          el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: fecharModalCanais }, svg(ICONE.fechar))),
-        lista,
-        el('div', {}, el('button', { type: 'button', class: 'btn-suave hov', onclick: renderCanais }, '← Voltar')));
+      config.canalAberto = c.id;
+      config.eventosDoCanal = { canalId: c.id, itens: eventos };
+      renderConfig();
     } catch (e) {
       toast(e.message, 5000);
     }
   }
 
+  function listaDeEventos(c, eventos) {
+    const lista = el('div', { class: 'eventos-lista' }, ...eventos.map((e) => el('div', { class: 'evento-item' },
+      el('span', { class: 'm' }, `${new Date(e.recebidoEm).toLocaleString('pt-BR')} · ${e.tipo || 'sem tipo'}`),
+      typeof e.corpo === 'string' ? e.corpo : JSON.stringify(e.corpo, null, 1).slice(0, 1500))));
+    if (!eventos.length) lista.append(el('div', { class: 'vazio' }, 'Nenhum evento recebido ainda. Quando alguém mandar mensagem para este canal, o evento aparece aqui.'));
+    return el('div', { class: 'gerenciar-canal' },
+      el('div', { class: 'canal-nota' }, 'Últimos 50 avisos que este canal entregou ao CRM. Serve para descobrir por que uma mensagem não chegou.'),
+      lista,
+      el('div', { class: 'botoes-gerenciar' },
+        el('button', { type: 'button', class: 'btn-suave hov', onclick: () => { config.eventosDoCanal = null; renderConfig(); } }, '← Voltar')));
+  }
+
+  /* ---------------- conectar o WhatsApp (QR code ou código) ---------------- */
   async function iniciarConexao(canalId, modo, telefone = '') {
     pararSondagem();
     Object.assign(conexao, { canalId, modo, telefone, qrcode: null, paircode: null, status: 'connecting', erro: null, ocupado: true });
@@ -2933,7 +3045,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
   }
 
   async function sondarStatus() {
-    if (!conexao.canalId || !modalCanais) return pararSondagem();
+    if (!conexao.canalId || !naPaginaDeCanais()) return pararSondagem();
     try {
       const r = await api(`/canais/${conexao.canalId}/status`);
       const mudouCodigo = (r.qrcode && r.qrcode !== conexao.qrcode) || (r.paircode && r.paircode !== conexao.paircode);
@@ -2951,7 +3063,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
       }
       if (mudouCodigo || mudouStatus) {
         const painel = $('#painel-conexao');
-        if (painel) painel.replaceWith(painelConexao(r.canal));
+        if (painel) painel.replaceWith(painelConexao(r.canal || { id: conexao.canalId, nome: '' }));
       }
     } catch (e) {
       conexao.erro = e.message;
@@ -2985,7 +3097,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
       conteudo = el('div', { class: 'conexao-corpo' },
         el('div', { class: 'conexao-passos' },
           el('div', { class: 'telefone-linha' }, inputTel,
-            el('button', { type: 'button', class: 'btn-primario pequeno', style: 'height:40px', onclick: () => {
+            el('button', { type: 'button', class: 'btn-primario pequeno', onclick: () => {
               const tel = inputTel.value.trim();
               if (tel.replace(/\D/g, '').length < 10) return toast('Digite o número com o código do país e o DDD. Exemplo: 55 31 99999-0000.');
               iniciarConexao(c.id, 'numero', tel);
@@ -3003,7 +3115,8 @@ import { deveSalvarNota } from './nota-editor.mjs';
         el('strong', { style: 'flex:1' }, `Conectar ${c.nome || 'WhatsApp'}`),
         el('div', { class: 'abas' },
           el('button', { type: 'button', class: `aba${modoQr ? ' ativa' : ''}`, onclick: () => iniciarConexao(c.id, 'qr') }, 'Ler QR code'),
-          el('button', { type: 'button', class: `aba${!modoQr ? ' ativa' : ''}`, onclick: () => { pararSondagem(); Object.assign(conexao, { modo: 'numero', paircode: null, status: null, erro: null }); renderCanais(); } }, 'Digitar número'))),
+          el('button', { type: 'button', class: `aba${!modoQr ? ' ativa' : ''}`, onclick: () => { pararSondagem(); Object.assign(conexao, { modo: 'numero', paircode: null, status: null, erro: null }); renderConfig(); } }, 'Digitar número')),
+        el('button', { type: 'button', class: 'btn-suave hov', onclick: () => { pararSondagem(); conexao.canalId = null; renderConfig(); } }, 'Fechar')),
       conexao.erro ? el('div', { class: 'aviso erro' }, conexao.erro) : null,
       conteudo,
       status);
@@ -3032,7 +3145,11 @@ import { deveSalvarNota } from './nota-editor.mjs';
     document.querySelector('.rail-btn[title="Atendimento"]')?.addEventListener('click', fecharConfiguracoes);
 
     const menuUsuario = $('#menu-usuario');
-    $('#btn-conectar').addEventListener('click', () => { menuUsuario.hidden = true; abrirModalCanais(); });
+    $('#btn-conectar').addEventListener('click', () => {
+      menuUsuario.hidden = true;
+      if (estado.resumo?.usuario?.papel !== 'admin') return toast('Peça a um administrador para conectar os canais.');
+      abrirConfiguracoes('canais');
+    });
     $('#btn-usuario').addEventListener('click', (e) => {
       e.stopPropagation();
       menuUsuario.hidden = !menuUsuario.hidden;
@@ -3042,7 +3159,7 @@ import { deveSalvarNota } from './nota-editor.mjs';
       if (!e.target.closest('.menu-flutuante')) fecharMenus();
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { fecharVisor(); fecharRapidas(); menuUsuario.hidden = true; fecharMenus(); $('#painel').classList.remove('aberto'); if (modalCanais) fecharModalCanais(); }
+      if (e.key === 'Escape') { fecharVisor(); fecharRapidas(); menuUsuario.hidden = true; fecharMenus(); $('#painel').classList.remove('aberto'); }
     });
   }
 

@@ -453,6 +453,9 @@ function criarRotasApi(db, opcoes = {}) {
       saldoAtivo: Boolean(saldo && saldo.configurado),
       // O botão "Abrir conta" só aparece quando o site está configurado.
       abrirContaAtivo: Boolean(abrirConta?.configurado),
+      // O chat do site depende do segredo no servidor: a tela de Canais mostra
+      // se ele está ligado, em vez de o administrador ter que perguntar.
+      widgetAtivo: Boolean(opcoes.widget?.configurado),
       anexosAtivos: Boolean(arquivos && arquivos.configurado),
     });
   });
