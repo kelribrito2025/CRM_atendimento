@@ -63,6 +63,7 @@ test('compras: o CRM pede pelo PIN como número e entende a paginação', async 
   assert.equal(c.numero, '5511999999999');
   assert.match(c.valor, /^R\$\s12,50$/);
   assert.equal(c.statusTexto, 'Concluída');
+  assert.equal(c.data, '2026-09-14T11:00:00.000Z');
   assert.equal(c.podeReembolsar, true);
   assert.equal(c.recebeuSms, true);
   // A margem do fornecedor não passa para a tela.

@@ -6,6 +6,7 @@ import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notific
 import { deveSalvarNota } from './nota-editor.mjs';
 import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monetario.mjs';
 import { estiloAvatarDoCanal } from './cor-avatar.mjs';
+import { formatarDataHoraCompra } from './data-compra.mjs';
 
 (() => {
   'use strict';
@@ -79,6 +80,7 @@ import { estiloAvatarDoCanal } from './cor-avatar.mjs';
     banir: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M5.6 5.6l12.8 12.8"></path></svg>',
     setaDireita: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>',
     carrinho: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.6"></circle><circle cx="18" cy="20" r="1.6"></circle><path d="M2 3h3l2.6 12h11L21 7H6"></path></svg>',
+    copiar: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"></path></svg>',
   };
 
   const NOME_CANAL = { whatsapp: 'WhatsApp', telegram: 'Telegram', widget: 'Chat do site' };
@@ -1890,13 +1892,30 @@ import { estiloAvatarDoCanal } from './cor-avatar.mjs';
   function itemCompra(compra) {
     const cancelada = compra.status === 'cancelled' || String(compra.statusTexto || '').toLowerCase() === 'cancelada';
     const selo = cancelada ? 'cancelada' : (compra.reembolsada ? 'reembolsada' : (compra.status === 'completed' || compra.status === 'active' ? 'ok' : 'neutro'));
+    const dataHora = formatarDataHoraCompra(compra.data);
     return el('div', { class: 'compra-item' },
       el('div', { class: 'linha' },
         el('span', { class: 'nome' }, compra.descricao),
         el('span', { class: 'valor' }, compra.valor)),
       el('div', { class: 'linha' },
-        el('span', { class: 'numero' }, compra.numero || '—'),
-        el('span', { class: `selo-compra ${selo}` }, compra.reembolsada ? `${compra.statusTexto} · reembolsada` : compra.statusTexto)));
+        compra.numero
+          ? el('span', { class: 'numero-compra' },
+            el('span', { class: 'numero' }, compra.numero),
+            el('button', {
+              type: 'button', class: 'copiar-numero hov', title: 'Copiar número', 'aria-label': `Copiar número ${compra.numero}`,
+              onclick: async (evento) => {
+                evento.stopPropagation();
+                try {
+                  await navigator.clipboard.writeText(String(compra.numero));
+                  toast('Número copiado.');
+                } catch {
+                  toast('Não consegui copiar. Selecione o número e use Ctrl+C.');
+                }
+              },
+            }, svg(ICONE.copiar)))
+          : el('span', { class: 'numero' }, '—'),
+        el('span', { class: `selo-compra ${selo}` }, compra.reembolsada ? `${compra.statusTexto} · reembolsada` : compra.statusTexto)),
+      dataHora ? el('span', { class: 'data-compra' }, `Comprada em ${dataHora}`) : null);
   }
 
   function itemTransacao(t) {

@@ -469,7 +469,11 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .compra-item .linha { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .compra-item .nome { font-size: 12.5px; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compra-item .valor { font-family: "Courier New", monospace; font-size: 12px; font-weight: 700; flex-shrink: 0; }
-.compra-item .numero { font-family: "Courier New", monospace; font-size: 10.5px; color: var(--texto-suave); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.numero-compra { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.compra-item .numero { font-family: "Courier New", monospace; font-size: 12px; font-weight: 700; color: var(--extrato-verde); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.copiar-numero { width: 24px; height: 24px; border: 0; border-radius: 7px; background: var(--fundo-suave); color: var(--texto-suave); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.copiar-numero:hover { color: var(--verde-texto); background: var(--verde-fundo); }
+.compra-item .data-compra { font-size: 12px; color: var(--texto-suave); }
 .selo-compra { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 3px 7px; border-radius: 6px; flex-shrink: 0; background: var(--cinza); color: var(--texto-suave); }
 .selo-compra.ok { background: var(--verde-fundo); color: var(--verde-texto); }
 .selo-compra.cancelada { background: var(--extrato-vermelho-fundo); color: var(--extrato-vermelho); }
