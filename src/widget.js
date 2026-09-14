@@ -49,11 +49,12 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null,
   async function abrirSessao({ id, nome, email, empresa, pin }) {
     const externo = limpar(id, 120);
     if (!externo) throw new Error('O site precisa informar o id do usuário logado.');
+    const emailNovo = limpar(email, 191).toLowerCase();
 
     let contato = await db.prepare('SELECT * FROM contatos WHERE site_id = ?').get(externo);
     if (!contato) {
-      const novo = await db.prepare('INSERT INTO contatos (nome, empresa, site_id, pin) VALUES (?, ?, ?, ?)')
-        .run(limpar(nome) || `Visitante ${externo}`, limpar(empresa) || null, externo, limpar(pin, 32) || null);
+      const novo = await db.prepare('INSERT INTO contatos (nome, empresa, email, site_id, pin) VALUES (?, ?, ?, ?, ?)')
+        .run(limpar(nome) || `Visitante ${externo}`, limpar(empresa) || null, emailNovo || null, externo, limpar(pin, 32) || null);
       contato = await db.prepare('SELECT * FROM contatos WHERE id = ?').get(Number(novo.lastInsertRowid));
     } else {
       // O site é a fonte da verdade sobre quem está logado: atualiza o que mudou lá.
@@ -64,6 +65,7 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null,
       }
       const empresaNova = limpar(empresa);
       if (empresaNova && empresaNova !== contato.empresa) await db.prepare('UPDATE contatos SET empresa = ? WHERE id = ?').run(empresaNova, contato.id);
+      if (emailNovo && emailNovo !== contato.email) await db.prepare('UPDATE contatos SET email = ? WHERE id = ?').run(emailNovo, contato.id);
       const pinNovo = limpar(pin, 32);
       if (pinNovo && pinNovo !== contato.pin && !contato.pin_validado_em) await db.prepare('UPDATE contatos SET pin = ? WHERE id = ?').run(pinNovo, contato.id);
     }
@@ -83,7 +85,7 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null,
     return {
       token,
       conversaId: conversa ? conversa.id : null,
-      contato: { id: contato.id, nome: contato.nome },
+      contato: { id: contato.id, nome: contato.nome, email: emailNovo || contato.email || null },
       protocolo: conversa ? conversa.protocolo : null,
     };
   }

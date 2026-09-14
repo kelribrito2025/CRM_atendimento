@@ -55,7 +55,7 @@ function formatarPrimeiraResposta(ms) {
 const SQL_CONVERSAS = `
   SELECT c.id, c.protocolo, c.canal, c.status, c.alerta, c.nao_lidas, c.criada_em, c.atualizada_em,
          c.equipe_id, c.atendente_id, c.canal_id, c.wa_chatid,
-         ct.id AS contato_id, ct.nome AS contato_nome, ct.empresa, ct.cnpj, ct.telefone, ct.tg_usuario, ct.tg_id, ct.tg_foto_id, ct.wa_foto_url, ct.site_id,
+         ct.id AS contato_id, ct.nome AS contato_nome, ct.empresa, ct.cnpj, ct.telefone, ct.email, ct.tg_usuario, ct.tg_id, ct.tg_foto_id, ct.wa_foto_url, ct.site_id,
          u.nome AS atendente_nome,
          e.nome AS equipe_nome, e.cor AS equipe_cor,
          um.tipo AS ultima_tipo, um.texto AS ultima_texto, um.criada_em AS ultima_em,
@@ -162,6 +162,7 @@ function criarRotasApi(db, opcoes = {}) {
         empresa: row.empresa,
         cnpj: row.cnpj,
         telefone: row.telefone,
+        email: row.email || null,
         telegramUsuario: row.tg_usuario || null,
         telegramId: row.tg_id || null,
         siteId: row.site_id || null,
@@ -285,6 +286,24 @@ function criarRotasApi(db, opcoes = {}) {
       convidadoPor: c.convidante ? nomeCurto(c.convidante) : null,
     }));
     res.json({ usuarios, convites, equipes: await sql.equipes.all() });
+  });
+
+  // Registro de segurança somente para leitura. Mantém os dados essenciais em
+  // forma de fotografia para o histórico continuar legível se uma conta,
+  // conversa ou contato for removido depois.
+  r.get('/auditoria', soAdmin, async (req, res) => {
+    const linhas = await db.prepare(`SELECT id, acao, usuario_id, usuario_nome, usuario_email,
+      conversa_id, protocolo, canal, contato_id, contato_nome, criado_em
+      FROM auditoria_eventos ORDER BY criado_em DESC, id DESC LIMIT 200`).all();
+    res.json({ eventos: linhas.map((e) => ({
+      id: Number(e.id),
+      acao: e.acao,
+      descricao: e.acao === 'abrir_conta' ? 'Abriu a conta do cliente no site.' : e.acao,
+      usuario: { id: e.usuario_id == null ? null : Number(e.usuario_id), nome: e.usuario_nome, email: e.usuario_email || null },
+      conversa: { id: e.conversa_id == null ? null : Number(e.conversa_id), protocolo: e.protocolo || null, canal: e.canal || null },
+      contato: { id: e.contato_id == null ? null : Number(e.contato_id), nome: e.contato_nome || null },
+      criadoEm: Number(e.criado_em),
+    })) });
   });
 
   // Convida alguém por e-mail. O link também volta na resposta, porque enquanto
@@ -680,7 +699,7 @@ function criarRotasApi(db, opcoes = {}) {
 
   // Abre a conta do cliente no site, já logada. Quem está abrindo vem da sessão
   // do CRM (nunca do navegador) e o motivo é obrigatório: os dois vão no pedido
-  // e ficam registrados no site e aqui, na conversa, como nota interna.
+  // e ficam registrados também na auditoria administrativa do CRM.
   r.post('/conversas/:id/abrir-conta', comConversa, async (req, res) => {
     const c = req.conversa;
     if (!abrirConta?.configurado) {
@@ -695,9 +714,12 @@ function criarRotasApi(db, opcoes = {}) {
         atendente: { id: req.usuario.id, nome: req.usuario.nome, email: req.usuario.email },
         motivo,
       });
-      const agora = Date.now();
-      await sql.inserirMensagem.run(c.id, 'nota', req.usuario.id, 'Abriu a conta do cliente no site.', null, agora);
-      await db.prepare('UPDATE conversas SET atualizada_em = ? WHERE id = ?').run(agora, c.id);
+      await db.prepare(`INSERT INTO auditoria_eventos
+        (acao, usuario_id, usuario_nome, usuario_email, conversa_id, protocolo, canal,
+         contato_id, contato_nome, criado_em, origem_mensagem_id)
+        VALUES ('abrir_conta', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`)
+        .run(req.usuario.id, req.usuario.nome, req.usuario.email, c.id, c.protocolo,
+          c.canal, ct.id, ct.nome, Date.now());
       res.json(r2);
     } catch (erro) {
       res.status(erro.status || 502).json({ erro: erro.message });
@@ -957,6 +979,8 @@ function criarRotasApi(db, opcoes = {}) {
       if (linha) {
         await db.prepare('UPDATE contatos SET pin = ?, pin_validado_em = ?, pin_validado_por = ? WHERE id = ?')
           .run(String(pin), Date.now(), req.usuario.id, linha.contato.id);
+        const emailDoSite = linha.canal === 'widget' ? String(cliente.email || '').trim().toLowerCase().slice(0, 191) : '';
+        if (emailDoSite) await db.prepare('UPDATE contatos SET email = ? WHERE id = ?').run(emailDoSite, linha.contato.id);
         conversa = await detalharConversa(await buscarConversa(id));
       }
       res.json({ cliente, conversa });

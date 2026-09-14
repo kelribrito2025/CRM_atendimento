@@ -4,7 +4,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { semear } = require('../src/db');
+const { semear, migrar, inserirUsuario } = require('../src/db');
 const { abrirBancoDeTeste } = require('./apoio');
 const { criarApp } = require('../src/app');
 const { criarEnviador } = require('../src/email');
@@ -72,10 +72,56 @@ test('abrir conta: manda quem abriu e o motivo, e devolve o link de uso único',
     assert.equal(pedido.corpo.atendente.email, ADMIN.email);
     assert.ok(pedido.corpo.atendente.id);
 
-    // fica registrado na conversa, para a equipe ver
-    const nota = (await s.chamar(`/api/conversas/${s.conversaId}`)).dados.conversa.mensagens.find((m) => m.tipo === 'nota');
-    assert.equal(nota.texto, 'Abriu a conta do cliente no site.');
-    assert.equal(nota.autor.nome, 'Carla Menezes');
+    // Fica na auditoria administrativa, não misturado às notas da conversa.
+    const conversa = (await s.chamar(`/api/conversas/${s.conversaId}`)).dados.conversa;
+    assert.equal(conversa.mensagens.some((m) => m.tipo === 'nota'), false);
+    const auditoria = await s.chamar('/api/auditoria');
+    assert.equal(auditoria.status, 200);
+    assert.equal(auditoria.dados.eventos.length, 1);
+    assert.deepEqual(auditoria.dados.eventos[0], {
+      id: auditoria.dados.eventos[0].id,
+      acao: 'abrir_conta',
+      descricao: 'Abriu a conta do cliente no site.',
+      usuario: { id: auditoria.dados.eventos[0].usuario.id, nome: 'Carla Menezes', email: ADMIN.email },
+      conversa: { id: s.conversaId, protocolo: conversa.protocolo, canal: 'widget' },
+      contato: { id: conversa.contato.id, nome: 'Andressa Lima' },
+      criadoEm: auditoria.dados.eventos[0].criadoEm,
+    });
+  } finally { await s.fechar(); }
+});
+
+test('abrir conta: notas antigas viram auditoria uma só vez e somem da conversa', async () => {
+  const s = await subirServidor();
+  try {
+    const admin = await s.db.prepare('SELECT id FROM usuarios WHERE email = ?').get(ADMIN.email);
+    const antigoId = Number((await s.db.prepare(`INSERT INTO mensagens
+      (conversa_id, tipo, autor_id, texto, entrega, criada_em) VALUES (?, 'nota', ?, ?, NULL, ?)`)
+      .run(s.conversaId, admin.id, 'Abriu a conta do cliente no site.', 123456789)).lastInsertRowid);
+
+    await migrar(s.db);
+    await migrar(s.db);
+
+    assert.equal(Number((await s.db.prepare('SELECT COUNT(*) AS n FROM auditoria_eventos WHERE origem_mensagem_id = ?').get(antigoId)).n), 1);
+    assert.equal(Number((await s.db.prepare('SELECT COUNT(*) AS n FROM mensagens WHERE id = ?').get(antigoId)).n), 0);
+    const evento = await s.db.prepare('SELECT usuario_nome, usuario_email, protocolo, canal, contato_nome, criado_em FROM auditoria_eventos WHERE origem_mensagem_id = ?').get(antigoId);
+    assert.deepEqual({ ...evento }, {
+      usuario_nome: 'Carla Menezes', usuario_email: ADMIN.email,
+      protocolo: (await s.db.prepare('SELECT protocolo FROM conversas WHERE id = ?').get(s.conversaId)).protocolo,
+      canal: 'widget', contato_nome: 'Andressa Lima', criado_em: 123456789,
+    });
+  } finally { await s.fechar(); }
+});
+
+test('auditoria: atendente não pode consultar o histórico da equipe', async () => {
+  const s = await subirServidor();
+  try {
+    await inserirUsuario(s.db, { nome: 'Atendente Teste', email: 'atendente@teste.com', senha: 'segredo123' });
+    const login = await fetch(`${s.base}/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'atendente@teste.com', senha: 'segredo123' }),
+    });
+    const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+    assert.equal((await fetch(`${s.base}/api/auditoria`, { headers: { Cookie: cookie } })).status, 403);
   } finally { await s.fechar(); }
 });
 

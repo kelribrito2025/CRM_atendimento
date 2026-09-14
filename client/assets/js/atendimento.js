@@ -1,6 +1,9 @@
 import { icone, montarIcones } from './icones.js';
 import { detectarNovasMensagens } from './alerta-mensagem.mjs';
 import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
+import { capturarCompositor, restaurarCompositor } from './foco-compositor.mjs';
+import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notificacoes.mjs';
+import { deveSalvarNota } from './nota-editor.mjs';
 
 (() => {
   'use strict';
@@ -26,6 +29,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   somNovaMensagem.preload = 'auto';
   somNovaMensagem.volume = 0.72;
   let somLiberado = false;
+  let somNotificacoesAtivo = lerSomAtivo();
   let alertasAtivos = false;
   let referenciasMensagens = new Map();
 
@@ -115,7 +119,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   }
 
   async function liberarSom() {
-    if (somLiberado) return;
+    if (somLiberado || !somNotificacoesAtivo) return;
     const volume = somNovaMensagem.volume;
     somNovaMensagem.volume = 0;
     try {
@@ -139,7 +143,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   function observarMensagens(conversas, avisar) {
     const resultado = detectarNovasMensagens(conversas, referenciasMensagens, avisar && alertasAtivos);
     referenciasMensagens = resultado.referencias;
-    if (resultado.recebeuMensagem) tocarSomNovaMensagem();
+    if (deveTocarNotificacao(resultado.recebeuMensagem, somNotificacoesAtivo)) tocarSomNovaMensagem();
   }
 
   function iniciais(nome) {
@@ -311,15 +315,16 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 
   // Substitui a conversa aberta preservando o texto que está sendo digitado
   function aplicarConversa(conversa) {
-    const textoMsg = $('#texto-msg')?.value;
-    const textoNota = $('#texto-nota')?.value;
+    const compositor = capturarCompositor();
     // O saldo consultado vale só para a conversa em que foi pedido.
     if (conversa?.id !== saldo.conversaId) limparSaldo(conversa?.id ?? null);
     estado.conversa = conversa;
     renderChat();
     renderPainel();
-    if (textoMsg) $('#texto-msg').value = textoMsg;
-    if (textoNota) $('#texto-nota').value = textoNota;
+    // A resposta do servidor pode chegar quando a pessoa já começou a próxima
+    // mensagem. Como renderChat troca o textarea, devolvemos o foco e o cursor
+    // ao campo novo para nenhuma tecla seguinte se perder.
+    restaurarCompositor(compositor, { ajustarAltura });
   }
 
   /* ================================================================
@@ -354,6 +359,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     const c = estado.conversa;
     if (!c || !texto.trim() || estado.enviando) return;
     estado.enviando = true;
+    const seletorRetorno = tipo === 'nota' && campo?.id === 'texto-nota' ? '#texto-nota' : '#texto-msg';
 
     // A mensagem aparece na hora, marcada como "enviando", e o campo já fica livre.
     const provisoria = {
@@ -371,7 +377,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     c.mensagens.push(provisoria);
     if (tipo === 'nota') estado.modo = 'resposta';
     aplicarConversa(c);
-    $('#texto-msg')?.focus();
+    $(seletorRetorno)?.focus();
 
     try {
       const r = await api(`/conversas/${c.id}/mensagens`, { method: 'POST', body: { texto: provisoria.texto, tipo } });
@@ -386,7 +392,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       const posicao = c.mensagens.findIndex((m) => m.id === provisoria.id);
       if (posicao >= 0) c.mensagens.splice(posicao, 1);
       aplicarConversa(c);
-      const volta = $('#texto-msg');
+      const volta = $(seletorRetorno);
       if (volta && !volta.value) { volta.value = textoAnterior || provisoria.texto; ajustarAltura(volta); }
       toast(e.message, 5000);
     } finally {
@@ -540,8 +546,48 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     }
   }
 
+  let modalConfirmacao = null;
+
+  function confirmarNoSite({ titulo, texto, rotuloConfirmar }) {
+    if (modalConfirmacao) modalConfirmacao.encerrar(false);
+    return new Promise((resolve) => {
+      const focoAnterior = document.activeElement;
+      let resolvido = false;
+      const tituloId = `confirmacao-${Date.now()}`;
+      const encerrar = (confirmado) => {
+        if (resolvido) return;
+        resolvido = true;
+        document.removeEventListener('keydown', aoTeclado);
+        fundo.remove();
+        modalConfirmacao = null;
+        focoAnterior?.focus?.();
+        resolve(confirmado);
+      };
+      const aoTeclado = (e) => { if (e.key === 'Escape') encerrar(false); };
+      const fundo = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === fundo) encerrar(false); } },
+        el('div', { class: 'modal confirmacao', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': tituloId },
+          el('div', { class: 'modal-corpo' },
+            el('div', { class: 'modal-cab' },
+              el('span', { class: 'modal-confirmacao-icone', 'aria-hidden': 'true' }, svg(ICONE.lixeira)),
+              el('div', {}, el('h2', { id: tituloId }, titulo), el('p', {}, texto)),
+              el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', 'aria-label': 'Fechar', onclick: () => encerrar(false) }, svg(ICONE.fechar))),
+            el('div', { class: 'modal-acoes' },
+              el('button', { type: 'button', class: 'btn-suave hov', id: 'confirmacao-cancelar', onclick: () => encerrar(false) }, 'Cancelar'),
+              el('button', { type: 'button', class: 'btn-perigo', id: 'confirmacao-aceitar', onclick: () => encerrar(true) }, rotuloConfirmar)))));
+      modalConfirmacao = { encerrar, fundo };
+      document.body.append(fundo);
+      document.addEventListener('keydown', aoTeclado);
+      $('#confirmacao-cancelar')?.focus();
+    });
+  }
+
   async function apagarNota(id) {
-    if (!window.confirm('Apagar esta nota interna? Ela some para toda a equipe.')) return;
+    const confirmado = await confirmarNoSite({
+      titulo: 'Apagar nota?',
+      texto: 'Esta nota interna será removida para toda a equipe. Essa ação não pode ser desfeita.',
+      rotuloConfirmar: 'Apagar nota',
+    });
+    if (!confirmado) return;
     try {
       await api(`/notas/${id}`, { method: 'DELETE' });
       const c = estado.conversa;
@@ -1352,6 +1398,39 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 
   function fecharMenus() {
     document.querySelectorAll('.menu-flutuante').forEach((m) => m.remove());
+    $('#btn-filtros')?.setAttribute('aria-expanded', 'false');
+  }
+
+  function alternarSomNotificacoes(botao) {
+    somNotificacoesAtivo = gravarSomAtivo(!somNotificacoesAtivo);
+    if (somNotificacoesAtivo) liberarSom();
+    else {
+      somNovaMensagem.pause();
+      somNovaMensagem.currentTime = 0;
+    }
+    botao.setAttribute('aria-checked', somNotificacoesAtivo ? 'true' : 'false');
+    botao.querySelector('.som-status').textContent = somNotificacoesAtivo ? 'Ligado' : 'Mudo';
+    botao.querySelector('.interruptor').classList.toggle('ativo', somNotificacoesAtivo);
+    toast(somNotificacoesAtivo ? 'Som das notificações ligado.' : 'Som das notificações silenciado.');
+  }
+
+  function abrirMenuNotificacoes(evento) {
+    evento.stopPropagation();
+    const botaoMenu = evento.currentTarget;
+    if (botaoMenu.getAttribute('aria-expanded') === 'true') return fecharMenus();
+    fecharMenus();
+    botaoMenu.setAttribute('aria-expanded', 'true');
+    const botaoSom = el('button', {
+      type: 'button', class: 'menu-notificacao-item', role: 'menuitemcheckbox',
+      'aria-checked': somNotificacoesAtivo ? 'true' : 'false',
+      onclick: (e) => { e.stopPropagation(); alternarSomNotificacoes(e.currentTarget); },
+    },
+    el('span', { class: 'menu-notificacao-texto' },
+      el('strong', {}, 'Som das notificações'),
+      el('span', { class: 'som-status' }, somNotificacoesAtivo ? 'Ligado' : 'Mudo')),
+    el('span', { class: `interruptor${somNotificacoesAtivo ? ' ativo' : ''}`, 'aria-hidden': 'true' },
+      el('span', { class: 'interruptor-botao' })));
+    botaoMenu.parentElement.append(el('div', { class: 'menu-flutuante menu-notificacoes', role: 'menu' }, botaoSom));
   }
 
   function abrirMenuAcoes(botao) {
@@ -1827,18 +1906,20 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     const notas = c.mensagens.filter((m) => m.tipo === 'nota').slice().reverse();
 
     const textareaNota = el('textarea', {
-      id: 'texto-nota', rows: '2', maxlength: '4000', placeholder: 'Escreva uma nota para a equipe…',
+      id: 'texto-nota', rows: '1', maxlength: '4000', placeholder: 'Escreva uma nota para a equipe…',
       'aria-label': 'Nova nota interna', lang: 'pt-BR', spellcheck: 'true',
-      oninput: () => { maiuscularInicio(textareaNota); corrigirEnquantoDigita(textareaNota); },
+      oninput: () => { maiuscularInicio(textareaNota); corrigirEnquantoDigita(textareaNota); ajustarAltura(textareaNota); },
+      onkeydown: (e) => {
+        if (!deveSalvarNota(e, textareaNota.value)) return;
+        e.preventDefault();
+        salvarNota();
+      },
     });
     const salvarNota = () => enviarMensagem(acentosLigados ? corrigirTexto(textareaNota.value) : textareaNota.value, 'nota', textareaNota);
 
     const blocoNotas = el('div', { class: 'secao' },
       el('span', { class: 'secao-titulo' }, 'Nota interna'),
-      el('div', { class: 'caixa-nota' }, textareaNota,
-        el('div', { class: 'rodape' },
-          el('span', { class: 'dica' }, 'Só a equipe vê.'),
-          el('button', { type: 'button', class: 'btn-escuro', onclick: salvarNota }, 'Salvar nota'))),
+      el('div', { class: 'caixa-nota' }, textareaNota),
       ...notas.map((n) => el('div', { class: 'nota-item' },
         editandoAqui(n, 'ficha') ? edicaoDaNota(n) : el('span', { class: 't' }, n.texto),
         el('div', { class: 'nota-item-pe' },
@@ -1885,7 +1966,10 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
           : avatarCliente({ canal: c.canal, contato: { iniciais: iniciais(ct.empresa || ct.nome) } }, 'avatar-quadrado neutro'),
         el('div', { class: 'membro-info' },
           el('span', { class: 'painel-nome suave' }, ct.empresa || ct.nome || 'Ficha do cliente'),
-          el('span', { class: 'painel-sub' }, cli?.email || ct.cnpj || ct.telefone || (ct.telegramUsuario ? `@${ct.telegramUsuario}` : ''))),
+          el('span', { class: 'painel-sub' },
+            c.canal === 'widget' && (ct.email || (saldo.conversaId === c.id ? saldo.cliente?.email : null))
+              ? (ct.email || saldo.cliente.email)
+              : (ct.cnpj || ct.telefone || (ct.telegramUsuario ? `@${ct.telegramUsuario}` : '')))),
         botaoAbrirConta(c)),
       el('div', { class: 'rolagem painel-corpo' },
         blocoPin(c),
@@ -1894,6 +1978,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
         abasFicha(),
         ...corpoAba[ficha.aba]()),
       zonaDeRisco(c));
+    ajustarAltura(textareaNota);
   }
 
 
@@ -1934,12 +2019,16 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
   /* ================================================================
    * Configurações
    * ============================================================== */
-  const config = { aberto: false, secao: 'equipe', dados: null, carregando: false, erro: null, convite: null, formConvite: null };
+  const config = {
+    aberto: false, secao: 'equipe', dados: null, carregando: false, erro: null,
+    auditoria: null, auditoriaCarregando: false, auditoriaErro: null,
+  };
 
   const SECOES_CONFIG = [
     { grupo: 'Atendimento' },
     { id: 'equipe', nome: 'Equipe', icone: 'pessoas', soAdmin: true },
     { id: 'canais', nome: 'Canais', icone: 'elo', soAdmin: true },
+    { id: 'auditoria', nome: 'Auditoria', icone: 'olho', soAdmin: true },
     { id: 'respostas', nome: 'Respostas rápidas', icone: 'raio' },
     { grupo: 'Preferências' },
     { id: 'aparencia', nome: 'Aparência', icone: 'tela' },
@@ -1954,6 +2043,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     document.querySelector('.rail-btn[title="Atendimento"]')?.classList.remove('ativo');
     renderConfig();
     if (config.secao === 'equipe') carregarEquipe();
+    if (config.secao === 'auditoria') carregarAuditoria();
   }
 
   function fecharConfiguracoes() {
@@ -1966,9 +2056,9 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
 
   function escolherSecao(id) {
     config.secao = id;
-    config.convite = null;
     renderConfig();
     if (id === 'equipe') carregarEquipe();
+    if (id === 'auditoria') carregarAuditoria();
     if (id === 'respostas') carregarRapidas().then(renderConfig).catch((e) => toast(e.message, 5000));
   }
 
@@ -1982,6 +2072,20 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       config.erro = e.message;
     } finally {
       config.carregando = false;
+      renderConfig();
+    }
+  }
+
+  async function carregarAuditoria() {
+    config.auditoriaCarregando = true;
+    config.auditoriaErro = null;
+    renderConfig();
+    try {
+      config.auditoria = (await api('/auditoria')).eventos;
+    } catch (e) {
+      config.auditoriaErro = e.message;
+    } finally {
+      config.auditoriaCarregando = false;
       renderConfig();
     }
   }
@@ -2004,7 +2108,7 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       }));
 
     const secao = SECOES_CONFIG.find((i) => i.id === config.secao) || SECOES_CONFIG[1];
-    const corpo = { equipe: corpoEquipe, canais: corpoCanaisConfig, respostas: corpoRespostasConfig, aparencia: corpoAparencia }[config.secao];
+    const corpo = { equipe: corpoEquipe, canais: corpoCanaisConfig, auditoria: corpoAuditoria, respostas: corpoRespostasConfig, aparencia: corpoAparencia }[config.secao];
     $('#config-painel').replaceChildren(
       el('div', { class: 'config-topo' },
         el('div', { class: 'titulo' },
@@ -2019,10 +2123,10 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       const d = config.dados;
       if (!d) return 'Carregando…';
       const ativos = d.usuarios.filter((u) => u.ativo).length;
-      const convites = d.convites.length;
-      return `${ativos} atendente${ativos === 1 ? '' : 's'} ativo${ativos === 1 ? '' : 's'}${convites ? ` · ${convites} convite${convites === 1 ? '' : 's'} pendente${convites === 1 ? '' : 's'}` : ''}`;
+      return `${ativos} atendente${ativos === 1 ? '' : 's'} ativo${ativos === 1 ? '' : 's'}`;
     }
     if (config.secao === 'canais') return 'WhatsApp, Telegram e o chat do site.';
+    if (config.secao === 'auditoria') return 'Registro de segurança das ações dos atendentes.';
     if (config.secao === 'aparencia') return 'Vale só para você, neste navegador.';
     if (config.secao === 'respostas') return 'Mensagens prontas para a equipe usar no chat.';
     return '';
@@ -2035,22 +2139,11 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     const d = config.dados;
     if (!d) return [el('div', { class: 'config-vazio' }, 'Nada por aqui.')];
 
-    const partes = [el('div', { class: 'config-bloco' },
+    return [el('div', { class: 'config-bloco' },
       el('div', { class: 'cabeca' },
         el('span', { class: 'rotulo' }, 'Atendentes'),
         el('span', { class: 'dica' }, 'Cada pessoa vê as caixas das equipes em que está.')),
       el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, ...d.usuarios.map((u) => linhaPessoa(u, d.equipes))))];
-
-    if (d.convites.length) {
-      partes.push(el('div', { class: 'config-bloco' },
-        el('div', { class: 'cabeca' },
-          el('span', { class: 'rotulo' }, 'Convites pendentes'),
-          el('span', { class: 'dica' }, 'Ainda não criaram a senha. O link vale sete dias.')),
-        el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, ...d.convites.map((c) => linhaConvite(c, d.equipes)))));
-    }
-
-    partes.push(formConvite(d.equipes));
-    return partes;
   }
 
   function linhaPessoa(u, equipes) {
@@ -2078,51 +2171,31 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => editarEquipesDe(u, equipes) }, 'Equipes'));
   }
 
-  function linhaConvite(c, equipes) {
-    const nomes = c.equipeIds.map((id) => equipes.find((e) => e.id === id)).filter(Boolean);
-    return el('div', { class: 'pessoa' },
-      el('span', { class: 'avatar p' }, '@'),
-      el('div', { class: 'dados' },
-        el('span', { class: 'nome' }, c.email),
-        el('span', { class: 'email' }, `convidado por ${c.convidadoPor || 'equipe'} · expira ${horaLista(c.expiraEm)}`)),
-      el('div', { class: 'equipes' }, ...nomes.map((e) => el('span', { class: 'selo-equipe' }, el('span', { class: 'ponto', style: `background:${e.cor}` }), e.nome))),
-      el('span', { class: 'papel' }, c.papel === 'admin' ? 'Administrador' : 'Atendente'),
-      el('span', { class: 'selo-presenca aviso' }, 'convite'),
-      el('button', { type: 'button', class: 'btn-suave hov', onclick: () => cancelarConvite(c.id) }, 'Cancelar'));
-  }
+  /* ---------------- Configurações › Auditoria ---------------- */
+  function corpoAuditoria() {
+    if (config.auditoriaCarregando && !config.auditoria) return [el('div', { class: 'config-vazio' }, 'Carregando auditoria…')];
+    if (config.auditoriaErro) return [el('div', { class: 'aviso erro' }, config.auditoriaErro)];
+    const eventos = config.auditoria || [];
 
-  function formConvite(equipes) {
-    const f = config.formConvite || (config.formConvite = { email: '', papel: 'atendente', equipeIds: [] });
-    const campoEmail = el('input', { type: 'email', placeholder: 'nome@empresa.com.br', value: f.email, oninput: () => { f.email = campoEmail.value; } });
-    const campoPapel = el('select', { onchange: () => { f.papel = campoPapel.value; } },
-      ...['atendente', 'admin'].map((v) => el('option', { value: v, selected: f.papel === v ? 'selected' : null }, v === 'admin' ? 'Administrador' : 'Atendente')));
-
-    return el('div', { class: 'config-bloco' },
+    return [el('div', { class: 'config-bloco' },
       el('div', { class: 'cabeca' },
-        el('span', { class: 'rotulo' }, 'Convidar alguém'),
-        el('span', { class: 'dica' }, 'A pessoa recebe um link para criar a própria senha.')),
-      el('div', { class: 'config-form' },
-        el('div', { class: 'config-linha' },
-          el('label', { class: 'config-campo' }, el('span', {}, 'E-mail'), campoEmail),
-          el('label', { class: 'config-campo', style: 'max-width:200px' }, el('span', {}, 'Papel'), campoPapel)),
-        el('div', { class: 'config-campo' },
-          el('span', {}, 'Equipes'),
-          el('div', { class: 'escolha-equipes' }, ...equipes.map((e) => {
-            const marcada = f.equipeIds.includes(e.id);
-            return el('button', {
-              type: 'button', class: `escolha-equipe${marcada ? ' marcada' : ''}`,
-              onclick: () => {
-                f.equipeIds = marcada ? f.equipeIds.filter((id) => id !== e.id) : [...f.equipeIds, e.id];
-                renderConfig();
-              },
-            }, el('span', { class: 'ponto', style: `background:${e.cor};width:7px;height:7px;border-radius:50%` }), e.nome);
-          }))),
-        el('div', { style: 'display:flex;justify-content:flex-end' },
-          el('button', { type: 'button', class: 'btn-primario', onclick: () => enviarConvite(f) }, 'Enviar convite')),
-        config.convite ? el('div', { class: 'convite-link' },
-          el('span', { class: 'dica', style: 'color:inherit;font-weight:700' }, config.convite.porEmail ? 'Convite enviado por e-mail.' : 'Copie e mande o link:'),
-          el('code', {}, config.convite.link),
-          el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => copiar(config.convite.link) }, 'Copiar')) : null));
+        el('span', { class: 'rotulo' }, `Atividades recentes · ${eventos.length}`),
+        el('span', { class: 'dica' }, 'Histórico automático e somente para leitura. Os registros não aparecem mais como notas da conversa.')),
+      eventos.length
+        ? el('div', { class: 'auditoria-lista' }, ...eventos.map((evento) => {
+          const quando = new Date(evento.criadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+          const canal = NOME_CANAL[evento.conversa?.canal] || evento.conversa?.canal || 'Canal não informado';
+          return el('div', { class: 'auditoria-item' },
+            el('span', { class: 'auditoria-icone' }, svg(ICONE.olho)),
+            el('div', { class: 'auditoria-dados' },
+              el('strong', {}, evento.descricao),
+              el('span', {}, `${evento.usuario?.nome || 'Atendente removido'}${evento.usuario?.email ? ` · ${evento.usuario.email}` : ''}`)),
+            el('div', { class: 'auditoria-alvo' },
+              el('strong', {}, evento.contato?.nome || 'Cliente não informado'),
+              el('span', {}, `${evento.conversa?.protocolo ? `Protocolo ${evento.conversa.protocolo} · ` : ''}${canal}`)),
+            el('time', { datetime: new Date(evento.criadoEm).toISOString(), title: quando }, quando));
+        }))
+        : el('div', { class: 'config-vazio' }, 'Nenhuma ação auditável registrada ainda.'))];
   }
 
   // Copia o PIN e avisa, para o atendente colar onde precisar.
@@ -2132,10 +2205,6 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
     navigator.clipboard?.writeText(pin)
       .then(() => toast(`PIN ${pin} copiado.`))
       .catch(() => toast('Não consegui copiar. Selecione o número e use Ctrl+C.'));
-  }
-
-  function copiar(texto) {
-    navigator.clipboard?.writeText(texto).then(() => toast('Link copiado.')).catch(() => toast('Copie o link com Ctrl+C.'));
   }
 
   async function salvarPessoa(id, mudanca) {
@@ -2175,29 +2244,6 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
               onclick: () => { fundo.remove(); salvarPessoa(u.id, { equipeIds: [...atuais] }); },
             }, 'Salvar')))));
     document.body.append(fundo);
-  }
-
-  async function enviarConvite(f) {
-    if (!f.email.trim()) return toast('Digite o e-mail de quem você quer convidar.');
-    try {
-      config.convite = await api('/equipe/convites', { method: 'POST', body: { email: f.email.trim(), papel: f.papel, equipeIds: f.equipeIds } });
-      config.formConvite = { email: '', papel: 'atendente', equipeIds: [] };
-      await carregarEquipe();
-      toast(config.convite.porEmail ? 'Convite enviado.' : 'Convite criado. Copie o link e mande para a pessoa.', 5000);
-    } catch (e) {
-      toast(e.message, 5000);
-    }
-  }
-
-  async function cancelarConvite(id) {
-    if (!window.confirm('Cancelar este convite? O link para de funcionar.')) return;
-    try {
-      await api(`/equipe/convites/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      await carregarEquipe();
-      toast('Convite cancelado.');
-    } catch (e) {
-      toast(e.message, 5000);
-    }
   }
 
   /* ---------------- Configurações › Aparência ---------------- */
@@ -2669,8 +2715,8 @@ import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
       }, 250);
     });
 
+    $('#btn-filtros').addEventListener('click', abrirMenuNotificacoes);
     // O que ainda não funciona fica desligado, sem responder ao clique.
-    desligar($('#btn-filtros'), 'Filtros avançados: em breve');
     document.querySelectorAll('.rail-btn[data-modulo]').forEach((b) => desligar(b, `${b.dataset.modulo}: em breve`));
 
     $('#btn-config').addEventListener('click', () => (config.aberto ? fecharConfiguracoes() : abrirConfiguracoes()));

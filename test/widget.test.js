@@ -76,7 +76,7 @@ test('chat do site: o arquivo de uma linha e a página do quadro ficam públicos
 test('chat do site: visitante manda mensagem, atendente responde e o visitante recebe', async () => {
   const s = await subirServidor();
   try {
-    const sessao = await s.abrirSessao({ id: 'u-901', nome: 'Carla Menezes', empresa: 'Loja Aurora', pin: '5446' });
+    const sessao = await s.abrirSessao({ id: 'u-901', nome: 'Carla Menezes', email: 'Carla@Exemplo.com', empresa: 'Loja Aurora', pin: '5446' });
     assert.equal(sessao.status, 200, JSON.stringify(sessao.dados));
     const token = sessao.dados.token;
     assert.ok(token && token.length > 20);
@@ -100,8 +100,11 @@ test('chat do site: visitante manda mensagem, atendente responde e o visitante r
     assert.equal(conversa.canal, 'widget');
     assert.equal(conversa.naoLidas, 1);
     assert.equal(conversa.contato.empresa, 'Loja Aurora');
+    assert.equal(conversa.contato.email, 'carla@exemplo.com');
     // o PIN que o site mandou já vem preenchido na ficha do cliente
-    assert.equal((await s.crm(`/api/conversas/${conversa.id}`)).dados.conversa.contato.pin, '5446');
+    const detalhe = (await s.crm(`/api/conversas/${conversa.id}`)).dados.conversa;
+    assert.equal(detalhe.contato.pin, '5446');
+    assert.equal(detalhe.contato.email, 'carla@exemplo.com');
 
     // Atendente responde pelo CRM (sem WhatsApp nem Telegram no meio)
     const resposta = await s.crm(`/api/conversas/${conversa.id}/mensagens`, 'POST', { texto: 'Oi Carla, já estou verificando!' });
@@ -127,13 +130,15 @@ test('chat do site: visitante manda mensagem, atendente responde e o visitante r
 test('chat do site: voltar ao painel continua a mesma conversa, sem duplicar cliente', async () => {
   const s = await subirServidor();
   try {
-    const a = await s.abrirSessao({ id: 'u-901', nome: 'Carla Menezes' });
+    const a = await s.abrirSessao({ id: 'u-901', nome: 'Carla Menezes', email: 'antigo@exemplo.com' });
     await s.visitante('/widget/mensagens', 'POST', { texto: 'primeira' }, a.dados.token);
-    const b = await s.abrirSessao({ id: 'u-901', nome: 'Carla M. Menezes' });
+    const b = await s.abrirSessao({ id: 'u-901', nome: 'Carla M. Menezes', email: 'novo@exemplo.com' });
 
     assert.ok(b.dados.conversaId, 'ao voltar, a sessão já encontra a conversa de antes');
     assert.equal(b.dados.contato.id, a.dados.contato.id, 'mesmo cliente');
     assert.equal(b.dados.contato.nome, 'Carla M. Menezes', 'o nome é atualizado pelo site');
+    assert.equal(b.dados.contato.email, 'novo@exemplo.com', 'o e-mail é atualizado pelo site');
+    assert.equal((await s.db.prepare('SELECT email FROM contatos WHERE id = ?').get(a.dados.contato.id)).email, 'novo@exemplo.com');
     assert.equal((await s.db.prepare('SELECT COUNT(*) AS n FROM contatos').get()).n, 1);
     assert.equal((await s.visitante('/widget/mensagens', 'GET', null, b.dados.token)).dados.mensagens.length, 1);
   } finally { await s.fechar(); }
