@@ -790,8 +790,8 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
    * ============================================================== */
   function renderRail() {
     const r = estado.resumo;
-    $('#rail-badge').textContent = r.caixas.todas;
-    $('#rail-badge').hidden = r.caixas.todas === 0;
+    $('#rail-badge').textContent = r.caixas.semResposta;
+    $('#rail-badge').hidden = r.caixas.semResposta === 0;
     $('#btn-usuario').textContent = r.usuario.iniciais;
     $('#menu-nome').textContent = r.usuario.nome;
     $('#menu-email').textContent = r.usuario.email;

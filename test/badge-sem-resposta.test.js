@@ -25,3 +25,9 @@ test('lista: card pulsa somente depois de cinco minutos sem resposta', () => {
   assert.match(css, /@keyframes conversa-sem-resposta-pulso\s*\{[\s\S]*box-shadow:\s*inset/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.conversa\.sem-resposta-atrasada\s*\{[^}]*animation:\s*none;/);
 });
+
+test('menu: badge lateral mostra somente a quantidade sem resposta e some no zero', () => {
+  assert.match(javascript, /\$\('#rail-badge'\)\.textContent = r\.caixas\.semResposta;/);
+  assert.match(javascript, /\$\('#rail-badge'\)\.hidden = r\.caixas\.semResposta === 0;/);
+  assert.doesNotMatch(javascript, /\$\('#rail-badge'\)\.textContent = r\.caixas\.todas;/);
+});
