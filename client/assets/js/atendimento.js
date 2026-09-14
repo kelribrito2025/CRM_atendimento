@@ -1269,7 +1269,7 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
     campo.setSelectionRange(fim, fim);
   }
 
-  /* ---------------- acentuação automática ---------------- */
+  /* ---------------- correção automática: acentos e abreviações ---------------- */
   const CHAVE_ACENTOS = 'crm_acentos';
   let acentosLigados = true;
   try { acentosLigados = localStorage.getItem(CHAVE_ACENTOS) !== 'off'; } catch { /* navegador sem armazenamento */ }
@@ -1277,7 +1277,7 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
   function alternarAcentos() {
     acentosLigados = !acentosLigados;
     try { localStorage.setItem(CHAVE_ACENTOS, acentosLigados ? 'on' : 'off'); } catch { /* tudo bem */ }
-    toast(acentosLigados ? 'Acentuação automática ligada.' : 'Acentuação automática desligada.');
+    toast(acentosLigados ? 'Correção automática ligada.' : 'Correção automática desligada.');
     renderChat();
   }
 
@@ -1289,7 +1289,7 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
     const antes = campo.value.slice(0, fim);
     const separador = /[\s.,;:!?)\]}"'…]$/.test(antes);
     if (!separador) return;
-    const m = /([A-Za-z]+)([\s.,;:!?)\]}"'…])$/.exec(antes);
+    const m = /(\p{L}+)([\s.,;:!?)\]}"'…])$/u.exec(antes);
     if (!m) return;
     const corrigida = corrigirPalavra(m[1]);
     if (!corrigida) return;
@@ -1508,7 +1508,7 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
             type: 'button', class: `btn-icone hov acentos-toggle${acentosLigados ? ' ativo' : ''}`,
             'aria-pressed': acentosLigados ? 'true' : 'false',
             onclick: alternarAcentos,
-          }, 'Á'), 'acentos', acentosLigados ? 'Acentuação automática ligada' : 'Acentuação automática desligada'),
+          }, 'Á'), 'acentos', acentosLigados ? 'Correção automática ligada (acentos e abreviações)' : 'Correção automática desligada'),
           comDica(el('button', {
             type: 'button', class: `btn-icone hov nota-toggle${modoNota ? ' ativo' : ''}`,
             'aria-pressed': modoNota ? 'true' : 'false',

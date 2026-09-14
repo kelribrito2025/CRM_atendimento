@@ -1,4 +1,5 @@
 import { PALAVRAS_ACENTUADAS } from './palavras-acentuadas.mjs';
+import { ABREVIACOES_ATENDIMENTO } from './abreviacoes-atendimento.mjs';
 
 // Acentuação automática do português: corrige a palavra quando o atendente
 // termina de escrevê-la (espaço, ponto, vírgula…).
@@ -34,6 +35,7 @@ const REGRAS = [
 
 // Palavras explícitas ficam em um arquivo separado para facilitar consulta e edição.
 const PALAVRAS = new Map(Object.entries(PALAVRAS_ACENTUADAS));
+const ABREVIACOES = new Map(Object.entries(ABREVIACOES_ATENDIMENTO));
 
 function ehMaiuscula(letra) {
   return letra === letra.toUpperCase() && letra !== letra.toLowerCase();
@@ -49,11 +51,15 @@ function manterCaixa(original, corrigida) {
 // Corrige uma palavra; devolve null quando não há nada a mudar.
 export function corrigirPalavra(palavra) {
   const original = String(palavra || '');
+  if (!original || !/^\p{L}+$/u.test(original)) return null;
+  const minuscula = original.toLocaleLowerCase('pt-BR');
+  const abreviacao = ABREVIACOES.get(minuscula);
+  if (abreviacao) return manterCaixa(original, abreviacao);
+
   if (original.length < 2) return null;
-  // Já tem acento ou não é uma palavra simples: não mexe.
+  // Fora das abreviações aprovadas, palavras já acentuadas passam sem mudança.
   if (!/^[A-Za-z]+$/.test(original)) return null;
 
-  const minuscula = original.toLowerCase();
   const daLista = PALAVRAS.get(minuscula);
   if (daLista && daLista !== minuscula) return manterCaixa(original, daLista);
 
@@ -68,7 +74,7 @@ export function corrigirPalavra(palavra) {
 
 // Corrige o texto inteiro (usado ao colar ou antes de enviar).
 export function corrigirTexto(texto) {
-  return String(texto || '').replace(/[A-Za-z]+/g, (p) => corrigirPalavra(p) ?? p);
+  return String(texto || '').replace(/\p{L}+/gu, (p) => corrigirPalavra(p) ?? p);
 }
 
-export { PALAVRAS, REGRAS };
+export { ABREVIACOES, PALAVRAS, REGRAS };
