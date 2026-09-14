@@ -455,6 +455,35 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .numero-ficha .v { font-size: 13.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nota-vazia { font-size: 12px; color: var(--texto-suave); }
 
+.linha-titulo { display: flex; align-items: baseline; gap: 8px; }
+.linha-titulo .contagem { font-size: 10.5px; color: var(--texto-suave); margin-left: auto; }
+
+/* Compras (ativações) */
+.lista-compras { display: flex; flex-direction: column; gap: 8px; }
+.compra-item { padding: 11px 12px; border: 1px solid var(--borda); border-radius: 12px; display: flex; flex-direction: column; gap: 7px; }
+.compra-item .linha { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.compra-item .nome { font-size: 12.5px; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compra-item .valor { font-family: "Courier New", monospace; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+.compra-item .numero { font-family: "Courier New", monospace; font-size: 10.5px; color: var(--texto-suave); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selo-compra { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 3px 7px; border-radius: 6px; flex-shrink: 0; background: var(--cinza); color: var(--texto-suave); }
+.selo-compra.ok { background: var(--verde-fundo); color: var(--verde-texto); }
+.selo-compra.reembolsada { background: var(--nota-fundo); color: var(--nota-suave); }
+
+/* Extrato */
+.lista-transacoes { display: flex; flex-direction: column; }
+.transacao-item { display: flex; align-items: center; gap: 9px; padding: 9px 0; border-bottom: 1px solid var(--borda); }
+.transacao-item:last-child { border-bottom: 0; }
+.transacao-ic { width: 26px; height: 26px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--cinza); color: var(--texto-suave); }
+.transacao-ic.entrada { background: var(--verde-fundo); color: var(--verde-texto); }
+.transacao-texto { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.transacao-texto .tipo { font-size: 12px; font-weight: 700; }
+.transacao-texto .desc { font-size: 10.5px; color: var(--texto-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.transacao-valores { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
+.transacao-valores .valor { font-family: "Courier New", monospace; font-size: 12px; font-weight: 700; }
+.transacao-valores .valor.entrada { color: var(--verde-texto); }
+.transacao-valores .valor.saida { color: var(--vermelho); }
+.transacao-valores .depois { font-family: "Courier New", monospace; font-size: 10.5px; color: var(--texto-suave); }
+
 .aba-vazia {
   display: flex; flex-direction: column; gap: 6px; padding: 18px 16px;
   border: 1px dashed var(--borda); border-radius: 14px; text-align: center;

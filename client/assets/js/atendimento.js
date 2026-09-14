@@ -1713,13 +1713,20 @@ import { deveSalvarNota } from './nota-editor.mjs';
    * desligado, com o aviso de "em breve" — em vez de número inventado, que
    * o atendente poderia tomar por verdade.
    * ============================================================== */
-  const ficha = { aba: 'resumo' };
+  const ficha = {
+    aba: 'resumo',
+    // Uma gaveta por aba: o que já veio da API do site fica guardado enquanto a
+    // conversa for a mesma, para trocar de aba não repetir a consulta.
+    compras: { conversaId: null, itens: [], total: 0, cursor: null, carregando: false, erro: null },
+    transacoes: { conversaId: null, itens: [], total: 0, cursor: null, carregando: false, erro: null },
+  };
   const ABAS_FICHA = [['resumo', 'Resumo'], ['compras', 'Compras'], ['transacoes', 'Transações']];
   const EM_BREVE = 'Em breve: depende da API do site';
 
   function trocarAba(id) {
     ficha.aba = id;
     renderPainel();
+    if (id !== 'resumo' && estado.conversa) carregarAba(id, estado.conversa);
   }
 
   // "há 2 min" desde a consulta de saldo.
@@ -1809,6 +1816,88 @@ import { deveSalvarNota } from './nota-editor.mjs';
     return el('div', { class: 'aba-vazia' },
       el('strong', {}, titulo),
       el('span', {}, texto));
+  }
+
+  // ===== Compras e extrato (API do site) =====
+  const CAMINHO_ABA = { compras: '/suporte/compras', transacoes: '/suporte/transacoes' };
+  const CHAVE_ABA = { compras: 'compras', transacoes: 'transacoes' };
+
+  function pinDaFicha(c) {
+    return String((saldo.conversaId === c.id ? saldo.pin : '') || c.contato.pin || '').trim();
+  }
+
+  // Busca a página seguinte (ou a primeira) da aba aberta.
+  async function carregarAba(nome, c, { maisUma = false } = {}) {
+    const gaveta = ficha[CHAVE_ABA[nome]];
+    const pin = pinDaFicha(c);
+    if (!pin || gaveta.carregando) return;
+    if (!maisUma && gaveta.conversaId === c.id && gaveta.itens.length) return; // já temos
+
+    if (!maisUma) Object.assign(gaveta, { conversaId: c.id, itens: [], total: 0, cursor: null });
+    gaveta.carregando = true;
+    gaveta.erro = null;
+    renderPainel();
+    try {
+      const r = await api(CAMINHO_ABA[nome], { method: 'POST', body: { pin, cursor: maisUma ? gaveta.cursor : null } });
+      const novos = nome === 'compras' ? r.compras : r.transacoes;
+      Object.assign(gaveta, {
+        conversaId: c.id,
+        itens: maisUma ? [...gaveta.itens, ...novos] : novos,
+        total: r.total,
+        cursor: r.proximoCursor ?? null,
+        carregando: false,
+      });
+    } catch (e) {
+      Object.assign(gaveta, { carregando: false, erro: e.message });
+    }
+    renderPainel();
+  }
+
+  // Molde comum das duas abas: recado quando falta PIN, erro, vazio ou lista.
+  function corpoDeLista(nome, c, { titulo, textoVazio, desenhar }) {
+    const gaveta = ficha[CHAVE_ABA[nome]];
+    if (!estado.resumo?.saldoAtivo) return [vazioDaAba(titulo, 'Consulta ao sistema do site desligada no servidor.')];
+    if (!pinDaFicha(c)) return [vazioDaAba(titulo, 'Confirme o PIN do cliente para ver estes dados.')];
+    if (gaveta.erro) return [vazioDaAba('Não deu para carregar', gaveta.erro)];
+    if (gaveta.carregando && !gaveta.itens.length) return [vazioDaAba(titulo, 'Carregando…')];
+    if (gaveta.conversaId !== c.id || (!gaveta.itens.length && !gaveta.carregando)) {
+      return [vazioDaAba(titulo, textoVazio)];
+    }
+    return [
+      el('div', { class: 'secao' },
+        el('div', { class: 'linha-titulo' },
+          el('span', { class: 'secao-titulo' }, titulo),
+          el('span', { class: 'contagem' }, gaveta.total > gaveta.itens.length ? `${gaveta.itens.length} de ${gaveta.total}` : `${gaveta.total}`)),
+        el('div', { class: `lista-${nome}` }, ...gaveta.itens.map(desenhar)),
+        gaveta.cursor
+          ? el('button', {
+            type: 'button', class: 'historico-btn', disabled: gaveta.carregando ? 'disabled' : null,
+            onclick: () => carregarAba(nome, c, { maisUma: true }),
+          }, gaveta.carregando ? 'Carregando…' : 'Carregar mais')
+          : null),
+    ];
+  }
+
+  function itemCompra(compra) {
+    const selo = compra.reembolsada ? 'reembolsada' : (compra.status === 'completed' || compra.status === 'active' ? 'ok' : 'neutro');
+    return el('div', { class: 'compra-item' },
+      el('div', { class: 'linha' },
+        el('span', { class: 'nome' }, compra.descricao),
+        el('span', { class: 'valor' }, compra.valor)),
+      el('div', { class: 'linha' },
+        el('span', { class: 'numero' }, compra.numero || '—'),
+        el('span', { class: `selo-compra ${selo}` }, compra.reembolsada ? `${compra.statusTexto} · reembolsada` : compra.statusTexto)));
+  }
+
+  function itemTransacao(t) {
+    return el('div', { class: 'transacao-item' },
+      el('span', { class: `transacao-ic ${t.entrada ? 'entrada' : 'saida'}` }, icone(t.tipo, t.entrada ? ICONE.maisGrande : ICONE.menos)),
+      el('div', { class: 'transacao-texto' },
+        el('span', { class: 'tipo' }, t.tipoTexto),
+        el('span', { class: 'desc' }, t.descricao)),
+      el('div', { class: 'transacao-valores' },
+        el('span', { class: `valor ${t.entrada ? 'entrada' : 'saida'}` }, `${t.entrada ? '+' : ''}${t.valor}`),
+        t.saldoDepois ? el('span', { class: 'depois' }, `→ ${t.saldoDepois}`) : null));
   }
 
   // ===== Folhas laterais das ações de saldo =====
@@ -1952,10 +2041,16 @@ import { deveSalvarNota } from './nota-editor.mjs';
             el('span', { class: 'k' }, k), el('span', { class: `v${cor ? ` ${cor}` : ''}` }, v))))) : null,
         blocoNotas,
       ],
-      compras: () => [vazioDaAba('Compras do cliente',
-        'Aqui vão aparecer as ativações compradas, com número, valor e situação — e é daqui que sai o reembolso. Falta ligar na API do site.')],
-      transacoes: () => [vazioDaAba('Extrato da conta',
-        'Recargas, compras, reembolsos e ajustes manuais, com o saldo que ficou depois de cada um. Falta ligar na API do site.')],
+      compras: () => corpoDeLista('compras', c, {
+        titulo: 'Compras',
+        textoVazio: 'Este cliente ainda não tem compras registradas.',
+        desenhar: itemCompra,
+      }),
+      transacoes: () => corpoDeLista('transacoes', c, {
+        titulo: 'Extrato',
+        textoVazio: 'Nenhuma movimentação registrada nesta conta.',
+        desenhar: itemTransacao,
+      }),
     };
 
     painel.replaceChildren(

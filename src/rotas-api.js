@@ -963,6 +963,39 @@ function criarRotasApi(db, opcoes = {}) {
   // Limite por atendente para evitar consulta em massa (tudo fica registrado do outro lado).
   const limitadorSaldo = new LimitadorTentativas({ maximo: 60, janelaMs: 5 * 60 * 1000 });
 
+  // Compras e extrato do cliente. Mesma chave e mesmo limitador da consulta de
+  // saldo: quem abre a ficha faz três chamadas, e o teto do outro lado é de 120
+  // por minuto para os três endpoints juntos.
+  function rotaDeLeitura(caminho, executar) {
+    r.post(caminho, async (req, res) => {
+      if (!saldo || !saldo.configurado) {
+        return res.status(400).json({ erro: 'Consulta de saldo não configurada. Preencha SALDO_TOKEN no arquivo .env e reinicie o sistema.' });
+      }
+      const pin = normalizarPin(req.body?.pin);
+      if (pin === null) return res.status(400).json({ erro: 'Digite o PIN do cliente (só números).' });
+
+      const chave = `saldo:${req.usuario.id}`;
+      const bloqueio = limitadorSaldo.bloqueadoPor(chave);
+      if (bloqueio > 0) {
+        return res.status(429).json({ erro: `Muitas consultas seguidas. Tente de novo em ${Math.ceil(bloqueio / 60000)} minuto(s).` });
+      }
+      limitadorSaldo.registrarFalha(chave);
+
+      try {
+        res.json(await executar(pin, {
+          limite: Number(req.body?.limite) || undefined,
+          cursor: Number.isFinite(Number(req.body?.cursor)) && req.body?.cursor !== null ? Number(req.body.cursor) : null,
+        }));
+      } catch (erro) {
+        const status = erro.naoEncontrado ? 404 : (erro.status === 400 ? 400 : 502);
+        res.status(status).json({ erro: erro.message, naoEncontrado: Boolean(erro.naoEncontrado) });
+      }
+    });
+  }
+
+  rotaDeLeitura('/suporte/compras', (pin, opcoes) => saldo.listarCompras(pin, opcoes));
+  rotaDeLeitura('/suporte/transacoes', (pin, opcoes) => saldo.listarTransacoes(pin, opcoes));
+
   r.post('/suporte/saldo', async (req, res) => {
     if (!saldo || !saldo.configurado) {
       return res.status(400).json({ erro: 'Consulta de saldo não configurada. Preencha SALDO_TOKEN no arquivo .env e reinicie o sistema.' });
