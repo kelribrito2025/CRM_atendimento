@@ -403,10 +403,10 @@ function criarSaldo({ url = URL_PADRAO, token = '', fetchImpl = globalThis.fetch
   async function acaoDeConta(nome, { pin, motivo, atendente, chaveIdempotencia }) {
     // Aqui o motivo é obrigatório, ao contrário das ações de saldo: é ele que
     // explica, meses depois, por que a conta de alguém foi cortada. O site
-    // também exige — de 10 a 300 caracteres —, então mandar vazio só renderia
+    // também exige — de 5 a 300 caracteres —, então mandar vazio só renderia
     // uma recusa confusa na cara do atendente.
-    if (String(motivo || '').trim().length < 10) {
-      throw new ErroSaldo('Escreva o motivo com pelo menos 10 letras — ele fica no registro da operação.', { status: 400, codigo: 'dados_invalidos' });
+    if (String(motivo || '').trim().length < 5) {
+      throw new ErroSaldo('Escreva o motivo com pelo menos 5 caracteres — ele fica no registro da operação.', { status: 400, codigo: 'dados_invalidos' });
     }
     const { marca, corpo } = conferirPedido({ pin, motivo, atendente, chaveIdempotencia });
     const { dados, repetida } = await postar(

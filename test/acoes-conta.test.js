@@ -140,11 +140,21 @@ test('sem marca de segurança ou com motivo curto, nada sai do CRM', async () =>
 
   await assert.rejects(() => saldo.banir({ pin: 7712, motivo: MOTIVO, atendente: ATENDENTE }),
     (e) => e.codigo === 'sem_idempotency_key');
-  await assert.rejects(() => saldo.banir({ pin: 7712, motivo: 'curto', atendente: ATENDENTE, chaveIdempotencia: 'm' }),
+  await assert.rejects(() => saldo.banir({ pin: 7712, motivo: '1234', atendente: ATENDENTE, chaveIdempotencia: 'm' }),
     (e) => e.codigo === 'dados_invalidos');
   await assert.rejects(() => saldo.banir({ pin: 7712, motivo: MOTIVO, atendente: { id: 1, nome: 'X' }, chaveIdempotencia: 'm' }),
     (e) => e.codigo === 'dados_invalidos');
   assert.equal(chamadas.length, 0, 'pedido inválido nem chega ao site');
+});
+
+test('motivo com exatamente cinco caracteres é aceito nas ações de conta', async () => {
+  const { chamadas, fetchImpl } = apiFalsa(() => resposta(DESATIVADA));
+  const saldo = criarSaldo({ url: BASE, token: CHAVE, fetchImpl });
+
+  await saldo.desativar({ pin: 7712, motivo: 'cinco', atendente: ATENDENTE, chaveIdempotencia: 'motivo-5' });
+
+  assert.equal(chamadas.length, 1);
+  assert.equal(chamadas[0].corpo.motivo, 'cinco');
 });
 
 /* ================================================================

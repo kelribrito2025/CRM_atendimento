@@ -2247,7 +2247,7 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
     const estadoFolha = { marca: novaMarca(), enviando: false };
 
     const campoMotivo = el('textarea', {
-      class: 'campo-rapida area', rows: '2', maxlength: '300', placeholder: EXEMPLO_CONTA[acao],
+      class: 'campo-rapida area', rows: '2', minlength: '5', maxlength: '300', placeholder: EXEMPLO_CONTA[acao],
     });
     const aviso = el('div', { class: 'folha-aviso', hidden: 'hidden' });
     const perigosa = acao === 'banir';
@@ -2296,8 +2296,8 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
 
     function confirmar() {
       if (estadoFolha.enviando) return;
-      if (campoMotivo.value.trim().length < 10) {
-        return mostrarAviso('Escreva o motivo com pelo menos 10 letras — ele fica no registro da operação.');
+      if (campoMotivo.value.trim().length < 5) {
+        return mostrarAviso('Escreva o motivo com pelo menos 5 caracteres — ele fica no registro da operação.');
       }
       if (perigosa && !window.confirm(`Banir a conta de ${nome}?\n\nO cliente perde o acesso e as chaves de API dele são cortadas na hora.`)) return;
       enviar();

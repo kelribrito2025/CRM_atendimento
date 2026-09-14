@@ -55,8 +55,10 @@ test('ações de saldo: crédito e débito usam a máscara no campo de valor', (
   const fimFolha = tela.indexOf('function abrirFolhaConta', inicioFolha);
   const folhaSaldo = tela.slice(inicioFolha, fimFolha);
   assert.ok(inicioFolha > 0 && fimFolha > inicioFolha, 'as duas folhas precisam existir');
-  assert.doesNotMatch(folhaSaldo, /campoMotivo\.value\.trim\(\)\.length < 10/);
+  assert.doesNotMatch(folhaSaldo, /campoMotivo\.value\.trim\(\)\.length < (?:5|10)/);
 
   const folhaConta = tela.slice(fimFolha);
-  assert.match(folhaConta, /campoMotivo\.value\.trim\(\)\.length < 10/, 'ação de conta sem motivo não pode sair do CRM');
+  assert.match(folhaConta, /minlength: '5'/);
+  assert.match(folhaConta, /campoMotivo\.value\.trim\(\)\.length < 5/, 'ação de conta com menos de cinco caracteres não pode sair do CRM');
+  assert.match(folhaConta, /pelo menos 5 caracteres/);
 });
