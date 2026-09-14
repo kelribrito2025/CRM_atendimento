@@ -410,6 +410,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
   border-radius: 14px; background: var(--rail); padding: 13px 14px;
   display: flex; flex-direction: column; gap: 9px; flex-shrink: 0;
 }
+.saldo-cabecalho { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; }
 .saldo-linha-topo { display: flex; align-items: flex-end; gap: 9px; }
 .saldo-numero { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .saldo-rotulo { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--rail-icone); }
@@ -425,7 +426,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .saldo-vazio { font-size: 12.5px; color: var(--rail-icone); line-height: 1.5; }
 .saldo-erro { font-size: 12.5px; color: var(--vermelho); line-height: 1.45; }
 .saldo-acao {
-  align-self: flex-start; height: 32px; padding: 0 13px; border-radius: 10px; border: 0;
+  flex-shrink: 0; height: 32px; padding: 0 13px; border-radius: 10px; border: 0;
   background: var(--verde); color: #fff; font-size: 12px; font-weight: 700;
 }
 .saldo-acao:hover { background: var(--verde-escuro); }
