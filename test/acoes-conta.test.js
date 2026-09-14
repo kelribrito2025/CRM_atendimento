@@ -325,3 +325,34 @@ test('rota do CRM: ação inventada não passa, e sem login ninguém mexe', asyn
     assert.equal(s.chamadas.length, 0);
   } finally { await s.fechar(); }
 });
+
+test('403 com código: mostra o motivo do site, não "a chave não tem permissão"', async () => {
+  // O site recusa mexer no dinheiro de conta bloqueada. Se essa recusa vier
+  // como 403, o CRM dizia ao atendente que a CHAVE estava sem permissão — ele
+  // chamaria o administrador por um problema que não existe. Quem manda no
+  // recado é o código, não o número da resposta.
+  const { fetchImpl } = apiFalsa(() => recusa(403, 'conta_bloqueada', 'Conta bloqueada (fraude confirmada)'));
+  const saldo = criarSaldo({ url: BASE, token: CHAVE, fetchImpl });
+
+  await assert.rejects(
+    () => saldo.creditar({ pin: 7712, valorCents: 100, motivo: MOTIVO, atendente: ATENDENTE, chaveIdempotencia: 'm' }),
+    (e) => {
+      assert.equal(e.codigo, 'conta_bloqueada');
+      assert.match(e.message, /fraude confirmada/, 'o motivo do bloqueio é o que o atendente precisa ler');
+      assert.doesNotMatch(e.message, /não tem permissão/i);
+      return true;
+    });
+});
+
+test('403 sem código continua sendo "a chave não tem permissão"', async () => {
+  const { fetchImpl } = apiFalsa(() => new Response(JSON.stringify({ error: true }), { status: 403 }));
+  const saldo = criarSaldo({ url: BASE, token: CHAVE, fetchImpl });
+
+  await assert.rejects(
+    () => saldo.banir({ pin: 7712, motivo: MOTIVO, atendente: ATENDENTE, chaveIdempotencia: 'm' }),
+    (e) => {
+      assert.match(e.message, /não tem permissão/i);
+      assert.equal(e.status, 403);
+      return true;
+    });
+});

@@ -167,6 +167,9 @@ const RECADO_DA_RECUSA = {
   operacao_em_andamento: 'Esta operação ainda está sendo processada. Espere um instante e tente de novo.',
   cliente_nao_encontrado: 'Nenhum cliente encontrado com este PIN.',
   saldo_insuficiente: 'Saldo insuficiente para este débito. O saldo do cliente não foi alterado.',
+  // conta_bloqueada de propósito não está aqui: o texto que o site manda nesse
+  // caso traz o motivo do bloqueio ("fraude confirmada", por exemplo), e trocar
+  // por um recado nosso perderia justamente a parte útil.
   compra_ja_reembolsada: 'Esta compra já foi reembolsada — o dinheiro já voltou para o cliente.',
   compra_nao_reembolsavel: 'Esta compra não existe ou não é deste cliente.',
   erro_interno: 'O sistema do site teve um erro. Pode tentar de novo: a operação não foi feita duas vezes.',
@@ -344,9 +347,15 @@ function criarSaldo({ url = URL_PADRAO, token = '', fetchImpl = globalThis.fetch
 
     if (!resposta.ok) {
       const codigo = dados?.codigo || null;
-      if (resposta.status === 403) throw new ErroSaldo('A chave do CRM não tem permissão para esta ação. Avise o administrador.', { status: 403, codigo });
-      if (resposta.status === 401) throw new ErroSaldo('A chave de acesso ao sistema do site é inválida ou expirou. Avise o administrador.', { status: 401, codigo });
       if (resposta.status === 429) throw new ErroSaldo('Muitas operações seguidas. Espere um minuto e tente de novo.', { status: 429, codigo, podeRepetir: true });
+      // Quando o site manda um código, ele está dizendo o motivo exato — e o
+      // número da resposta vira detalhe. Um 403 com código pode ser "esta conta
+      // está bloqueada", e dizer ao atendente que a CHAVE está sem permissão o
+      // faria chamar o administrador por um problema que não existe.
+      if (!codigo) {
+        if (resposta.status === 403) throw new ErroSaldo('A chave do CRM não tem permissão para esta ação. Avise o administrador.', { status: 403, codigo });
+        if (resposta.status === 401) throw new ErroSaldo('A chave de acesso ao sistema do site é inválida ou expirou. Avise o administrador.', { status: 401, codigo });
+      }
       const recado = recados[codigo] || RECADO_DA_RECUSA[codigo] || dados?.message || 'O sistema do site recusou a operação.';
       throw new ErroSaldo(recado, {
         status: resposta.status,
