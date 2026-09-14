@@ -341,6 +341,8 @@ async function migrar(db) {
   await garantirColuna(db, 'contatos', 'wa_foto_url', 'TEXT');
   await garantirColuna(db, 'contatos', 'tg_foto_id', 'VARCHAR(255)');
   await garantirColuna(db, 'contatos', 'tg_foto_em', 'BIGINT');
+  // Detalhe do evento na auditoria: o que a ação mexeu (valor, motivo).
+  await garantirColuna(db, 'auditoria_eventos', 'detalhe', 'TEXT');
   for (const [nome, tabela, colunas] of INDICES) await db.criarIndice(nome, tabela, colunas);
   await migrarNotasDeAberturaParaAuditoria(db);
   await limparConversasDeChatVazias(db);

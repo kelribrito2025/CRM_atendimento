@@ -293,12 +293,12 @@ function criarRotasApi(db, opcoes = {}) {
   // conversa ou contato for removido depois.
   r.get('/auditoria', soAdmin, async (req, res) => {
     const linhas = await db.prepare(`SELECT id, acao, usuario_id, usuario_nome, usuario_email,
-      conversa_id, protocolo, canal, contato_id, contato_nome, criado_em
+      conversa_id, protocolo, canal, contato_id, contato_nome, criado_em, detalhe
       FROM auditoria_eventos ORDER BY criado_em DESC, id DESC LIMIT 200`).all();
     res.json({ eventos: linhas.map((e) => ({
       id: Number(e.id),
       acao: e.acao,
-      descricao: e.acao === 'abrir_conta' ? 'Abriu a conta do cliente no site.' : e.acao,
+      descricao: e.detalhe || (e.acao === 'abrir_conta' ? 'Abriu a conta do cliente no site.' : e.acao),
       usuario: { id: e.usuario_id == null ? null : Number(e.usuario_id), nome: e.usuario_nome, email: e.usuario_email || null },
       conversa: { id: e.conversa_id == null ? null : Number(e.conversa_id), protocolo: e.protocolo || null, canal: e.canal || null },
       contato: { id: e.contato_id == null ? null : Number(e.contato_id), nome: e.contato_nome || null },
@@ -992,6 +992,62 @@ function criarRotasApi(db, opcoes = {}) {
       }
     });
   }
+
+  // ===== Ações de saldo: crédito, débito e reembolso =====
+  //
+  // Quem está fazendo vem SEMPRE da sessão do CRM, nunca do navegador — mesmo
+  // desenho do "abrir conta". A marca de segurança (idempotência) é o contrário:
+  // ela nasce no clique, no navegador, e o CRM só repassa. Se nascesse aqui,
+  // cada tentativa do mesmo clique ganharia uma marca diferente e o cliente
+  // poderia ser creditado duas vezes.
+  const ACOES_SALDO = new Set(['creditar', 'debitar', 'reembolsar']);
+  const ROTULO_ACAO = { creditar: 'Creditou', debitar: 'Debitou', reembolsar: 'Reembolsou' };
+  const limitadorAcaoSaldo = new LimitadorTentativas({ maximo: 20, janelaMs: 5 * 60 * 1000 });
+
+  r.post('/conversas/:id/saldo/:acao', comConversa, async (req, res) => {
+    const acao = String(req.params.acao || '');
+    if (!ACOES_SALDO.has(acao)) return res.status(404).json({ erro: 'Ação de saldo desconhecida.' });
+    if (!saldo?.configurado) {
+      return res.status(400).json({ erro: 'Ações de saldo não configuradas no servidor. Avise o administrador.' });
+    }
+
+    const chave = `acao-saldo:${req.usuario.id}`;
+    const bloqueio = limitadorAcaoSaldo.bloqueadoPor(chave);
+    if (bloqueio > 0) {
+      return res.status(429).json({ erro: `Muitas operações seguidas. Tente de novo em ${Math.ceil(bloqueio / 60000)} minuto(s).` });
+    }
+    limitadorAcaoSaldo.registrarFalha(chave);
+
+    const c = req.conversa;
+    try {
+      const r2 = await saldo[acao]({
+        pin: req.body?.pin,
+        valorCents: req.body?.valorCents,
+        activationId: req.body?.activationId,
+        motivo: req.body?.motivo,
+        chaveIdempotencia: req.body?.chaveIdempotencia,
+        atendente: { id: req.usuario.id, nome: req.usuario.nome, email: req.usuario.email },
+      });
+
+      // Fica registrado também na auditoria do CRM: o administrador vê quem
+      // mexeu no saldo de quem, sem precisar pedir o log do outro lado.
+      const detalhe = `${ROTULO_ACAO[acao]} ${r2.valor}${acao === 'reembolsar' ? ` (compra #${r2.activationId})` : ''} — ${String(req.body?.motivo || '').trim()}`;
+      await db.prepare(`INSERT INTO auditoria_eventos
+        (acao, usuario_id, usuario_nome, usuario_email, conversa_id, protocolo, canal,
+         contato_id, contato_nome, criado_em, origem_mensagem_id, detalhe)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`)
+        .run(`saldo_${acao}`, req.usuario.id, req.usuario.nome, req.usuario.email, c.id, c.protocolo,
+          c.canal, c.contato.id, c.contato.nome, Date.now(), detalhe.slice(0, 500));
+
+      res.json(r2);
+    } catch (erro) {
+      res.status(erro.status || 502).json({
+        erro: erro.message,
+        codigo: erro.codigo || null,
+        podeRepetir: Boolean(erro.podeRepetir),
+      });
+    }
+  });
 
   rotaDeLeitura('/suporte/compras', (pin, opcoes) => saldo.listarCompras(pin, opcoes));
   rotaDeLeitura('/suporte/transacoes', (pin, opcoes) => saldo.listarTransacoes(pin, opcoes));

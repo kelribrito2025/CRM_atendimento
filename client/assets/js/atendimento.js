@@ -205,7 +205,14 @@ import { deveSalvarNota } from './nota-editor.mjs';
       throw new Error('Sessão expirada.');
     }
     const dados = await resposta.json().catch(() => ({}));
-    if (!resposta.ok) throw new Error(dados.erro || `Erro ${resposta.status}`);
+    if (!resposta.ok) {
+      const erro = new Error(dados.erro || `Erro ${resposta.status}`);
+      // Detalhes que a tela usa para decidir o que oferecer (ver ações de saldo).
+      erro.status = resposta.status;
+      erro.codigo = dados.codigo || null;
+      erro.podeRepetir = Boolean(dados.podeRepetir);
+      throw erro;
+    }
     return dados;
   }
 
@@ -1901,26 +1908,172 @@ import { deveSalvarNota } from './nota-editor.mjs';
   }
 
   // ===== Folhas laterais das ações de saldo =====
-  // São a tela do que vem depois: mostram o cliente, o saldo de agora e o que
-  // ficaria depois da operação. O botão que confirma está desligado até existir
-  // a API — assim ninguém clica achando que gravou.
+  // Mostram o cliente, o saldo de agora e como ele fica depois. Cada clique do
+  // atendente ganha uma marca de segurança própria, repetida em toda tentativa
+  // daquele clique: é ela que impede creditar duas vezes quando a rede falha.
   const TITULOS_FOLHA = {
     adicionar: ['Adicionar saldo', 'Crédito manual, com motivo registrado'],
     debitar: ['Debitar saldo', 'Ajuste para menos, com motivo registrado'],
     reembolsar: ['Reembolsar', 'Selecione a compra a devolver'],
   };
   const ATALHOS_VALOR = ['10,00', '20,00', '50,00', '100,00'];
+  // Na tela é "Adicionar"; na API do site a ação chama "creditar".
+  const ACAO_NA_API = { adicionar: 'creditar', debitar: 'debitar', reembolsar: 'reembolsar' };
+  const NOME_DO_FEITO = { adicionar: 'Crédito', debitar: 'Débito', reembolsar: 'Reembolso' };
+
+  // Converte "1.234,56" (ou "1234.56") em centavos inteiros.
+  function centavosDoTexto(texto) {
+    const limpo = String(texto || '').replace(/[^0-9,.]/g, '').replace(/\.(?=\d{3}\b)/g, '').replace(',', '.');
+    const numero = Number(limpo);
+    if (!Number.isFinite(numero) || numero <= 0) return null;
+    return Math.round(numero * 100);
+  }
+
+  function emReaisDoCentavo(centavos) {
+    return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
+
+  // Marca de segurança da operação: uma por clique do atendente. Repetir a
+  // MESMA marca é o que garante que uma tentativa repetida (rede ruim, clique
+  // duplo) não credite o cliente duas vezes.
+  function novaMarca() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    return `crm-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  // Acima deste valor a tela pede confirmação: pega o zero digitado a mais,
+  // que é o erro comum de quem digita rápido.
+  const VALOR_QUE_PEDE_CONFIRMACAO = 20000; // R$ 200,00
 
   function abrirFolhaSaldo(tipo, c) {
     const [titulo, subtitulo] = TITULOS_FOLHA[tipo];
     const cli = saldo.conversaId === c.id ? saldo.cliente : null;
     const nome = cli?.nome || c.contato.nome;
     const pin = String(saldo.pin || c.contato.pin || '').trim();
+    const ligado = Boolean(estado.resumo?.saldoAtivo) && Boolean(pin);
+    // A mesma marca vale para todas as tentativas deste clique.
+    const estadoFolha = { marca: novaMarca(), enviando: false, compra: null, erro: null };
 
     const campoValor = el('input', {
       type: 'text', value: tipo === 'reembolsar' ? '' : '50,00', 'aria-label': 'Valor',
       class: 'folha-valor', disabled: tipo === 'reembolsar' ? 'disabled' : null,
+      oninput: () => desenharPrevisao(),
     });
+    const campoMotivo = el('textarea', {
+      class: 'campo-rapida area', rows: '2', maxlength: '300',
+      placeholder: tipo === 'reembolsar' ? 'Ex.: número não recebeu o código de ativação…' : 'Ex.: recarga via PIX não creditada…',
+    });
+
+    const antesDepois = el('div', { class: 'folha-antes-depois' });
+    const aviso = el('div', { class: 'folha-aviso', hidden: 'hidden' });
+    const botaoConfirmar = el('button', { type: 'button', class: 'btn-verde', onclick: () => confirmar() }, titulo);
+
+    // Saldo de agora e como fica depois — recalculado a cada tecla.
+    function desenharPrevisao() {
+      const atual = cli?.saldoCentavos ?? null;
+      const centavos = tipo === 'reembolsar'
+        ? (estadoFolha.compra ? estadoFolha.compra.valorCentavos : null)
+        : centavosDoTexto(campoValor.value);
+      const sinal = tipo === 'debitar' ? -1 : 1;
+      const depois = atual !== null && centavos !== null ? atual + sinal * centavos : null;
+      antesDepois.replaceChildren(
+        el('div', { class: 'lado' }, el('span', { class: 'k' }, 'Saldo atual'), el('span', { class: 'v' }, cli?.saldo || '—')),
+        icone('seta', ICONE.setaDireita),
+        el('div', { class: 'lado fim' },
+          el('span', { class: 'k' }, 'Fica em'),
+          el('span', { class: `v ${depois !== null && depois < 0 ? 'vermelho' : 'verde'}` }, depois === null ? '—' : emReaisDoCentavo(depois))));
+    }
+
+    function mostrarAviso(texto, classe = 'erro') {
+      aviso.className = `folha-aviso ${classe}`;
+      aviso.textContent = texto;
+      aviso.hidden = !texto;
+    }
+
+    // Lista de compras para escolher no reembolso, com o motivo quando não dá.
+    function corpoCompras() {
+      const gaveta = ficha.compras;
+      if (gaveta.conversaId !== c.id || !gaveta.itens.length) {
+        return vazioDaAba('Sem compras carregadas', 'Abra a aba Compras da ficha para carregar as compras deste cliente.');
+      }
+      return el('div', { class: 'escolha-compras' }, ...gaveta.itens.map((compra) => {
+        const escolhida = estadoFolha.compra?.id === compra.id;
+        const bloqueada = !compra.podeReembolsar;
+        return el('button', {
+          type: 'button',
+          class: `escolha-compra${escolhida ? ' marcada' : ''}${bloqueada ? ' bloqueada' : ''}`,
+          disabled: bloqueada ? 'disabled' : null,
+          title: bloqueada ? (compra.motivoNaoPodeReembolsar || 'Esta compra não pode ser reembolsada.') : '',
+          onclick: () => { estadoFolha.compra = compra; desenharCompras(); desenharPrevisao(); mostrarAviso(''); },
+        },
+          el('span', { class: 'marca-radio' }),
+          el('div', { class: 'texto' },
+            el('span', { class: 'nome' }, `${compra.descricao}${compra.numero ? ` · ${compra.numero}` : ''}`),
+            el('span', { class: 'sub' }, bloqueada ? (compra.motivoNaoPodeReembolsar || 'Não pode ser reembolsada') : (compra.recebeuSms ? 'Atenção: o código chegou para o cliente' : 'Código não chegou'))),
+          el('span', { class: 'valor' }, compra.valor));
+      }));
+    }
+
+    const caixaCompras = el('div', {});
+    function desenharCompras() { caixaCompras.replaceChildren(corpoCompras()); }
+
+    async function enviar() {
+      const corpo = {
+        pin,
+        motivo: campoMotivo.value.trim(),
+        chaveIdempotencia: estadoFolha.marca,
+      };
+      if (tipo === 'reembolsar') corpo.activationId = estadoFolha.compra?.id;
+      else corpo.valorCents = centavosDoTexto(campoValor.value);
+
+      estadoFolha.enviando = true;
+      botaoConfirmar.disabled = true;
+      botaoConfirmar.textContent = 'Enviando…';
+      mostrarAviso('');
+      try {
+        const r = await api(`/conversas/${c.id}/saldo/${ACAO_NA_API[tipo]}`, { method: 'POST', body: corpo });
+        // O saldo do card vem do próprio resultado: nada de número velho na tela.
+        if (saldo.conversaId === c.id && saldo.cliente) {
+          saldo.cliente = { ...saldo.cliente, saldo: r.saldoAtual, saldoCentavos: r.saldoAtualCentavos };
+          saldo.em = Date.now();
+        }
+        // Compras e extrato mudaram: busca de novo quando a aba for aberta.
+        ficha.compras.conversaId = null;
+        ficha.transacoes.conversaId = null;
+        if (ficha.aba !== 'resumo') carregarAba(ficha.aba, c);
+        fundo.remove();
+        renderPainel();
+        toast(r.repetida
+          ? 'Esta operação já tinha sido feita — nada foi repetido.'
+          : `${NOME_DO_FEITO[tipo]} de ${r.valor} feito. Saldo agora: ${r.saldoAtual}.`, 5000);
+      } catch (e) {
+        // Recusa do servidor é resposta, não falha: aparece dentro da folha.
+        mostrarAviso(e.message);
+        botaoConfirmar.textContent = e.podeRepetir ? 'Tentar de novo' : titulo;
+        botaoConfirmar.disabled = false;
+        estadoFolha.enviando = false;
+        return;
+      }
+      estadoFolha.enviando = false;
+    }
+
+    function confirmar() {
+      if (estadoFolha.enviando) return;
+      if (campoMotivo.value.trim().length < 10) {
+        return mostrarAviso('Escreva o motivo com pelo menos 10 letras — ele fica no registro da operação.');
+      }
+      if (tipo === 'reembolsar') {
+        if (!estadoFolha.compra) return mostrarAviso('Escolha a compra que será reembolsada.');
+        if (estadoFolha.compra.recebeuSms
+          && !window.confirm(`Esta compra ENTREGOU o código ao cliente (${estadoFolha.compra.numero || 'número'}).\n\nReembolsar mesmo assim?`)) return;
+      } else {
+        const centavos = centavosDoTexto(campoValor.value);
+        if (centavos === null) return mostrarAviso('Digite um valor maior que zero.');
+        if (centavos > VALOR_QUE_PEDE_CONFIRMACAO
+          && !window.confirm(`Você está ${tipo === 'creditar' ? 'creditando' : 'debitando'} ${emReaisDoCentavo(centavos)}.\n\nConfirma esse valor?`)) return;
+      }
+      enviar();
+    }
 
     const fundo = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === fundo) fundo.remove(); } },
       el('div', { class: 'folha', role: 'dialog', 'aria-modal': 'true', 'aria-label': titulo },
@@ -1931,14 +2084,13 @@ import { deveSalvarNota } from './nota-editor.mjs';
           el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: () => fundo.remove() }, svg(ICONE.fechar))),
 
         el('div', { class: 'folha-corpo' },
-          el('div', { class: 'aviso-construcao' },
-            icone('alerta', ICONE.alerta),
-            el('span', {}, 'Esta tela ainda não grava nada. A ligação com o sistema do site vem na próxima etapa.')),
+          el('span', { class: 'folha-sub' }, subtitulo),
+          aviso,
 
           tipo === 'reembolsar'
             ? el('div', { class: 'folha-campo' },
               el('span', { class: 'secao-titulo' }, 'Compra'),
-              vazioDaAba('Sem histórico de compras', 'As ativações do cliente vão aparecer aqui quando o sistema do site abrir esses dados.'))
+              caixaCompras)
             : el('div', { class: 'folha-campo' },
               el('span', { class: 'secao-titulo' }, 'Valor'),
               el('div', { class: `folha-caixa-valor${tipo === 'debitar' ? ' menos' : ''}` },
@@ -1946,26 +2098,26 @@ import { deveSalvarNota } from './nota-editor.mjs';
                 campoValor),
               el('div', { class: 'folha-atalhos' },
                 ...ATALHOS_VALOR.map((v) => el('button', {
-                  type: 'button', class: 'folha-atalho hov', onclick: () => { campoValor.value = v; },
+                  type: 'button', class: 'folha-atalho hov',
+                  onclick: () => { campoValor.value = v; desenharPrevisao(); },
                 }, v)))),
 
-          el('div', { class: 'folha-antes-depois' },
-            el('div', { class: 'lado' }, el('span', { class: 'k' }, 'Saldo atual'), el('span', { class: 'v' }, cli?.saldo || '—')),
-            icone('seta', ICONE.setaDireita),
-            el('div', { class: 'lado fim' }, el('span', { class: 'k' }, 'Fica em'), el('span', { class: 'v verde' }, '—'))),
+          antesDepois,
 
           el('div', { class: 'folha-campo' },
             el('span', { class: 'secao-titulo' }, 'Motivo'),
-            el('textarea', {
-              class: 'campo-rapida area', rows: '2', disabled: 'disabled',
-              placeholder: tipo === 'reembolsar' ? 'Ex.: número não recebeu o código de ativação…' : 'Ex.: recarga via PIX não creditada…',
-            }))),
+            campoMotivo,
+            el('span', { class: 'folha-dica' }, 'Fica no registro da operação, aqui e no sistema do site.'))),
 
         el('div', { class: 'folha-pe' },
-          el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => fundo.remove() }, 'Fechar'),
-          desligar(el('button', { type: 'button', class: 'btn-verde' }, titulo), `${titulo} — ${EM_BREVE}`))));
+          el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => fundo.remove() }, 'Cancelar'),
+          ligado ? botaoConfirmar : desligar(el('button', { type: 'button', class: 'btn-verde' }, titulo),
+            pin ? 'Ações de saldo desligadas no servidor' : 'Confirme o PIN do cliente primeiro'))));
 
+    desenharCompras();
+    desenharPrevisao();
     document.body.append(fundo);
+    if (tipo !== 'reembolsar') campoValor.focus();
   }
 
   function renderPainel() {
