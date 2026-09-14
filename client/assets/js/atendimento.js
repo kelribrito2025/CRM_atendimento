@@ -1929,12 +1929,12 @@ import { deveSalvarNota } from './nota-editor.mjs';
 
     // Números que já temos de verdade. O resto do Resumo do desenho (gasto
     // total, reembolsos, cliente desde) depende da API do site.
+    // Recargas, última recarga e e-mail já aparecem no bloco de saldo e no
+    // cabeçalho: aqui fica só o que não está em outro lugar.
     const numeros = [];
     if (cli) {
-      numeros.push(['Recargas', String(cli.totalRecargas)]);
-      if (cli.ultimaRecarga) numeros.push(['Última recarga', cli.ultimaRecarga.valor]);
-      numeros.push(['Situação', cli.bloqueada ? 'Bloqueada' : (cli.statusTexto || 'Ativa')]);
-      if (cli.email) numeros.push(['E-mail', cli.email]);
+      numeros.push(['Reembolsos', Number.isFinite(cli.totalReembolsos) ? String(cli.totalReembolsos) : '—']);
+      numeros.push(['Situação', cli.bloqueada ? 'Banida' : (cli.statusTexto || 'Ativa')]);
     }
 
     const corpoAba = {

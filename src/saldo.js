@@ -50,6 +50,9 @@ function resumirCliente(cliente) {
     statusTexto: ROTULO_STATUS[cliente?.status] || cliente?.status || null,
     bloqueada: Boolean(cliente?.banned),
     totalRecargas: Number.isFinite(cliente?.totalRecharges) ? cliente.totalRecharges : recargas.length,
+    // Quantos reembolsos este cliente já recebeu. O campo ainda não vem da API
+    // do site: quando vier, a ficha mostra sozinha, sem mexer na tela.
+    totalReembolsos: Number.isFinite(cliente?.totalRefunds) ? cliente.totalRefunds : null,
     ultimaRecarga: recargas.length ? resumirRecarga(recargas[0]) : null,
   };
 }
