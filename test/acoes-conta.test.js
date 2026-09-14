@@ -356,3 +356,19 @@ test('403 sem código continua sendo "a chave não tem permissão"', async () =>
       return true;
     });
 });
+
+test('403 com ou sem código diz a mesma coisa ao atendente', async () => {
+  // O site hoje manda 403 pelado. Se um dia acrescentar codigo: "sem_permissao",
+  // o recado não pode mudar embaixo de quem está atendendo.
+  const pedido = { pin: 7712, motivo: MOTIVO, atendente: ATENDENTE, chaveIdempotencia: 'm' };
+  const pelado = criarSaldo({ url: BASE, token: CHAVE, fetchImpl: apiFalsa(() => new Response(JSON.stringify({ error: true, message: 'forbidden: missing scope' }), { status: 403 })).fetchImpl });
+  const comCodigo = criarSaldo({ url: BASE, token: CHAVE, fetchImpl: apiFalsa(() => recusa(403, 'sem_permissao', 'forbidden: missing scope')).fetchImpl });
+
+  for (const saldo of [pelado, comCodigo]) {
+    await assert.rejects(() => saldo.banir(pedido), (e) => {
+      assert.match(e.message, /não tem permissão/i);
+      assert.doesNotMatch(e.message, /missing scope/, 'o atendente não lê o texto cru do servidor');
+      return true;
+    });
+  }
+});

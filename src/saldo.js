@@ -163,6 +163,11 @@ function enderecoDaAcao(url, nome) {
 // do outro lado pode mudar, então quem manda aqui é o código.
 const RECADO_DA_RECUSA = {
   sem_idempotency_key: 'O CRM não enviou a marca de segurança da operação. Recarregue a página e tente de novo.',
+  // Hoje o 403 do site vem sem código e cai no recado por número da resposta,
+  // logo abaixo. Se um dia ele passar a mandar código, o recado tem de
+  // continuar o mesmo — sem esta linha, o atendente veria o texto cru do
+  // servidor justamente no caso em que precisa chamar o administrador.
+  sem_permissao: 'A chave do CRM não tem permissão para esta ação. Avise o administrador.',
   chave_repetida_corpo_diferente: 'Este pedido já foi enviado com outros dados. Feche esta janela e comece de novo.',
   operacao_em_andamento: 'Esta operação ainda está sendo processada. Espere um instante e tente de novo.',
   cliente_nao_encontrado: 'Nenhum cliente encontrado com este PIN.',
