@@ -879,6 +879,7 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
 
   function itemConversa(c) {
     const ativa = c.id === estado.conversaId;
+    const semRespostaAtrasada = c.semResposta && Number(c.semRespostaMin) > 5;
     const corAvatar = ativa ? 'verde' : (c.canal === 'telegram' ? 'azul' : 'cinza');
     const corCanal = COR_CANAL[c.canal] || COR_CANAL.whatsapp;
 
@@ -890,6 +891,14 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
     const previa = c.ultimaTipo === 'atendente' && c.ultimaAutor
       ? `${c.ultimaAutor.split(' ')[0]}: ${c.ultimaTexto}`
       : (c.ultimaTexto || 'Sem mensagens');
+    const linhaPrevia = c.semResposta && tag
+      ? el('span', { class: 'conversa-previa-linha' },
+        el('span', { class: 'conversa-previa' }, previa),
+        el('span', { class: 'tag vermelho tag-sem-resposta' }, tag[0]))
+      : [
+        el('span', { class: 'conversa-previa' }, previa),
+        tag ? el('span', { class: `tag ${tag[1]}`.trim() }, tag[0]) : null,
+      ];
 
     // Só em "Minhas conversas": o botão de encerrar, no canto de baixo do card.
     const encerrar = estado.caixa === 'minhas' && c.status === 'aberta'
@@ -903,7 +912,7 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
     // Cartão clicável (div, e não button, porque tem um botão dentro).
     const pressao = { encerrou: false };
     const card = el('div', {
-      class: `conversa${ativa ? ' ativa' : ''}`, role: 'button', tabindex: '0',
+      class: `conversa${ativa ? ' ativa' : ''}${semRespostaAtrasada ? ' sem-resposta-atrasada' : ''}`, role: 'button', tabindex: '0',
       onclick: () => { if (!pressao.encerrou) abrirConversa(c.id); },
       onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirConversa(c.id); } },
     },
@@ -915,8 +924,7 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
           el('span', { class: 'conversa-nome', title: c.contato.nome }, encurtar(c.contato.nome, 14)),
           c.atendente ? el('span', { class: 'tag atendente', title: `Em atendimento com ${c.atendente.nome || c.atendente.nomeCurto}` }, c.atendente.nomeCurto) : null,
           el('span', { class: 'conversa-hora' }, horaLista(c.ultimaEm || c.atualizadaEm))),
-        el('span', { class: 'conversa-previa' }, previa),
-        tag ? el('span', { class: `tag ${tag[1]}`.trim() }, tag[0]) : null),
+        linhaPrevia),
       c.naoLidas > 0 && !ativa ? el('span', { class: 'nao-lidas' }, String(c.naoLidas)) : null,
       encerrar);
     if (c.status === 'aberta') segurarParaEncerrar(card, c, pressao);
