@@ -2206,6 +2206,12 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
         desenhar: itemTransacao,
       }),
     };
+    // Antes da consulta, a ficha continua mostrando notas, alertas e dados da
+    // conversa. Controles financeiros e histórico da conta só aparecem depois
+    // que a API confirmou o cliente e devolveu o saldo desta conversa.
+    const conteudoFinanceiro = cli
+      ? [acoesSaldo(c), abasFicha(), ...corpoAba[ficha.aba]()]
+      : corpoAba.resumo();
 
     painel.replaceChildren(
       el('div', { class: 'painel-topo' },
@@ -2222,9 +2228,7 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
       el('div', { class: 'rolagem painel-corpo' },
         blocoPin(c),
         blocoSaldoEscuro(c),
-        acoesSaldo(c),
-        abasFicha(),
-        ...corpoAba[ficha.aba]()),
+        ...conteudoFinanceiro),
       zonaDeRisco(c));
     ajustarAltura(textareaNota);
   }
