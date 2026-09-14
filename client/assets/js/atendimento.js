@@ -894,7 +894,7 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
     const linhaPrevia = c.semResposta && tag
       ? el('span', { class: 'conversa-previa-linha' },
         el('span', { class: 'conversa-previa' }, previa),
-        el('span', { class: 'tag vermelho tag-sem-resposta' }, tag[0]))
+        el('span', { class: 'sem-resposta-texto' }, tag[0]))
       : [
         el('span', { class: 'conversa-previa' }, previa),
         tag ? el('span', { class: `tag ${tag[1]}`.trim() }, tag[0]) : null,

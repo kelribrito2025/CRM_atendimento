@@ -10,10 +10,11 @@ const javascript = fs.readFileSync(path.join(raiz, 'client', 'assets', 'js', 'at
 const css = fs.readFileSync(path.join(raiz, 'client', 'assets', 'css', 'app.css'), 'utf8');
 
 test('lista: Sem resposta fica como texto vermelho no final da última mensagem', () => {
-  assert.match(javascript, /c\.semResposta && tag[\s\S]*class: 'conversa-previa-linha'[\s\S]*class: 'conversa-previa'[\s\S]*class: 'tag vermelho tag-sem-resposta'/);
+  assert.match(javascript, /c\.semResposta && tag[\s\S]*class: 'conversa-previa-linha'[\s\S]*class: 'conversa-previa'[\s\S]*class: 'sem-resposta-texto'/);
+  assert.doesNotMatch(javascript, /class: 'tag vermelho tag-sem-resposta'/);
   assert.match(css, /\.conversa-previa-linha\s*\{[^}]*position:\s*relative;[^}]*overflow:\s*hidden;/);
-  assert.match(css, /\.tag-sem-resposta\s*\{[^}]*position:\s*absolute;[^}]*right:\s*0;[^}]*top:\s*50%;[^}]*translateY\(-50%\)/);
-  assert.match(css, /\.tag-sem-resposta\s*\{[^}]*padding:\s*0;[^}]*border-radius:\s*0;[^}]*background:\s*var\(--superficie\);/);
+  assert.match(css, /\.sem-resposta-texto\s*\{[^}]*position:\s*absolute;[^}]*right:\s*0;[^}]*top:\s*50%;[^}]*translateY\(-50%\)/);
+  assert.match(css, /\.sem-resposta-texto\s*\{[^}]*color:\s*var\(--vermelho\);[^}]*background:\s*none;[^}]*border:\s*0;[^}]*box-shadow:\s*none;/);
   assert.doesNotMatch(css, /\.conversa-previa[^\n]*padding-right/);
 });
 
