@@ -24,6 +24,7 @@ test('ficha: consultar saldo fica à direita do título na mesma linha', () => {
   assert.match(css, /\.saldo-cabecalho \{[^}]*display: flex;[^}]*justify-content: space-between;/);
   assert.match(css, /\.saldo-cabecalho-texto \{[^}]*flex-direction: column;[^}]*gap: 3px;/);
   assert.match(css, /\.saldo-acao \{\s*flex-shrink: 0;/);
+  assert.match(css, /\.saldo-rotulo \{[^}]*white-space: nowrap;/, 'Saldo em conta permanece em uma linha mesmo com a barra de rolagem');
 });
 
 test('ações de saldo: cada modal mostra um ícone à esquerda do título', () => {
