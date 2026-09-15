@@ -81,9 +81,12 @@ test('presença: logout remove os sinais da sessão e ids inválidos são recusa
 
 test('presença: frontend envia heartbeat por aba e não mostra livre para offline', () => {
   const javascript = fs.readFileSync(path.join(__dirname, '..', 'client', 'assets', 'js', 'atendimento.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'client', 'assets', 'css', 'app.css'), 'utf8');
   assert.match(javascript, /const abaPresencaId = globalThis\.crypto\?\.randomUUID/);
   assert.match(javascript, /api\('\/presenca', \{ method: 'POST'/);
   assert.match(javascript, /setInterval\(\(\) => sinalizarPresenca\(\).*20_000\)/s);
   assert.match(javascript, /window\.addEventListener\('pagehide', encerrarPresenca\)/);
   assert.match(javascript, /: 'offline';/);
+  assert.match(javascript, /membro-status \$\{estaOnline \? 'online' : 'offline'\}/);
+  assert.match(css, /\.membro-status\.offline \{ color: var\(--vermelho\); \}/);
 });

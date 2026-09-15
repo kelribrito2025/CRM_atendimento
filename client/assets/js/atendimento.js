@@ -887,7 +887,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
             el('span', { class: 'avatar p' }, m.iniciais),
             el('div', { class: 'membro-info' },
               el('span', { class: 'membro-nome' }, m.nomeCurto),
-              el('span', { class: `membro-status${estaOnline ? ' online' : ''}` }, status)));
+              el('span', { class: `membro-status ${estaOnline ? 'online' : 'offline'}` }, status)));
         }),
         membros.length ? null : el('div', { class: 'vazio' }, 'Nenhum atendente nesta equipe.')),
       (r.conta || r.usuario).papel === 'admin'
