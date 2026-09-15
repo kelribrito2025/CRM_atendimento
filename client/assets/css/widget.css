@@ -74,6 +74,9 @@ body {
   border-radius: 16px 16px 16px 6px;
 }
 .msg.saida .balao { background: var(--verde); border-color: var(--verde); color: #fff; border-radius: 16px 16px 6px 16px; }
+.mensagem-link { color: var(--verde); font-weight: 500; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.msg.saida .mensagem-link { color: inherit; }
+.mensagem-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: 3px; }
 .meta { font-size: 10.5px; color: var(--texto-suave); padding: 0 4px; }
 
 /* ===== Arquivos no chat ===== */

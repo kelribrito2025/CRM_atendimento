@@ -2,6 +2,8 @@
 // Recebe os dados de quem está logado pelo site (postMessage do widget.js),
 // abre a sessão no CRM e fica conferindo se chegou resposta do atendimento.
 
+import { partesDoTextoComLinks } from './link-texto.mjs';
+
 const $ = (s) => document.querySelector(s);
 const CHAVE_TOKEN = 'chat_atendimento_token';
 
@@ -53,6 +55,22 @@ function iconeArquivo() {
     + '<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"></path><path d="M14 3v5h5"></path></svg>';
 }
 
+function desenharTexto(balao, texto) {
+  for (const parte of partesDoTextoComLinks(texto)) {
+    if (parte.tipo === 'texto') {
+      balao.append(document.createTextNode(parte.texto));
+      continue;
+    }
+    const link = document.createElement('a');
+    link.className = 'mensagem-link';
+    link.href = parte.href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = parte.texto;
+    balao.append(link);
+  }
+}
+
 function desenharArquivo(balao, m) {
   const midia = m.midia;
   balao.classList.add('com-arquivo');
@@ -100,7 +118,7 @@ function desenharMensagem(m) {
   const balao = document.createElement('div');
   balao.className = 'balao';
   if (m.midia) desenharArquivo(balao, m);
-  else balao.textContent = m.texto;
+  else desenharTexto(balao, m.texto);
   const meta = document.createElement('span');
   meta.className = 'meta';
   meta.textContent = [m.de === 'voce' ? 'Você' : (m.autor || 'Atendimento'), hora(m.criadaEm)].join(' · ');
