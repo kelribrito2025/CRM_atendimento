@@ -60,6 +60,18 @@ CREATE TABLE IF NOT EXISTS presencas_atendimento (
   FOREIGN KEY (atendente_id) REFERENCES usuarios(id) ON DELETE CASCADE
 );
 
+-- Tempo observado no CRM, não ponto eletrônico. Uma linha por perfil/dia;
+-- abas simultâneas compartilham o mesmo cursor para não somar tempo em dobro.
+CREATE TABLE IF NOT EXISTS jornada_tempo (
+  atendente_id BIGINT NOT NULL,
+  dia_inicio_em BIGINT NOT NULL,
+  primeiro_sinal_em BIGINT NOT NULL,
+  ultimo_sinal_em BIGINT NOT NULL,
+  total_ms BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (atendente_id, dia_inicio_em),
+  FOREIGN KEY (atendente_id) REFERENCES usuarios(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS equipe_membros (
   equipe_id BIGINT NOT NULL,
   usuario_id BIGINT NOT NULL,
@@ -247,6 +259,7 @@ const INDICES = [
   ['idx_presencas_atendimento', 'presencas_atendimento', 'atendente_id, ultima_atividade_em'],
   ['idx_mensagens_conversa', 'mensagens', 'conversa_id, criada_em'],
   ['idx_mensagens_externo', 'mensagens', 'externo_id'],
+  ['idx_mensagens_autor_dia', 'mensagens', 'autor_id, criada_em'],
   ['idx_contatos_wa', 'contatos', 'wa_id'],
   ['idx_contatos_tg', 'contatos', 'tg_id'],
   ['idx_conversas_canal', 'conversas', 'canal_id, status'],

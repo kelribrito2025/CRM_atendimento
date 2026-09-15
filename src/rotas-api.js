@@ -13,6 +13,7 @@ const { ehReembolsoDoAtendimento, personalizarReembolsos } = require('./extrato'
 const { gerarHashSenha } = require('./senha');
 const presenca = require('./presenca');
 const { normalizarHorario, horarioDoUsuario, estadoDoAtendente } = require('./horarios');
+const { metricasDoDia } = require('./metricas-jornada');
 
 const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta', 'encerradas']);
 // Por onde o cliente escreve: dá para ver a caixa de cada canal separada.
@@ -520,6 +521,11 @@ function criarRotasApi(db, opcoes = {}) {
 
   // Só o perfil escolhido na sessão pode confirmar o seu retorno; o horário
   // vem do banco, nunca do relógio ou do id enviado pelo navegador.
+  r.get('/horario/metricas', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json(await metricasDoDia(db, req.usuario.id, agora()));
+  });
+
   r.post('/horario/retornar', async (req, res) => {
     const instante = agora();
     const usuario = await db.prepare('SELECT * FROM usuarios WHERE id = ? AND ativo = 1').get(req.usuario.id);
@@ -544,6 +550,7 @@ function criarRotasApi(db, opcoes = {}) {
       token: req.tokenSessao,
       abaId: req.body?.abaId,
       atendenteId: req.usuario.id,
+      agora: agora(),
     });
     if (!resultado.ok) return res.status(400).json({ erro: 'Não foi possível registrar a presença desta tela.' });
     if (resultado.mudou) avisos?.avisar({ origem: 'presenca', atendenteId: req.usuario.id, status: 'online' });
@@ -555,6 +562,7 @@ function criarRotasApi(db, opcoes = {}) {
       token: req.tokenSessao,
       abaId: req.body?.abaId,
       atendenteId: req.usuario.id,
+      agora: agora(),
     });
     if (resultado.mudou) avisos?.avisar({ origem: 'presenca', atendenteId: req.usuario.id, status: 'offline' });
     res.json({ ok: true });

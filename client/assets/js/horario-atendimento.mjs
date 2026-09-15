@@ -1,3 +1,5 @@
+import { CAFE, HEADSET, FIM } from './ilustracoes-jornada.mjs';
+
 // Relógio apenas visual: cada transição consulta o servidor. Sem decrementar um
 // contador local (que atrasaria em abas suspensas) e sem requisições a cada segundo.
 export function contagemRegressiva(destino, agora) {
@@ -12,8 +14,6 @@ export function faseDoModal(horario) {
   return horario.fase === 'fora' && Number(horario.encerrouEm) > 0 ? 'fim' : null;
 }
 
-const CAFE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h12v8a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM16 10h2a3 3 0 0 1 0 6h-2M7 5l1-2M12 5l1-2"/></svg>';
-const PLAY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 4 12 8-12 8z"/></svg>';
 const RELOGIO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 const SINO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M10 21h4"/></svg>';
 
@@ -85,8 +85,9 @@ export function criarAvisosHorario({ api, recarregar }) {
     const erro = criar('p', 'jornada-erro');
     erro.setAttribute('role', 'alert');
     erro.hidden = true;
-    caixa.append(icone(fim ? RELOGIO : pausa ? CAFE : PLAY, 'jornada-icone'), titulo, descricao);
+    caixa.append(icone(fim ? FIM : pausa ? CAFE : HEADSET, 'jornada-ilustracao'), titulo, descricao);
     let numeros = null;
+    let metricas = null;
     if (pausa) {
       const contador = criar('div', 'jornada-tempo');
       const tempo = criar('strong', 'jornada-contagem');
@@ -98,6 +99,9 @@ export function criarAvisosHorario({ api, recarregar }) {
       contador.append(tempo, criar('span', '', `Volta às ${horario.horario.pausaFim}`));
       caixa.append(contador);
     } else if (fim) {
+      metricas = criar('div', 'jornada-metricas');
+      metricas.setAttribute('aria-live', 'polite');
+      caixa.append(metricas);
       const proximo = criar('div', 'jornada-tempo');
       proximo.append(criar('span', '', 'Próximo atendimento'),
         criar('strong', 'jornada-proximo', horario.proximoInicioTexto || `às ${horario.horario.inicio}`));
@@ -131,7 +135,12 @@ export function criarAvisosHorario({ api, recarregar }) {
     fundo.append(caixa);
     const foco = document.activeElement;
     const teclado = (ev) => {
-      if (ev.key === 'Tab') { ev.preventDefault(); botao.focus(); }
+      if (ev.key === 'Tab') {
+        const controles = [...caixa.querySelectorAll('button:not([disabled])')];
+        const indice = controles.indexOf(document.activeElement);
+        ev.preventDefault();
+        controles[(indice + (ev.shiftKey ? -1 : 1) + controles.length) % controles.length]?.focus();
+      }
       if (ev.key === 'Escape') { ev.preventDefault(); ev.stopImmediatePropagation(); if (informativo) botao.click(); }
     };
     modal = { chave, fundo, foco, teclado, numeros };
@@ -139,6 +148,42 @@ export function criarAvisosHorario({ api, recarregar }) {
     document.addEventListener('keydown', teclado, true);
     botao.focus();
     atualizarNumeros();
+    if (metricas) carregarMetricas(metricas, chave);
+  }
+
+  async function carregarMetricas(alvo, chave) {
+    alvo.setAttribute('aria-busy', 'true');
+    alvo.replaceChildren(criar('p', 'jornada-metricas-aviso', 'Carregando seu resumo do dia…'));
+    try {
+      const dados = await api('/horario/metricas');
+      if (modal?.chave !== chave || !alvo.isConnected) return;
+      const cabecalho = criar('div', 'jornada-metricas-titulo');
+      cabecalho.append(criar('span', '', 'Conversas atendidas hoje'), criar('strong', '', dados.conversasAtendidas));
+      const canais = criar('div', 'jornada-canais');
+      for (const [canal, nome] of [['whatsapp', 'WhatsApp'], ['telegram', 'Telegram'], ['widget', 'Chat do site']]) {
+        const card = criar('div', `jornada-canal ${canal}`);
+        card.append(criar('span', 'jornada-canal-nome', nome), criar('strong', '', dados.porCanal[canal]));
+        canais.append(card);
+      }
+      const indicadores = criar('div', 'jornada-indicadores');
+      for (const [nome, valor, dica] of [
+        ['Tempo médio de resposta', formatarTempoMetrica(dados.tempoMedioRespostaMs, true), 'Da primeira mensagem pendente do cliente até a sua resposta bem-sucedida. Notas e falhas não entram.'],
+        ['Tempo online no CRM', formatarTempoMetrica(dados.tempoOnlineMs), 'Estimativa pelos sinais de presença, dentro do expediente, sem a pausa e sem duplicar abas. O registro começa nesta atualização; não é ponto eletrônico.'],
+      ]) {
+        const card = criar('div', 'jornada-indicador');
+        card.title = dica;
+        card.append(criar('span', '', nome), criar('strong', '', valor));
+        indicadores.append(card);
+      }
+      alvo.replaceChildren(cabecalho, canais, indicadores,
+        criar('p', 'jornada-metricas-aviso', 'Somente suas respostas de hoje. Tempo estimado pela presença registrada, descontando a pausa.'));
+    } catch {
+      if (modal?.chave !== chave || !alvo.isConnected) return;
+      const tentar = criar('button', 'btn-contorno pequeno', 'Tentar novamente');
+      tentar.type = 'button';
+      tentar.addEventListener('click', () => carregarMetricas(alvo, chave));
+      alvo.replaceChildren(criar('p', 'jornada-metricas-aviso', 'Não foi possível carregar suas métricas.'), tentar);
+    } finally { alvo.removeAttribute('aria-busy'); }
   }
 
   function atualizarNumeros() {
@@ -188,4 +233,13 @@ export function criarAvisosHorario({ api, recarregar }) {
       window.removeEventListener('storage', aoArmazenar);
     },
   };
+}
+
+export function formatarTempoMetrica(ms, segundos = false) {
+  if (ms == null || !Number.isFinite(Number(ms)) || Number(ms) < 0) return '—';
+  const total = Math.floor(Number(ms) / 1000);
+  if (segundos && total < 60) return `${total}s`;
+  const minutos = Math.floor(total / 60);
+  if (segundos && minutos < 60) return `${minutos}min ${String(total % 60).padStart(2, '0')}s`;
+  return `${Math.floor(minutos / 60)}h ${String(minutos % 60).padStart(2, '0')}min`;
 }

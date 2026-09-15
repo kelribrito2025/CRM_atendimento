@@ -94,6 +94,26 @@ function horaBrasilia(instante) {
   return `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
 }
 
+function limitesDoDia(agora = Date.now()) {
+  const p = partesNoFuso(agora);
+  return { inicio: instanteDoHorario(agora, p, 0), fim: instanteDoHorario(agora, p, 0, 1) };
+}
+
+function tempoDisponivel(usuario, de, ate) {
+  if (ate <= de) return 0;
+  const h = horarioDoUsuario(usuario);
+  if (!h) return ate - de;
+  const p = partesNoFuso(ate);
+  if ([0, 6].includes(p.diaSemana)) return 0;
+  const em = (hora) => instanteDoHorario(ate, p, minutos(hora));
+  const confirmado = Number(usuario.retorno_confirmado_em || 0);
+  const janelas = [[em(h.inicio), em(h.pausaInicio)]];
+  if (confirmado >= em(h.pausaFim) && confirmado < em(h.fim)) {
+    janelas.push([confirmado, em(h.fim)]);
+  }
+  return janelas.reduce((soma, [inicio, fim]) => soma + Math.max(0, Math.min(ate, fim) - Math.max(de, inicio)), 0);
+}
+
 function retornoTexto(instante, agora = Date.now()) {
   if (instante == null || !Number.isFinite(Number(instante))) return null;
   const atual = partesNoFuso(agora);
@@ -124,4 +144,4 @@ async function disponibilidadeDaEquipe(db, agora = Date.now()) {
 }
 
 module.exports = { FUSO_ATENDIMENTO, normalizarHorario, horarioDoUsuario, estadoDoHorario, estadoDoAtendente,
-  disponibilidadeDaEquipe, horaBrasilia, retornoTexto };
+  disponibilidadeDaEquipe, horaBrasilia, retornoTexto, limitesDoDia, tempoDisponivel };

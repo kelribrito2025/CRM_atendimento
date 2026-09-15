@@ -1,5 +1,7 @@
 'use strict';
 
+const { registrarTempo } = require('./metricas-jornada');
+
 // Uma aba visível do CRM renova o sinal a cada 20 segundos. Se o navegador
 // fechar ou perder a conexão, o atendente deixa de ser considerado online após
 // este prazo, mesmo que a sessão de login continue válida por horas ou dias.
@@ -57,6 +59,8 @@ async function sinalizar(db, { token, abaId, atendenteId, agora = Date.now() }) 
     await db.prepare('INSERT INTO presencas_atendimento (token_hash, aba_id, atendente_id, ultima_atividade_em) VALUES (?, ?, ?, ?)')
       .run(tokenHash, id, atendenteId, agora);
   }
+  const usuario = await db.prepare('SELECT * FROM usuarios WHERE id = ?').get(atendenteId);
+  if (usuario) await registrarTempo(db, usuario, agora, jaOnline);
   return { ok: true, mudou: !jaOnline };
 }
 
@@ -67,6 +71,8 @@ async function encerrar(db, { token, abaId, atendenteId, agora = Date.now() }) {
   const info = await db.prepare('DELETE FROM presencas_atendimento WHERE token_hash = ? AND aba_id = ? AND atendente_id = ?')
     .run(tokenHash, id, atendenteId);
   if (!Number(info.changes)) return { ok: true, mudou: false };
+  const usuario = await db.prepare('SELECT * FROM usuarios WHERE id = ?').get(atendenteId);
+  if (usuario) await registrarTempo(db, usuario, agora, true);
   return { ok: true, mudou: !await estaOnline(db, atendenteId, agora) };
 }
 

@@ -133,3 +133,25 @@ test('horários API: agenda e retorno pertencem ao perfil escolhido, não à con
     assert.equal((await s.db.prepare('SELECT retorno_confirmado_em FROM usuarios WHERE id = ?').get(s.admin)).retorno_confirmado_em, null);
   } finally { await s.fechar(); }
 });
+
+test('métricas API: somente o perfil escolhido; heartbeat registra tempo sem expor dados no widget', async () => {
+  const s=await ambiente();
+  try {
+    assert.equal((await s.chamar('/api/horario/metricas','GET',null,'')).status,401);
+    await s.chamar(`/api/equipe/usuarios/${s.agente}`,'PATCH',{horario:h});
+    await s.db.prepare('UPDATE usuarios SET pode_logar = 0 WHERE id = ?').run(s.agente);
+    await require('../src/sessoes').escolherAtendente(s.db,decodeURIComponent(s.ck.split('=')[1]),s.agente);
+    s.agora('09:00:00');
+    assert.equal((await s.chamar('/api/presenca','POST',{abaId:'teste-metricas-aba'})).status,200);
+    s.agora('09:00:20');
+    assert.equal((await s.chamar('/api/presenca','POST',{abaId:'teste-metricas-aba'})).status,200);
+    const m=(await s.chamar(`/api/horario/metricas?atendenteId=${s.admin}&dia=2020-01-01`)).dados;
+    assert.equal(m.atendenteId,s.agente); assert.equal(m.tempoOnlineMs,20000);
+    assert.equal(m.diaInicioEm,em('00:00:00'));
+    assert.deepEqual(m.porCanal,{whatsapp:0,telegram:0,widget:0});
+    s.agora('09:00:25');
+    await s.chamar('/api/presenca','DELETE',{abaId:'teste-metricas-aba'});
+    assert.equal((await s.chamar('/api/horario/metricas')).dados.tempoOnlineMs,25000);
+    assert.equal((await s.db.prepare('SELECT COUNT(*) AS n FROM jornada_tempo WHERE atendente_id = ?').get(s.admin)).n,0);
+  } finally {await s.fechar();}
+});
