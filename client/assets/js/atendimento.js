@@ -225,6 +225,25 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     return dados;
   }
 
+  // Presença real: cada aba aberta envia um sinal próprio. A sessão pode durar
+  // 30 dias, mas o atendente só aparece online enquanto esta tela estiver viva.
+  const abaPresencaId = globalThis.crypto?.randomUUID?.()
+    || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  async function sinalizarPresenca() {
+    return api('/presenca', { method: 'POST', body: { abaId: abaPresencaId } });
+  }
+
+  function encerrarPresenca() {
+    fetch('/api/presenca', {
+      method: 'DELETE',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ abaId: abaPresencaId }),
+      keepalive: true,
+    }).catch(() => {});
+  }
+
   /* ================================================================
    * Carregamento de dados
    * ============================================================== */
@@ -859,11 +878,17 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
       el('span', { class: 'separador' }),
       el('span', { class: 'rotulo' }, equipeSel ? `Equipe de ${equipeSel.nome}` : 'Atendentes'),
       el('div', { class: 'membros' },
-        ...membros.map((m) => el('div', { class: 'membro hov', title: m.email || '' },
-          el('span', { class: 'avatar p' }, m.iniciais),
-          el('div', { class: 'membro-info' },
-            el('span', { class: 'membro-nome' }, m.nomeCurto),
-            el('span', { class: `membro-status${m.presenca === 'online' ? ' online' : ''}` }, `${m.presenca} · ${m.ativas ? `${m.ativas} ativa${m.ativas === 1 ? '' : 's'}` : 'livre'}`)))),
+        ...membros.map((m) => {
+          const estaOnline = m.presenca === 'online';
+          const status = estaOnline
+            ? `online · ${m.ativas ? `${m.ativas} ativa${m.ativas === 1 ? '' : 's'}` : 'livre'}`
+            : 'offline';
+          return el('div', { class: 'membro hov', title: m.email || '' },
+            el('span', { class: 'avatar p' }, m.iniciais),
+            el('div', { class: 'membro-info' },
+              el('span', { class: 'membro-nome' }, m.nomeCurto),
+              el('span', { class: `membro-status${estaOnline ? ' online' : ''}` }, status)));
+        }),
         membros.length ? null : el('div', { class: 'vazio' }, 'Nenhum atendente nesta equipe.')),
       (r.conta || r.usuario).papel === 'admin'
         ? (r.cadastroAtendenteAtivo
@@ -3592,12 +3617,15 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { fecharVisor(); fecharRapidas(); menuUsuario.hidden = true; fecharMenus(); $('#painel').classList.remove('aberto'); }
     });
+    window.addEventListener('pagehide', encerrarPresenca);
+    window.addEventListener('pageshow', (e) => { if (e.persisted) sinalizarPresenca().then(carregarResumo).catch(() => {}); });
   }
 
   async function iniciar() {
     montarIcones();
     ligarEventos();
     try {
+      await sinalizarPresenca();
       await carregarResumo();
       await carregarConversas({ selecionarPrimeira: true });
       alertasAtivos = true;
@@ -3613,6 +3641,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
       if (Date.now() - ultimaAtualizacao < espera) return;
       atualizarSilencioso();
     }, 2000);
+    setInterval(() => sinalizarPresenca().catch(() => {}), 20_000);
     ouvirAvisos();
     // Voltou para a aba: mostra o que chegou enquanto ela estava escondida.
     document.addEventListener('visibilitychange', () => { if (!document.hidden) atualizarSilencioso(); });

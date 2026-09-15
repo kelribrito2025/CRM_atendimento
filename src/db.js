@@ -43,6 +43,18 @@ CREATE TABLE IF NOT EXISTS sessoes (
   FOREIGN KEY (atendente_id) REFERENCES usuarios(id) ON DELETE SET NULL
 );
 
+-- Cada aba aberta do atendimento mantém uma presença própria. Isso evita que
+-- uma sessão lembrada por 30 dias faça alguém parecer online sem estar no CRM.
+CREATE TABLE IF NOT EXISTS presencas_atendimento (
+  token_hash VARCHAR(191) NOT NULL,
+  aba_id VARCHAR(100) NOT NULL,
+  atendente_id BIGINT NOT NULL,
+  ultima_atividade_em BIGINT NOT NULL,
+  PRIMARY KEY (token_hash, aba_id),
+  FOREIGN KEY (token_hash) REFERENCES sessoes(token_hash) ON DELETE CASCADE,
+  FOREIGN KEY (atendente_id) REFERENCES usuarios(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS equipe_membros (
   equipe_id BIGINT NOT NULL,
   usuario_id BIGINT NOT NULL,
@@ -227,6 +239,7 @@ CREATE TABLE IF NOT EXISTS verificacoes (
 
 const INDICES = [
   ['idx_sessoes_expira', 'sessoes', 'expira_em'],
+  ['idx_presencas_atendimento', 'presencas_atendimento', 'atendente_id, ultima_atividade_em'],
   ['idx_mensagens_conversa', 'mensagens', 'conversa_id, criada_em'],
   ['idx_mensagens_externo', 'mensagens', 'externo_id'],
   ['idx_contatos_wa', 'contatos', 'wa_id'],

@@ -11,6 +11,7 @@ const { interpretarStatus } = require('./uazapi');
 const acesso = require('./acesso');
 const { ehReembolsoDoAtendimento, personalizarReembolsos } = require('./extrato');
 const { gerarHashSenha } = require('./senha');
+const presenca = require('./presenca');
 
 const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta', 'encerradas']);
 // Por onde o cliente escreve: dá para ver a caixa de cada canal separada.
@@ -293,8 +294,9 @@ function criarRotasApi(db, opcoes = {}) {
 
   r.get('/equipe', soAdmin, async (req, res) => {
     const daPessoa = await equipesDeCadaUm();
+    const online = await presenca.atendentesOnline(db);
     const usuarios = (await db.prepare('SELECT id, nome, email, papel, presenca, ativo, pode_logar, criado_em FROM usuarios ORDER BY ativo DESC, nome').all())
-      .map((u) => ({ ...formatarUsuario(u), ativo: Number(u.ativo) === 1, equipes: daPessoa(u.id) }));
+      .map((u) => ({ ...formatarUsuario({ ...u, presenca: online.has(Number(u.id)) ? 'online' : 'offline' }), ativo: Number(u.ativo) === 1, equipes: daPessoa(u.id) }));
     const convites = (await acesso.listarConvitesPendentes(db)).map((c) => ({
       id: c.token_hash,
       email: c.email,
@@ -463,8 +465,33 @@ function criarRotasApi(db, opcoes = {}) {
     return Number(r2.n) > 0;
   }
 
+  r.post('/presenca', async (req, res) => {
+    const resultado = await presenca.sinalizar(db, {
+      token: req.tokenSessao,
+      abaId: req.body?.abaId,
+      atendenteId: req.usuario.id,
+    });
+    if (!resultado.ok) return res.status(400).json({ erro: 'Não foi possível registrar a presença desta tela.' });
+    if (resultado.mudou) avisos?.avisar({ origem: 'presenca', atendenteId: req.usuario.id, status: 'online' });
+    res.json({ ok: true, renovarEm: presenca.INTERVALO_HEARTBEAT_MS });
+  });
 
-  r.get('/me', (req, res) => res.json({ usuario: formatarUsuario(req.usuario), conta: formatarUsuario(req.conta) }));
+  r.delete('/presenca', async (req, res) => {
+    const resultado = await presenca.encerrar(db, {
+      token: req.tokenSessao,
+      abaId: req.body?.abaId,
+      atendenteId: req.usuario.id,
+    });
+    if (resultado.mudou) avisos?.avisar({ origem: 'presenca', atendenteId: req.usuario.id, status: 'offline' });
+    res.json({ ok: true });
+  });
+
+  r.get('/me', async (req, res) => {
+    const online = await presenca.atendentesOnline(db);
+    const usuario = formatarUsuario({ ...req.usuario, presenca: online.has(Number(req.usuario.id)) ? 'online' : 'offline' });
+    const conta = formatarUsuario({ ...req.conta, presenca: online.has(Number(req.conta.id)) ? 'online' : 'offline' });
+    res.json({ usuario, conta });
+  });
 
   r.get('/resumo', async (req, res) => {
     const todas = await todasConversas();
@@ -473,7 +500,11 @@ function criarRotasApi(db, opcoes = {}) {
     const ativasPor = {};
     for (const c of abertas) if (c.atendente) ativasPor[c.atendente.id] = (ativasPor[c.atendente.id] || 0) + 1;
 
-    const atendentes = (await sql.usuariosAtivos.all()).map((u) => ({ ...formatarUsuario(u), ativas: ativasPor[u.id] || 0 }));
+    const online = await presenca.atendentesOnline(db);
+    const atendentes = (await sql.usuariosAtivos.all()).map((u) => ({
+      ...formatarUsuario({ ...u, presenca: online.has(Number(u.id)) ? 'online' : 'offline' }),
+      ativas: ativasPor[u.id] || 0,
+    }));
     const membros = await sql.membros.all();
     const equipes = (await sql.equipes.all()).map((e) => ({
       ...e,
@@ -489,10 +520,12 @@ function criarRotasApi(db, opcoes = {}) {
       .filter((t) => t.pc != null && t.pa != null && t.pa >= t.pc)
       .map((t) => t.pa - t.pc);
     const media = tempos.length ? tempos.reduce((a, b) => a + b, 0) / tempos.length : null;
+    const usuarioAtual = formatarUsuario({ ...req.usuario, presenca: online.has(Number(req.usuario.id)) ? 'online' : 'offline' });
+    const contaAtual = formatarUsuario({ ...req.conta, presenca: online.has(Number(req.conta.id)) ? 'online' : 'offline' });
 
     res.json({
-      usuario: formatarUsuario(req.usuario),
-      conta: formatarUsuario(req.conta),
+      usuario: usuarioAtual,
+      conta: contaAtual,
       caixas: {
         todas: abertas.length,
         minhas: abertas.filter((c) => c.atendente?.id === req.usuario.id).length,

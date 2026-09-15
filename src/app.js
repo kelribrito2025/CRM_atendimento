@@ -12,6 +12,7 @@ const { criarRotasApi } = require('./rotas-api');
 const canais = require('./canais');
 const { nomeDoCabecalho } = require('./util');
 const { criarAvisos } = require('./eventos');
+const presenca = require('./presenca');
 
 const RAIZ = path.join(__dirname, '..');
 const COOKIE_VERIFICACAO = 'crm_verificacao';
@@ -263,11 +264,14 @@ function criarApp(db, opcoes = {}) {
   app.get('/acesso/atendentes', exigirConta, async (req, res) => {
     const atendentes = await db.prepare(`SELECT id, nome, presenca FROM usuarios
       WHERE ativo = 1 AND (pode_logar = 0 OR id = ?) ORDER BY nome`).all(req.conta.id);
+    const online = await presenca.atendentesOnline(db);
     res.set('Cache-Control', 'no-store');
     res.json({
       conta: { nome: req.conta.nome, email: req.conta.email },
       selecionadoId: req.usuario?.id || null,
-      atendentes: atendentes.map((a) => ({ id: Number(a.id), nome: a.nome, presenca: a.presenca })),
+      atendentes: atendentes.map((a) => ({
+        id: Number(a.id), nome: a.nome, presenca: online.has(Number(a.id)) ? 'online' : 'offline',
+      })),
     });
   });
 
