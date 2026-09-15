@@ -1698,8 +1698,9 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
     if ($('.menu-flutuante')) return fecharMenus();
     const c = estado.conversa;
     const menu = el('div', { class: 'menu-flutuante' },
-      el('button', { type: 'button', onclick: () => { fecharMenus(); mudarStatus(c.status === 'resolvida' ? 'aberta' : 'resolvida'); } },
-        c.status === 'resolvida' ? 'Reabrir conversa' : 'Marcar como resolvida'),
+      c.status === 'resolvida'
+        ? el('button', { type: 'button', onclick: () => { fecharMenus(); mudarStatus('aberta'); } }, 'Reabrir conversa')
+        : null,
       el('button', { type: 'button', onclick: () => { fecharMenus(); atualizarConversa({ atendenteId: estado.resumo.usuario.id }); } }, 'Assumir esta conversa'),
       el('button', { type: 'button', onclick: abrirAtribuicaoEquipe }, 'Atribuir aos canais existentes'));
     botao.parentElement.append(menu);

@@ -13,6 +13,9 @@ const api = fs.readFileSync(path.join(raiz, 'src', 'rotas-api.js'), 'utf8');
 test('ações da conversa: oferece atribuição às inboxes existentes', () => {
   assert.match(javascript, /'Atribuir aos canais existentes'/);
   assert.doesNotMatch(javascript, /'Transferir canal'/);
+  assert.doesNotMatch(javascript, /'Marcar como resolvida'/);
+  assert.match(javascript, /c\.status === 'resolvida'[\s\S]*'Reabrir conversa'/);
+  assert.match(javascript, /if \(c\.status === 'aberta'\) segurarParaEncerrar\(card, c, pressao\)/);
   assert.match(javascript, /function abrirAtribuicaoEquipe\(\)/);
   assert.match(javascript, /estado\.resumo\?\.equipes/);
   assert.match(javascript, /toLocaleLowerCase\('pt-BR'\) !== 'admin'/);
