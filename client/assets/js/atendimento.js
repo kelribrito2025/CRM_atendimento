@@ -1940,13 +1940,13 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
   }
 
   /* ---------------- consulta de saldo pelo PIN ---------------- */
-  const saldo = { conversaId: null, pin: '', carregando: false, cliente: null, erro: null, em: 0 };
+  const saldo = { conversaId: null, pin: '', carregando: false, carregandoPin: false, cliente: null, erro: null, em: 0 };
   const cacheSaldos = new Map();
   const pinsWhatsappEmEdicao = new Set();
   let sequenciaConsultaSaldo = 0;
 
   function limparSaldo(conversaId) {
-    Object.assign(saldo, { conversaId, pin: '', carregando: false, cliente: null, erro: null, em: 0 });
+    Object.assign(saldo, { conversaId, pin: '', carregando: false, carregandoPin: false, cliente: null, erro: null, em: 0 });
   }
 
   function alterarPinDoWhatsapp(c) {
@@ -1972,7 +1972,7 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
       return false;
     }
     Object.assign(saldo, {
-      conversaId: c.id, pin: entrada.pin, carregando: false,
+      conversaId: c.id, pin: entrada.pin, carregando: false, carregandoPin: false,
       cliente: entrada.cliente, erro: entrada.erro, em: entrada.em,
     });
     if (entrada.contato) c.contato = { ...c.contato, ...entrada.contato };
@@ -1993,7 +1993,11 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
     }
     const conversaId = c.id;
     const consulta = ++sequenciaConsultaSaldo;
-    Object.assign(saldo, { conversaId: c.id, pin, carregando: true, cliente: null, erro: null });
+    Object.assign(saldo, {
+      conversaId: c.id, pin, carregando: true,
+      carregandoPin: c.canal === 'whatsapp' && forcar,
+      cliente: null, erro: null,
+    });
     renderPainel();
     try {
       const r = await api('/suporte/saldo', { method: 'POST', body: { pin, conversaId: c.id } });
@@ -2002,11 +2006,11 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
       pinsWhatsappEmEdicao.delete(c.id);
       guardarSaldoNoCache(c, { pin, cliente: r.cliente, contato: r.conversa?.contato || null, em });
       if (estado.conversaId !== conversaId || consulta !== sequenciaConsultaSaldo) return;
-      Object.assign(saldo, { carregando: false, cliente: r.cliente, erro: null, em });
+      Object.assign(saldo, { carregando: false, carregandoPin: false, cliente: r.cliente, erro: null, em });
     } catch (e) {
       guardarSaldoNoCache(c, { pin, erro: e.message });
       if (estado.conversaId !== conversaId || consulta !== sequenciaConsultaSaldo) return;
-      Object.assign(saldo, { carregando: false, erro: e.message });
+      Object.assign(saldo, { carregando: false, carregandoPin: false, erro: e.message });
     }
     renderPainel();
   }
@@ -2062,13 +2066,26 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
     // No Telegram o cliente já chega identificado: o PIN dele vem preenchido.
     // No WhatsApp começa vazio e o atendente digita o que o cliente informar.
     const doCanal = c.canal === 'telegram' ? (ct.telegramId || '') : '';
-    const editandoWhatsapp = c.canal === 'whatsapp' && pinsWhatsappEmEdicao.has(c.id);
+    const consultandoPin = saldo.conversaId === c.id && saldo.carregandoPin;
+    const falhouSemPinSalvo = c.canal === 'whatsapp' && saldo.conversaId === c.id && saldo.erro && !ct.pin;
+    const editandoWhatsapp = c.canal === 'whatsapp' && (pinsWhatsappEmEdicao.has(c.id) || falhouSemPinSalvo);
     const valorInicial = editandoWhatsapp ? '' : String(saldo.pin || ct.pin || doCanal || '').trim();
     const podeConsultar = Boolean(estado.resumo?.saldoAtivo);
     const botaoSaldo = (ler) => (podeConsultar
       ? el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => consultarSaldo(ler(), { forcar: true }) },
         saldo.erro ? 'Tentar de novo' : (saldo.cliente ? 'Atualizar saldo' : 'Consultar saldo'))
       : null);
+
+    if (consultandoPin) {
+      return el('div', { class: 'bloco-pin pendente pin-consultando', role: 'status', 'aria-live': 'polite' },
+        el('div', { class: 'cab' },
+          iconeCanal(c.canal, 16),
+          el('span', { class: 'rotulo' }, 'PIN do cliente'),
+          el('span', { class: 'selo pendente' }, 'Consultando')),
+        el('div', { class: 'pin-loading' },
+          el('span', { class: 'spinner-pin', 'aria-hidden': 'true' }),
+          el('span', {}, 'Consultando PIN…')));
+    }
 
     // Já tem PIN: card enxuto, só com o número e o sinal de conferido.
     if (valorInicial) {

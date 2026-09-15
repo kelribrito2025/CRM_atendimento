@@ -45,3 +45,22 @@ test('PIN do WhatsApp: Alterar aparece como texto dentro do card só nesse canal
   assert.match(css, /\.pin-pronto \{[^}]*height: 44px;[^}]*border-radius: 12px;[^}]*border: 1px solid var\(--verde-borda\); \}/);
   assert.match(css, /\.link-alterar-pin \{[^}]*cursor: pointer;[^}]*white-space: nowrap;/);
 });
+
+test('PIN do WhatsApp: consulta esconde os campos e mostra loading até terminar', () => {
+  const inicioConsulta = javascript.indexOf('async function consultarSaldo');
+  const fimConsulta = javascript.indexOf('function consultarSaldoAutomaticamente', inicioConsulta);
+  const consulta = javascript.slice(inicioConsulta, fimConsulta);
+  const inicioPin = javascript.indexOf('function blocoPin');
+  const fimPin = javascript.indexOf('function botaoAbrirConta', inicioPin);
+  const blocoPin = javascript.slice(inicioPin, fimPin);
+
+  assert.match(consulta, /carregandoPin: c\.canal === 'whatsapp' && forcar/);
+  assert.match(consulta, /carregando: false, carregandoPin: false, cliente: r\.cliente/);
+  assert.match(consulta, /carregando: false, carregandoPin: false, erro: e\.message/);
+  assert.match(blocoPin, /const consultandoPin = saldo\.conversaId === c\.id && saldo\.carregandoPin/);
+  assert.ok(blocoPin.indexOf('if (consultandoPin)') < blocoPin.indexOf('// Já tem PIN'));
+  assert.match(blocoPin, /class: 'bloco-pin pendente pin-consultando'[\s\S]*class: 'spinner-pin'[\s\S]*Consultando PIN…/);
+  assert.match(blocoPin, /falhouSemPinSalvo[\s\S]*pinsWhatsappEmEdicao\.has\(c\.id\) \|\| falhouSemPinSalvo/);
+  assert.match(css, /\.pin-loading \{[^}]*height: 44px;[^}]*justify-content: center;/);
+  assert.match(css, /\.spinner-pin \{[^}]*animation: girar-anexo \.75s linear infinite;/);
+});
