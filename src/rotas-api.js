@@ -196,12 +196,23 @@ function criarRotasApi(db, opcoes = {}) {
     };
   }
 
-  function formatarMensagem(m) {
+  function tipoDeMidiaAntigaDoWhatsApp(m, canal) {
+    if (canal !== 'whatsapp' || m.tipo !== 'cliente' || !m.externo_id) return null;
+    const marcador = String(m.texto || '').match(/^\[(Imagem|Figurinha|Vídeo|Áudio|Documento)\]/i)?.[1]?.toLowerCase();
+    if (marcador === 'imagem' || marcador === 'figurinha') return 'imagem';
+    if (marcador === 'vídeo') return 'video';
+    if (marcador === 'áudio') return 'audio';
+    if (marcador === 'documento') return 'documento';
+    return null;
+  }
+
+  function formatarMensagem(m, canal = null) {
+    const tipoAntigo = tipoDeMidiaAntigaDoWhatsApp(m, canal);
     return {
       id: m.id,
       tipo: m.tipo,
       texto: m.texto,
-      midia: (m.midia_id || m.midia_chave) ? { tipo: m.midia_tipo || 'documento', nome: m.midia_nome || null, mime: m.midia_mime || null, url: `/api/midia/${m.id}` } : null,
+      midia: (m.midia_id || m.midia_chave || tipoAntigo) ? { tipo: m.midia_tipo || tipoAntigo || 'documento', nome: m.midia_nome || null, mime: m.midia_mime || null, url: `/api/midia/${m.id}` } : null,
       entrega: m.entrega,
       criadaEm: m.criada_em,
       autor: m.autor_id ? { id: m.autor_id, nome: m.autor_nome, nomeCurto: nomeCurto(m.autor_nome) } : null,
@@ -229,18 +240,18 @@ function criarRotasApi(db, opcoes = {}) {
 
   // Busca um pedaço do histórico. `antes` (mensagem mais antiga já na tela)
   // pede as anteriores a ela; sem `antes`, traz as últimas da conversa.
-  async function paginaDeMensagens(conversaId, antes = null) {
+  async function paginaDeMensagens(conversaId, antes = null, canal = null) {
     const linhas = antes
       ? await sql.mensagensAntesDe.all(conversaId, antes.criadaEm, antes.criadaEm, antes.id, PAGINA_MENSAGENS + 1)
       : await sql.ultimasMensagens.all(conversaId, PAGINA_MENSAGENS + 1);
     const temMais = linhas.length > PAGINA_MENSAGENS;
     const pagina = temMais ? linhas.slice(0, PAGINA_MENSAGENS) : linhas;
-    return { mensagens: pagina.reverse().map(formatarMensagem), temMais };
+    return { mensagens: pagina.reverse().map((m) => formatarMensagem(m, canal)), temMais };
   }
 
   async function detalharConversa(c) {
     const ct = await sql.contato.get(c.contato.id);
-    const { mensagens, temMais } = await paginaDeMensagens(c.id);
+    const { mensagens, temMais } = await paginaDeMensagens(c.id, null, c.canal);
     return {
       ...c,
       temMaisMensagens: temMais,
@@ -619,7 +630,7 @@ function criarRotasApi(db, opcoes = {}) {
     if (!Number.isInteger(id) || !Number.isFinite(criadaEm)) {
       return res.status(400).json({ erro: 'Informe a partir de qual mensagem buscar o histórico.' });
     }
-    res.json(await paginaDeMensagens(req.conversa.id, { id, criadaEm }));
+    res.json(await paginaDeMensagens(req.conversa.id, { id, criadaEm }, req.conversa.canal));
   });
 
   r.post('/conversas/:id/mensagens', comConversa, async (req, res) => {
@@ -948,8 +959,9 @@ function criarRotasApi(db, opcoes = {}) {
   // O navegador nunca recebe o token do bot: o CRM baixa o arquivo e repassa.
   r.get('/midia/:id', async (req, res) => {
     const id = idDaRota(req);
-    const m = id ? await db.prepare('SELECT m.*, c.canal_id FROM mensagens m JOIN conversas c ON c.id = m.conversa_id WHERE m.id = ?').get(id) : null;
-    if (!m || (!m.midia_id && !m.midia_chave)) return res.status(404).json({ erro: 'Arquivo não encontrado.' });
+    const m = id ? await db.prepare('SELECT m.*, c.canal_id, c.canal FROM mensagens m JOIN conversas c ON c.id = m.conversa_id WHERE m.id = ?').get(id) : null;
+    const tipoAntigo = m ? tipoDeMidiaAntigaDoWhatsApp(m, m.canal) : null;
+    if (!m || (!m.midia_id && !m.midia_chave && !tipoAntigo)) return res.status(404).json({ erro: 'Arquivo não encontrado.' });
 
     // Guardado no S3: o CRM busca lá e repassa. O endereço do bucket nunca vai para a tela.
     if (m.midia_chave && arquivos?.configurado) {
@@ -968,6 +980,30 @@ function criarRotasApi(db, opcoes = {}) {
     }
 
     const canal = m.canal_id ? await db.prepare('SELECT * FROM canais WHERE id = ?').get(m.canal_id) : null;
+    if (canal?.tipo === 'whatsapp') {
+      if (!uazapi?.baixarMensagem) return res.status(400).json({ erro: 'Integração com WhatsApp indisponível.' });
+      try {
+        const { bytes, tipo } = await uazapi.baixarMensagem(canal.instancia_token, m.midia_id || m.externo_id);
+        if (!bytes?.length || bytes.length > 25 * 1024 * 1024) return res.status(413).json({ erro: 'A mídia excede o limite de 25 MB.' });
+        const mime = m.midia_mime || tipo || 'application/octet-stream';
+        const nome = m.midia_nome || `${tipoAntigo || m.midia_tipo || 'arquivo'}-${m.id}`;
+        if (arquivos?.configurado) {
+          try {
+            const enviado = await arquivos.enviar(bytes, { nome, tipo: mime, pasta: `canal-${canal.id}` });
+            await db.prepare('UPDATE mensagens SET midia_tipo = COALESCE(midia_tipo, ?), midia_id = COALESCE(midia_id, externo_id), midia_nome = COALESCE(midia_nome, ?), midia_mime = COALESCE(midia_mime, ?), midia_chave = ?, midia_tamanho = ? WHERE id = ?')
+              .run(tipoAntigo || 'documento', nome, mime, enviado.chave, enviado.tamanho, m.id);
+          } catch (erro) {
+            console.error('Não foi possível reparar a mídia do WhatsApp no S3:', erro.message);
+          }
+        }
+        res.setHeader('Content-Type', mime);
+        res.setHeader('Cache-Control', 'private, max-age=600');
+        if (req.query.baixar === '1') res.setHeader('Content-Disposition', `attachment; filename="${String(nome).replace(/[\r\n"]/g, '')}"`);
+        return res.send(bytes);
+      } catch (erro) {
+        return res.status(502).json({ erro: erro.message });
+      }
+    }
     if (!canal || canal.tipo !== 'telegram') return res.status(400).json({ erro: 'Este canal ainda não entrega arquivos no CRM.' });
     if (!telegram) return res.status(400).json({ erro: 'Integração com Telegram indisponível.' });
 

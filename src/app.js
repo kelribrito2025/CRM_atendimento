@@ -521,7 +521,10 @@ function criarApp(db, opcoes = {}) {
     let resultado;
     try {
       await canais.registrarEvento(db, canal.id, tipo, corpo);
-      resultado = await canais.processarEvento(db, canal, corpo, { arquivos: opcoes.arquivos || null });
+      resultado = await canais.processarEvento(db, canal, corpo, {
+        uazapi: opcoes.uazapi || null,
+        arquivos: opcoes.arquivos || null,
+      });
       // Mensagem nova do cliente: a tela do atendente atualiza na hora.
       if (resultado?.resultado === 'mensagem' && resultado.conversaId) {
         avisos.avisar({ origem: 'canal', conversaId: resultado.conversaId, contatoId: resultado.contatoId ?? null });

@@ -37,6 +37,37 @@ const ROTULOS_MIDIA = [
   ['contact', '[Contato]'], ['poll', '[Enquete]'], ['reaction', '[Reação]'],
 ];
 
+const TIPOS_ARQUIVO_WHATSAPP = [
+  ['image', 'imagem'], ['sticker', 'imagem'], ['video', 'video'],
+  ['ptt', 'audio'], ['audio', 'audio'], ['document', 'documento'],
+];
+
+function nomePadraoDaMidia(tipo, mime) {
+  const extensoes = {
+    'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+    'video/mp4': 'mp4', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'application/pdf': 'pdf',
+  };
+  const base = tipo === 'imagem' ? 'imagem' : (tipo === 'video' ? 'video' : (tipo === 'audio' ? 'audio' : 'documento'));
+  const extensao = extensoes[String(mime || '').split(';')[0].toLowerCase()];
+  return extensao ? `${base}.${extensao}` : base;
+}
+
+function extrairArquivoWhatsApp(m, tipoMsg, messageid) {
+  const assinatura = `${tipoMsg} ${m?.mediaType || ''} ${m?.type || ''}`.toLowerCase();
+  const encontrado = TIPOS_ARQUIVO_WHATSAPP.find(([chave]) => assinatura.includes(chave));
+  if (!encontrado || !messageid) return null;
+  const conteudo = m?.content && typeof m.content === 'object' ? m.content : {};
+  const mime = conteudo.mimetype || conteudo.mimeType || m.mimetype || m.mimeType || null;
+  const nome = conteudo.fileName || conteudo.filename || m.fileName || m.filename || nomePadraoDaMidia(encontrado[1], mime);
+  return {
+    id: String(messageid),
+    tipo: encontrado[1],
+    nome: String(nome || '').slice(0, 180) || null,
+    mime: mime ? String(mime).slice(0, 120) : null,
+    tamanho: Number(conteudo.fileLength || m.fileLength || 0) || null,
+  };
+}
+
 // Identifica o tipo do evento e o bloco de dados, aceitando os formatos do uazapi.
 function extrairEvento(corpo) {
   const tipoBruto = corpo?.EventType || corpo?.event || corpo?.eventType || corpo?.type || null;
@@ -85,6 +116,7 @@ function extrairMensagem(dados) {
     fotoUrl,
     grupo: ehGrupo(chatid) || Boolean(chat.wa_isGroup || m.isGroup),
     status: m.status || dados?.status || null,
+    arquivo: extrairArquivoWhatsApp(m, tipoMsg, messageid),
   };
 }
 
@@ -127,7 +159,7 @@ async function proximoProtocolo(db) {
 }
 
 // Aplica um evento do webhook ao banco. Retorna um resumo do que foi feito.
-async function processarEvento(db, canal, corpo) {
+async function processarEvento(db, canal, corpo, { uazapi = null, arquivos = null } = {}) {
   const { tipo, dados } = extrairEvento(corpo);
   const agora = Date.now();
 
@@ -176,7 +208,11 @@ async function processarEvento(db, canal, corpo) {
       contato.wa_foto_url = m.fotoUrl;
     }
 
-    return await guardarMensagem(db, canal, contato, m, 'whatsapp');
+    const resultado = await guardarMensagem(db, canal, contato, m, 'whatsapp');
+    if (resultado.resultado === 'mensagem' && resultado.midia && resultado.mensagemId) {
+      await guardarArquivoWhatsAppNoS3(db, { uazapi, arquivos }, canal, resultado.mensagemId, resultado.midia);
+    }
+    return resultado;
   }
 
   return { resultado: 'ignorado', motivo: `evento ${tipo || 'desconhecido'}` };
@@ -319,6 +355,29 @@ async function processarUpdateTelegram(db, canal, update) {
 // Arquivos maiores que isso não são guardados no S3 (o Telegram também não entrega).
 const TAMANHO_MAXIMO_ARQUIVO = 25 * 1024 * 1024;
 
+// A UAZAPI descriptografa a mídia recebida; o CRM copia os bytes imediatamente
+// para seu S3 privado e nunca expõe ao navegador o token da instância.
+async function guardarArquivoWhatsAppNoS3(db, { uazapi, arquivos }, canal, mensagemId, midia) {
+  if (!arquivos?.configurado || !uazapi?.baixarMensagem || !midia?.id) return null;
+  if (midia.tamanho && midia.tamanho > TAMANHO_MAXIMO_ARQUIVO) return null;
+  try {
+    const { bytes, tipo } = await uazapi.baixarMensagem(canal.instancia_token, midia.id);
+    if (!bytes?.length || bytes.length > TAMANHO_MAXIMO_ARQUIVO) return null;
+    const mime = midia.mime || tipo || 'application/octet-stream';
+    const enviado = await arquivos.enviar(bytes, {
+      nome: midia.nome || nomePadraoDaMidia(midia.tipo, mime),
+      tipo: mime,
+      pasta: `canal-${canal.id}`,
+    });
+    await db.prepare('UPDATE mensagens SET midia_chave = ?, midia_tamanho = ?, midia_mime = COALESCE(midia_mime, ?) WHERE id = ?')
+      .run(enviado.chave, enviado.tamanho, tipo || midia.mime || null, mensagemId);
+    return enviado.chave;
+  } catch (erro) {
+    console.error('Não foi possível guardar a mídia recebida do WhatsApp no S3:', erro.message);
+    return null;
+  }
+}
+
 // Baixa o arquivo do Telegram e guarda no S3; no banco fica só a chave do objeto.
 async function guardarArquivoNoS3(db, { telegram, arquivos }, canal, mensagemId, midia) {
   if (!arquivos?.configurado || !telegram?.baixarArquivo || !midia?.id) return null;
@@ -413,10 +472,12 @@ module.exports = {
   novoSegredo,
   extrairEvento,
   extrairMensagem,
+  extrairArquivoWhatsApp,
   interpretarEntrega,
   interpretarConexao,
   processarEvento,
   guardarMensagem,
+  guardarArquivoWhatsAppNoS3,
   guardarArquivoNoS3,
   extrairMensagemTelegram,
   extrairPinTelegram,

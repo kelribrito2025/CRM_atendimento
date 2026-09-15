@@ -10,6 +10,25 @@ const { criarUazapi, interpretarStatus } = require('../src/uazapi');
 const canais = require('../src/canais');
 
 const ADMIN = { email: 'admin@teste.com', senha: 'segredo123' };
+const IMAGEM = Buffer.from('imagem recebida do whatsapp');
+
+function arquivosFalsos() {
+  const guardados = new Map();
+  return {
+    configurado: true,
+    guardados,
+    async enviar(bytes, { nome, tipo, pasta }) {
+      const chave = `chat-app-numeros/${pasta}/${guardados.size + 1}-${nome}`;
+      guardados.set(chave, { bytes: Buffer.from(bytes), tipo });
+      return { chave, tamanho: bytes.length, tipo };
+    },
+    async baixar(chave) {
+      const arquivo = guardados.get(chave);
+      if (!arquivo) throw new Error('arquivo não encontrado');
+      return arquivo;
+    },
+  };
+}
 
 // Servidor do uazapi de mentira, para testar sem internet.
 function uazapiFalso() {
@@ -34,6 +53,7 @@ function uazapiFalso() {
     async excluir(token) { chamadas.push(['delete', token]); return {}; },
     async configurarWebhook(token, cfg) { chamadas.push(['webhook', token, cfg]); return {}; },
     async enviarTexto(token, numero, texto) { chamadas.push(['texto', numero, texto]); return { messageid: `SAIDA-${chamadas.length}` }; },
+    async baixarMensagem(token, id) { chamadas.push(['download', token, id]); return { bytes: IMAGEM, tipo: 'image/jpeg' }; },
   };
 }
 
@@ -59,6 +79,7 @@ test('uazapi: cliente monta cabeçalhos e traduz erros', async () => {
   const fetchFalso = async (url, opts) => {
     pedidos.push({ url, opts });
     if (url.endsWith('/instance/status')) return new Response(JSON.stringify({ error: 'Token inválido' }), { status: 401 });
+    if (url.endsWith('/message/download')) return new Response(JSON.stringify({ mimetype: 'image/jpeg', base64Data: Buffer.from('imagem').toString('base64') }), { status: 200 });
     return new Response(JSON.stringify({ instance: { token: 'abc' } }), { status: 200 });
   };
   const cli = criarUazapi({ url: 'https://x.uazapi.com/', adminToken: 'ADM', fetchImpl: fetchFalso });
@@ -70,6 +91,12 @@ test('uazapi: cliente monta cabeçalhos e traduz erros', async () => {
   await cli.enviarTexto('tok', '5531999', 'oi');
   assert.equal(pedidos[1].opts.headers.token, 'tok');
   assert.deepEqual(JSON.parse(pedidos[1].opts.body), { number: '5531999', text: 'oi' });
+  const midia = await cli.baixarMensagem('tok', 'MSG-1');
+  assert.equal(pedidos[2].url, 'https://x.uazapi.com/message/download');
+  assert.equal(pedidos[2].opts.headers.token, 'tok');
+  assert.deepEqual(JSON.parse(pedidos[2].opts.body), { id: 'MSG-1', return_base64: true, return_link: false, generate_mp3: false });
+  assert.equal(midia.bytes.toString(), 'imagem');
+  assert.equal(midia.tipo, 'image/jpeg');
   await assert.rejects(() => cli.status('tok'), /Token inválido/);
   assert.equal(criarUazapi({}).configurado, false);
 });
@@ -82,9 +109,10 @@ test('uazapi: interpretação de status e eventos', () => {
   assert.equal(canais.formatarNumero('5531998124471'), '+55 31 99812-4471');
   assert.equal(canais.numeroDoChat('5531998124471@s.whatsapp.net'), '5531998124471');
   assert.equal(canais.ehGrupo('120363012345678901@g.us'), true);
-  const m = canais.extrairMensagem({ message: { messageid: 'X', chatid: '55@s.whatsapp.net', messageType: 'image', content: { caption: 'foto' }, senderName: 'Ana' } });
+  const m = canais.extrairMensagem({ message: { messageid: 'X', chatid: '55@s.whatsapp.net', messageType: 'ImageMessage', type: 'media', mediaType: 'image', content: { caption: 'foto', mimetype: 'image/jpeg', fileLength: 61287 }, senderName: 'Ana' } });
   assert.equal(m.texto, '[Imagem] foto');
   assert.equal(m.nome, 'Ana');
+  assert.deepEqual(m.arquivo, { id: 'X', tipo: 'imagem', nome: 'imagem.jpg', mime: 'image/jpeg', tamanho: 61287 });
   assert.equal(canais.interpretarEntrega('READ'), 'lida');
   assert.equal(canais.interpretarEntrega('DELIVERY_ACK'), 'entregue');
 });
@@ -216,6 +244,70 @@ test('whatsapp: criar canal, conectar por QR e por número, receber e responder 
     assert.equal(del.status, 200);
     assert.equal((await s.chamar('/api/canais')).dados.canais.length, 0);
     assert.equal((await s.chamar(`/api/conversas/${conversa.id}`)).status, 200); // conversa continua
+  } finally {
+    await s.fechar();
+  }
+});
+
+test('whatsapp: imagem recebida é baixada, guardada no S3 e mensagens antigas são reparadas', async () => {
+  const arquivos = arquivosFalsos();
+  const s = await subirServidor({ arquivos });
+  try {
+    const criado = await s.chamar('/api/canais', 'POST', { nome: 'WhatsApp mídia' });
+    const segredo = criado.dados.canal.webhookUrl.split('/').pop();
+    const evento = await fetch(`${s.base}/webhook/uazapi/${segredo}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        EventType: 'messages',
+        message: {
+          messageid: 'IMAGEM-RECEBIDA-1',
+          chatid: '5531988887777@s.whatsapp.net',
+          fromMe: false,
+          messageType: 'ImageMessage',
+          type: 'media',
+          mediaType: 'image',
+          text: '',
+          content: { mimetype: 'image/jpeg', fileLength: IMAGEM.length, width: 610, height: 1356 },
+          senderName: 'Cliente com foto',
+          messageTimestamp: Math.floor(Date.now() / 1000),
+        },
+      }),
+    });
+    assert.equal(evento.status, 200);
+    assert.equal((await evento.json()).resultado, 'mensagem');
+    assert.deepEqual(s.uazapi.chamadas.find((c) => c[0] === 'download'), ['download', 'tok-123', 'IMAGEM-RECEBIDA-1']);
+    assert.equal(arquivos.guardados.size, 1);
+
+    const mensagem = await s.db.prepare("SELECT * FROM mensagens WHERE externo_id = 'IMAGEM-RECEBIDA-1'").get();
+    assert.equal(mensagem.midia_tipo, 'imagem');
+    assert.equal(mensagem.midia_nome, 'imagem.jpg');
+    assert.equal(mensagem.midia_mime, 'image/jpeg');
+    assert.ok(mensagem.midia_chave);
+    assert.equal(Number(mensagem.midia_tamanho), IMAGEM.length);
+
+    const lista = await s.chamar('/api/conversas?q=Cliente%20com%20foto');
+    const conversaId = lista.dados.conversas[0].id;
+    let detalhe = await s.chamar(`/api/conversas/${conversaId}`);
+    let recebida = detalhe.dados.conversa.mensagens.find((m) => m.texto === '[Imagem]');
+    assert.deepEqual(recebida.midia, { tipo: 'imagem', nome: 'imagem.jpg', mime: 'image/jpeg', url: `/api/midia/${mensagem.id}` });
+    const arquivo = await fetch(`${s.base}${recebida.midia.url}`, { headers: s.h });
+    assert.equal(arquivo.status, 200);
+    assert.equal(arquivo.headers.get('content-type'), 'image/jpeg');
+    assert.deepEqual(Buffer.from(await arquivo.arrayBuffer()), IMAGEM);
+
+    // Antes desta correção, a linha já existente continha apenas "[Imagem]" e externo_id.
+    await s.db.prepare('UPDATE mensagens SET midia_tipo = NULL, midia_id = NULL, midia_nome = NULL, midia_mime = NULL, midia_chave = NULL, midia_tamanho = NULL WHERE id = ?').run(mensagem.id);
+    arquivos.guardados.clear();
+    detalhe = await s.chamar(`/api/conversas/${conversaId}`);
+    recebida = detalhe.dados.conversa.mensagens.find((m) => m.texto === '[Imagem]');
+    assert.equal(recebida.midia.tipo, 'imagem', 'o histórico antigo passa a oferecer a imagem sem migration destrutiva');
+    const reparada = await fetch(`${s.base}${recebida.midia.url}`, { headers: s.h });
+    assert.equal(reparada.status, 200);
+    assert.deepEqual(Buffer.from(await reparada.arrayBuffer()), IMAGEM);
+    assert.equal(s.uazapi.chamadas.filter((c) => c[0] === 'download').length, 2);
+    assert.equal(arquivos.guardados.size, 1, 'o primeiro acesso repara a cópia persistente no S3');
+    assert.ok((await s.db.prepare('SELECT midia_chave FROM mensagens WHERE id = ?').get(mensagem.id)).midia_chave);
   } finally {
     await s.fechar();
   }

@@ -79,6 +79,19 @@ function criarUazapi({ url, adminToken, fetchImpl = globalThis.fetch, timeoutMs 
       token,
       corpo: { number: numero, type: tipo, file: url, text: legenda || '', docName: nome || undefined },
     }),
+    async baixarMensagem(token, id) {
+      const dados = await chamar('POST', '/message/download', {
+        token,
+        corpo: { id: String(id || ''), return_base64: true, return_link: false, generate_mp3: false },
+      });
+      const bruto = String(dados?.base64Data || dados?.base64 || '').replace(/^data:[^;]+;base64,/, '');
+      if (!bruto || !/^[A-Za-z0-9+/=\r\n]+$/.test(bruto)) {
+        throw new ErroUazapi('O servidor do WhatsApp não devolveu o conteúdo da mídia.');
+      }
+      const bytes = Buffer.from(bruto, 'base64');
+      if (!bytes.length) throw new ErroUazapi('O servidor do WhatsApp devolveu uma mídia vazia.');
+      return { bytes, tipo: dados?.mimetype || dados?.mimeType || null };
+    },
   };
 }
 
