@@ -1942,10 +1942,23 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
   /* ---------------- consulta de saldo pelo PIN ---------------- */
   const saldo = { conversaId: null, pin: '', carregando: false, cliente: null, erro: null, em: 0 };
   const cacheSaldos = new Map();
+  const pinsWhatsappEmEdicao = new Set();
   let sequenciaConsultaSaldo = 0;
 
   function limparSaldo(conversaId) {
     Object.assign(saldo, { conversaId, pin: '', carregando: false, cliente: null, erro: null, em: 0 });
+  }
+
+  function alterarPinDoWhatsapp(c) {
+    if (c?.canal !== 'whatsapp') return;
+    pinsWhatsappEmEdicao.add(c.id);
+    cacheSaldos.delete(c.id);
+    limparSaldo(c.id);
+    ficha.compras.conversaId = null;
+    ficha.transacoes.conversaId = null;
+    ficha.aba = 'resumo';
+    renderPainel();
+    document.querySelector('.pin-digito')?.focus();
   }
 
   function guardarSaldoNoCache(c, { pin, cliente = null, contato = null, erro = null, em = Date.now() }) {
@@ -1971,6 +1984,9 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
     if (!c || (saldo.carregando && saldo.conversaId === c.id)) return;
     const pin = String(pinDigitado || '').replace(/\D/g, '');
     if (!pin) return toast('Digite o PIN do cliente nos quadradinhos para consultar o saldo.');
+    if (c.canal === 'whatsapp' && (pin.length > 5 || Number(pin) < 1 || Number(pin) > 99999)) {
+      return toast('Digite um PIN entre 1 e 99999.');
+    }
     if (!forcar && restaurarSaldoDoCache(c, pin)) {
       renderPainel();
       return;
@@ -1983,6 +1999,7 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
       const r = await api('/suporte/saldo', { method: 'POST', body: { pin, conversaId: c.id } });
       const em = Date.now();
       if (r.conversa) c.contato = r.conversa.contato;
+      pinsWhatsappEmEdicao.delete(c.id);
       guardarSaldoNoCache(c, { pin, cliente: r.cliente, contato: r.conversa?.contato || null, em });
       if (estado.conversaId !== conversaId || consulta !== sequenciaConsultaSaldo) return;
       Object.assign(saldo, { carregando: false, cliente: r.cliente, erro: null, em });
@@ -1995,6 +2012,7 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
   }
 
   function consultarSaldoAutomaticamente(c) {
+    if (c?.canal === 'whatsapp' && pinsWhatsappEmEdicao.has(c.id)) return;
     const pin = String(c?.contato?.pin || '').replace(/\D/g, '');
     if (!estado.resumo?.saldoAtivo || !pin) return;
     consultarSaldo(pin, { forcar: false });
@@ -2044,7 +2062,8 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
     // No Telegram o cliente já chega identificado: o PIN dele vem preenchido.
     // No WhatsApp começa vazio e o atendente digita o que o cliente informar.
     const doCanal = c.canal === 'telegram' ? (ct.telegramId || '') : '';
-    const valorInicial = String(saldo.pin || ct.pin || doCanal || '').trim();
+    const editandoWhatsapp = c.canal === 'whatsapp' && pinsWhatsappEmEdicao.has(c.id);
+    const valorInicial = editandoWhatsapp ? '' : String(saldo.pin || ct.pin || doCanal || '').trim();
     const podeConsultar = Boolean(estado.resumo?.saldoAtivo);
     const botaoSaldo = (ler) => (podeConsultar
       ? el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => consultarSaldo(ler(), { forcar: true }) },
@@ -2057,26 +2076,33 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
       const confirmado = Boolean(ct.pin) || validado;
       const copiar = () => copiarPin(valorInicial);
       return el('div', { class: `bloco-pin${confirmado ? '' : ' pendente'} compacto` },
-        el('div', {
-          class: 'pin-pronto copiavel', title: 'Clique para copiar o PIN',
-          role: 'button', tabindex: '0', 'aria-label': `Copiar PIN ${valorInicial}`,
-          onclick: copiar,
-          onkeydown: (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              copiar();
-            }
+        el('div', { class: 'pin-pronto-linha' },
+          el('div', {
+            class: 'pin-pronto copiavel', title: 'Clique para copiar o PIN',
+            role: 'button', tabindex: '0', 'aria-label': `Copiar PIN ${valorInicial}`,
+            onclick: copiar,
+            onkeydown: (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                copiar();
+              }
+            },
           },
-        },
-          icone('pin', ICONE.cadeado),
-          el('span', { class: 'pin-valor' }, valorInicial),
-          el('span', {
-            class: `ok${confirmado ? '' : ' pendente'}`,
-            title: validado
-              ? `Conferido às ${horaCurta(ct.pinValidadoEm)} por ${ct.pinValidadoPor || 'equipe'}`
-              : (confirmado ? 'PIN informado pelo cliente' : 'Ainda não conferido'),
-            html: ICONE.check,
-          })),
+            icone('pin', ICONE.cadeado),
+            el('span', { class: 'pin-valor' }, valorInicial),
+            el('span', {
+              class: `ok${confirmado ? '' : ' pendente'}`,
+              title: validado
+                ? `Conferido às ${horaCurta(ct.pinValidadoEm)} por ${ct.pinValidadoPor || 'equipe'}`
+                : (confirmado ? 'PIN informado pelo cliente' : 'Ainda não conferido'),
+              html: ICONE.check,
+            })),
+          c.canal === 'whatsapp'
+            ? el('button', {
+              type: 'button', class: 'btn-alterar-pin', title: 'Alterar o PIN informado pelo cliente',
+              onclick: () => alterarPinDoWhatsapp(c),
+            }, icone('editar-pin', ICONE.lapisPequeno), 'Alterar PIN')
+            : null),
       );
     }
 
@@ -2088,7 +2114,7 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
         el('span', { class: 'selo pendente' }, 'Pendente')),
       el('div', { class: 'pin-digitos' }, ...caixas),
       el('div', { class: 'linha-pin' },
-        el('span', { class: 'pin-info' }, 'Digite o PIN que o cliente informou.'),
+        el('span', { class: 'pin-info' }, editandoWhatsapp ? 'Digite o novo PIN informado pelo cliente.' : 'Digite o PIN que o cliente informou.'),
         botaoSaldo(pinAtual)));
   }
 
@@ -2165,7 +2191,8 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
   function blocoSaldoEscuro(c) {
     const podeConsultar = Boolean(estado.resumo?.saldoAtivo);
     const cli = saldo.conversaId === c.id ? saldo.cliente : null;
-    const pin = String(saldo.pin || c.contato.pin || '').trim();
+    const editandoWhatsapp = c.canal === 'whatsapp' && pinsWhatsappEmEdicao.has(c.id);
+    const pin = editandoWhatsapp ? '' : String(saldo.pin || c.contato.pin || '').trim();
     const cabecalho = (detalhe, textoBotao = null, classeDetalhe = 'saldo-vazio') => el('div', { class: 'saldo-cabecalho' },
       el('div', { class: 'saldo-cabecalho-texto' },
         el('span', { class: 'saldo-rotulo' }, 'Saldo em conta'),
@@ -2182,7 +2209,7 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
     if (!cli) {
       const recado = !podeConsultar
         ? 'Consulta de saldo desligada no servidor.'
-        : (pin ? 'Ainda não consultado.' : 'Confirme o PIN do cliente para ver o saldo.');
+        : (editandoWhatsapp ? 'Informe e consulte o novo PIN do cliente.' : (pin ? 'Ainda não consultado.' : 'Confirme o PIN do cliente para ver o saldo.'));
       return el('div', { class: 'saldo-bloco' },
         cabecalho(recado, podeConsultar && pin ? 'Consultar saldo' : null));
     }

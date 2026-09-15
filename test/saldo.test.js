@@ -55,7 +55,9 @@ async function subirServidor(opcoesSaldo = {}) {
 }
 
 test('saldo: PIN vira número e os valores saem em centavos e em reais', () => {
+  assert.equal(normalizarPin('1'), 1);
   assert.equal(normalizarPin('5446'), 5446);
+  assert.equal(normalizarPin('99999'), 99999);
   assert.equal(normalizarPin(' 54 46 '), 5446);
   assert.equal(normalizarPin('abc'), null);
   assert.equal(normalizarPin(''), null);
@@ -108,6 +110,37 @@ test('saldo: a rota exige login e devolve só o resumo', async () => {
 
     const resumo = await fetch(`${s.base}/api/resumo`, { headers: { Cookie: s.cookie } }).then((r) => r.json());
     assert.equal(resumo.saldoAtivo, true);
+  } finally {
+    await s.fechar();
+  }
+});
+
+test('saldo: PIN informado no WhatsApp substitui o anterior e carrega a ficha completa', async () => {
+  const s = await subirServidor();
+  try {
+    const contato = await s.db.prepare('INSERT INTO contatos (nome, telefone, wa_id, pin, pin_validado_em) VALUES (?, ?, ?, ?, ?)')
+      .run('Cliente WhatsApp', '+55 31 98888-7777', '5531988887777', '99999', Date.now() - 60_000);
+    const agora = Date.now();
+    const conversa = await s.db.prepare(`
+      INSERT INTO conversas (protocolo, contato_id, canal, status, nao_lidas, criada_em, atualizada_em)
+      VALUES (?, ?, 'whatsapp', 'aberta', 0, ?, ?)`)
+      .run('5997', Number(contato.lastInsertRowid), agora, agora);
+
+    const rejeitada = await s.chamar('/api/suporte/saldo', { pin: '9999', conversaId: Number(conversa.lastInsertRowid) });
+    assert.equal(rejeitada.status, 404);
+    assert.equal((await s.db.prepare('SELECT pin FROM contatos WHERE id = ?').get(Number(contato.lastInsertRowid))).pin, '99999');
+
+    const resposta = await s.chamar('/api/suporte/saldo', { pin: '5446', conversaId: Number(conversa.lastInsertRowid) });
+
+    assert.equal(resposta.status, 200, JSON.stringify(resposta.dados));
+    assert.equal(resposta.dados.cliente.saldoCentavos, 31421);
+    assert.equal(resposta.dados.cliente.totalRecargas, 12);
+    assert.equal(resposta.dados.conversa.contato.pin, '5446');
+    assert.ok(resposta.dados.conversa.contato.pinValidadoEm);
+    const salvo = await s.db.prepare('SELECT pin, pin_validado_em, pin_validado_por FROM contatos WHERE id = ?').get(Number(contato.lastInsertRowid));
+    assert.equal(salvo.pin, '5446');
+    assert.ok(salvo.pin_validado_em);
+    assert.ok(salvo.pin_validado_por);
   } finally {
     await s.fechar();
   }
