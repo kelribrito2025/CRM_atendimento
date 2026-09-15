@@ -366,8 +366,20 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .chat-vazio { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 48px 24px; text-align: center; background: var(--superficie); }
 .chat-vazio-icone { width: 96px; height: 96px; border-radius: 32px; background: #F1FBF6; border: 1.5px solid #C7E8D6; display: flex; align-items: center; justify-content: center; color: var(--verde); }
 .chat-vazio-icone .ic { color: var(--verde); }
-.chat-vazio-icone.perola-sem-fundo { width: auto; height: auto; border: 0; border-radius: 0; background: transparent; }
-.perola-img { width: 154px; height: 154px; object-fit: contain; }
+/* Ilustrações das caixas vazias. O desenho já traz o próprio cartão de fundo,
+   então aqui não entra borda nem cor: só o tamanho. */
+.ilustra-vazio { width: 200px; height: 200px; flex-shrink: 0; display: block; }
+.ilustra-vazio svg { width: 100%; height: 100%; display: block; }
+.ilustra-vazio.pequena { width: 132px; height: 132px; }
+
+/* No tema escuro os tons claros do desenho viram os tons escuros da mesma
+   paleta. É por seletor de atributo para o desenho continuar valendo por si:
+   o mesmo SVG serve aos dois temas, sem uma segunda cópia para manter. */
+:root[data-tema="escuro"] .ilustra-vazio [fill="#F1FBF6"] { fill: var(--verde-fundo); }
+:root[data-tema="escuro"] .ilustra-vazio [fill="#FFFFFF"] { fill: var(--superficie); }
+:root[data-tema="escuro"] .ilustra-vazio [fill="#DFF6EA"] { fill: var(--verde-claro); }
+:root[data-tema="escuro"] .ilustra-vazio [stroke="#C9D4CD"] { stroke: #3D5B4A; }
+:root[data-tema="escuro"] .ilustra-vazio [stroke="#FFFFFF"] { stroke: var(--superficie); }
 .chat-vazio-texto { display: flex; flex-direction: column; gap: 9px; max-width: 460px; }
 .chat-vazio-texto > strong { font-size: 24px; font-weight: 700; letter-spacing: -.02em; color: var(--texto); }
 .chat-vazio-texto > span { font-size: 14px; line-height: 1.6; color: var(--texto-suave); text-wrap: pretty; }

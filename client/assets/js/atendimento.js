@@ -56,7 +56,6 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     clipe: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.5l-8.6 8.6a5 5 0 01-7-7l9-9a3.3 3.3 0 014.7 4.7l-9 9a1.7 1.7 0 01-2.4-2.4l8.3-8.2"></path></svg>',
     raio: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9z"></path></svg>',
     enviar: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4"><path d="M21 4L3 11l6 2 2 6z"></path></svg>',
-    perola: '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10.9" r="3.2"></circle><path d="M2.8 14.6h18.4c0 3.3-4.12 5.9-9.2 5.9s-9.2-2.6-9.2-5.9z"></path><path d="M12 14.6v5.9"></path><path d="M7.3 14.6c.16 2.1.72 3.9 1.64 5.2"></path><path d="M16.7 14.6c-.16 2.1-.72 3.9-1.64 5.2"></path></svg>',
     balao: '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 11.5a8.4 8.4 0 01-9 8.4 8.9 8.9 0 01-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0121 11.5z"></path></svg>',
     busca: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.3-4.3"></path></svg>',
     cadeadoGrande: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg>',
@@ -1018,21 +1017,66 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     carregarConversas({ selecionarPrimeira: true }).catch((e) => toast(e.message));
   }
 
+  // ===== Ilustrações das caixas vazias (turno 40) =====
+  //
+  // Três desenhos no mesmo molde: cartão arredondado de 200px com lavagem
+  // verde, traço de 2px e no máximo três tons. Cada um vai onde significa
+  // alguma coisa, e não como enfeite trocado:
+  //
+  //   bandeja  a caixa de entrada sem nada empilhado  -> caixa vazia
+  //   cartas   a conversa antiga atrás, a resolvida à frente com o check
+  //            -> tudo respondido
+  //   balao    o próprio ícone do chat com o check dentro -> a área do chat
+  //
+  // Os gradientes do desenho original foram tirados: nenhum era usado, e ids
+  // repetidos brigariam se dois desenhos aparecessem na mesma tela.
+  const FUNDO_ILUSTRA = '<path d="M100 18h0c30 0 45 0 56 11s11 26 11 56v10c0 30 0 45-11 56s-26 11-56 11h0c-30 0-45 0-56-11s-11-26-11-56v-10c0-30 0-45 11-56s26-11 56-11z" fill="#F1FBF6"/>';
+
+  const ILUSTRACAO = {
+    cartas: `<svg viewBox="0 0 200 200" fill="none" aria-hidden="true">${FUNDO_ILUSTRA}
+      <rect x="54" y="62" width="62" height="52" rx="10" fill="#FFFFFF" stroke="#C9D4CD" stroke-width="1.6" stroke-dasharray="4 4" transform="rotate(-8 85 88)"/>
+      <g transform="rotate(-8 85 88)" stroke="#C9D4CD" stroke-width="4" stroke-linecap="round"><path d="M66 78h34"/><path d="M66 88h26"/><path d="M66 98h20"/></g>
+      <rect x="88" y="66" width="62" height="54" rx="11" fill="#DFF6EA" stroke="#12B85C" stroke-width="2" transform="rotate(6 119 93)"/>
+      <g transform="rotate(6 119 93)" stroke-linecap="round"><path d="M100 80h36" stroke="#0A7A42" stroke-width="4.4"/><path d="M100 92h24" stroke="#7EE2A8" stroke-width="4.4"/><path d="M100 104h32" stroke="#0A7A42" stroke-width="4.4"/></g>
+      <circle cx="100" cy="136" r="21" fill="#12B85C"/>
+      <path d="M91 136l6 6 12-13" stroke="#FFFFFF" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+
+    bandeja: `<svg viewBox="0 0 200 200" fill="none" aria-hidden="true">${FUNDO_ILUSTRA}
+      <path d="M58 96h20l7 12h30l7-12h20v34a8 8 0 01-8 8H66a8 8 0 01-8-8V96z" fill="#FFFFFF" stroke="#0A7A42" stroke-width="2.2" stroke-linejoin="round"/>
+      <path d="M66 96l10-30h48l10 30" stroke="#C9D4CD" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      <g stroke="#7EE2A8" stroke-width="4" stroke-linecap="round"><path d="M84 78h32"/><path d="M90 66h20"/></g>
+      <circle cx="132" cy="128" r="16" fill="#12B85C"/>
+      <path d="M125 128l5 5 9-10" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+
+    balao: `<svg viewBox="0 0 200 200" fill="none" aria-hidden="true">${FUNDO_ILUSTRA}
+      <path d="M100 56c25 0 44 17 44 38 0 21-19 38-44 38-6 0-12-1-17-3l-21 9 6-19c-7-7-12-16-12-25 0-21 19-38 44-38z" fill="#FFFFFF" stroke="#0A7A42" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M84 95l11 11 22-24" stroke="#12B85C" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <g stroke="#7EE2A8" stroke-width="4" stroke-linecap="round" opacity=".9"><path d="M150 62l8-6"/><path d="M154 78h10"/><path d="M146 46l3-9"/></g></svg>`,
+  };
+
+  function ilustracao(nome, classe = 'ilustra-vazio') {
+    return el('span', { class: classe, html: ILUSTRACAO[nome] || '' });
+  }
+
   // Texto e ação do estado vazio da lista, conforme a caixa escolhida.
   function descricaoVazia() {
     const verTodas = { acao: 'Ver todas as caixas', aoClicar: () => selecionarCaixa('todas') };
-    if (estado.busca) return { titulo: 'Nada encontrado', texto: `Nenhuma conversa encontrada para "${estado.busca}".`, acao: 'Limpar busca', aoClicar: limparBusca };
-    if (estado.equipeId) return { titulo: 'Caixa vazia', texto: `Nenhuma conversa aberta na equipe ${nomeCaixa()}.`, ...verTodas };
-    if (estado.caixa === 'minhas') return { titulo: 'Caixa vazia', texto: 'Nenhuma conversa atribuída a você no momento.', ...verTodas };
-    if (estado.caixa === 'sem_resposta') return { titulo: 'Tudo respondido', texto: 'Nenhum cliente aguardando resposta.', ...verTodas };
-    if (estado.caixa === 'encerradas') return { titulo: 'Nada encerrado', texto: 'Nenhuma conversa foi encerrada nos últimos dias.', ...verTodas };
-    return { titulo: 'Nenhuma conversa aberta', texto: '', acao: null };
+    // Busca sem resultado não é caixa vazia: continua com a lupa, senão o
+    // desenho de "tudo respondido" apareceria para quem só digitou errado.
+    if (estado.busca) return { titulo: 'Nada encontrado', texto: `Nenhuma conversa encontrada para "${estado.busca}".`, acao: 'Limpar busca', aoClicar: limparBusca, lupa: true };
+    if (estado.equipeId) return { titulo: 'Caixa vazia', texto: `Nenhuma conversa aberta na equipe ${nomeCaixa()}.`, desenho: 'bandeja', ...verTodas };
+    if (estado.caixa === 'minhas') return { titulo: 'Caixa vazia', texto: 'Nenhuma conversa atribuída a você no momento.', desenho: 'bandeja', ...verTodas };
+    if (estado.caixa === 'sem_resposta') return { titulo: 'Tudo respondido', texto: 'Nenhum cliente aguardando resposta.', desenho: 'cartas', ...verTodas };
+    if (estado.caixa === 'encerradas') return { titulo: 'Nada encerrado', texto: 'Nenhuma conversa foi encerrada nos últimos dias.', desenho: 'bandeja', ...verTodas };
+    return { titulo: 'Nenhuma conversa aberta', texto: '', acao: null, desenho: 'bandeja' };
   }
 
   function listaVazia() {
     const d = descricaoVazia();
     return el('div', { class: 'lista-vazia' },
-      el('span', { class: 'lista-vazia-icone' }, icone('buscar', ICONE.busca)),
+      d.lupa
+        ? el('span', { class: 'lista-vazia-icone' }, icone('buscar', ICONE.busca))
+        : ilustracao(d.desenho, 'ilustra-vazio pequena'),
       el('div', { class: 'lista-vazia-texto' }, el('strong', {}, d.titulo), d.texto ? el('span', {}, d.texto) : null),
       d.acao ? el('button', { type: 'button', class: 'btn-branco hov', onclick: d.aoClicar }, d.acao) : null);
   }
@@ -1052,27 +1096,22 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
         ? el('span', {}, 'A equipe ', el('strong', {}, nomeCaixa()), ' não tem nenhuma conversa aberta.')
         : el('span', {}, {
           minhas: 'Você não tem nenhuma conversa em atendimento.',
-          sem_resposta: 'Nenhuma pérola está aguardando resposta.',
+          sem_resposta: 'Nenhum cliente está aguardando resposta.',
           encerradas: 'Nenhuma conversa encerrada por aqui.',
         }[estado.caixa] || 'Nenhuma conversa aberta no momento.');
     } else {
       titulo = 'Nenhuma conversa selecionada';
       texto = el('span', {}, 'Escolha uma conversa na lista ao lado para começar o atendimento.');
     }
-    const semNada = !estado.conversas.length && !estado.busca && !estado.equipeId && !estado.canal
-      && ['todas', 'minhas', 'sem_resposta'].includes(estado.caixa);
+    // Com a lista vazia, o desenho grande é o balão com o check. Quando há
+    // conversas e só falta escolher uma, fica o ícone pequeno de sempre: ali a
+    // tela não está limpa, está esperando um clique.
+    const semNada = !estado.conversas.length;
     return el('div', { class: 'chat-vazio' },
-      el('span', { class: `chat-vazio-icone${semNada ? ' perola-sem-fundo' : ''}` }, semNada ? imagemPerola() : icone('atendimento', ICONE.balao)),
+      semNada
+        ? ilustracao(estado.busca ? 'cartas' : 'balao')
+        : el('span', { class: 'chat-vazio-icone' }, icone('atendimento', ICONE.balao)),
       el('div', { class: 'chat-vazio-texto' }, el('strong', {}, titulo), texto));
-  }
-
-  // A pérola das caixas vazias. Se existir o arquivo /icones/perola.png, ele é
-  // usado; senão fica o desenho, para a tela nunca aparecer quebrada.
-  function imagemPerola() {
-    const desenho = el('span', { class: 'ic', style: '--ic:52px', html: ICONE.perola });
-    const foto = el('img', { src: '/icones/perola.png', alt: '', class: 'perola-img' });
-    foto.addEventListener('error', () => foto.replaceWith(desenho));
-    return foto;
   }
 
   /* ---------------- respostas rápidas ---------------- */
