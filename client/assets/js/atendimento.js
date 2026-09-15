@@ -2090,9 +2090,17 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
           icone('pin', ICONE.cadeado),
           el('span', { class: 'pin-valor' }, valorInicial),
           c.canal === 'whatsapp'
-            ? el('button', {
-              type: 'button', class: 'link-alterar-pin', title: 'Alterar o PIN informado pelo cliente',
+            ? el('span', {
+              class: 'link-alterar-pin', title: 'Alterar o PIN informado pelo cliente',
+              role: 'button', tabindex: '0',
               onclick: (e) => { e.stopPropagation(); alterarPinDoWhatsapp(c); },
+              onkeydown: (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  alterarPinDoWhatsapp(c);
+                }
+              },
             }, 'Alterar')
             : null,
           el('span', {

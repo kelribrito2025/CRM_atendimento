@@ -36,10 +36,12 @@ test('PIN do WhatsApp: Alterar aparece como texto dentro do card só nesse canal
   assert.match(alterar, /limparSaldo\(c\.id\)/);
   assert.match(alterar, /ficha\.compras\.conversaId = null/);
   assert.match(alterar, /ficha\.transacoes\.conversaId = null/);
-  assert.match(blocoPin, /el\('span', \{ class: 'pin-valor' \}, valorInicial\)[\s\S]*c\.canal === 'whatsapp'[\s\S]*class: 'link-alterar-pin'[\s\S]*'Alterar'/);
+  assert.match(blocoPin, /el\('span', \{ class: 'pin-valor' \}, valorInicial\)[\s\S]*c\.canal === 'whatsapp'[\s\S]*el\('span', \{[\s\S]*class: 'link-alterar-pin'[\s\S]*'Alterar'/);
+  assert.doesNotMatch(blocoPin, /type: 'button', class: 'link-alterar-pin'/);
   assert.doesNotMatch(blocoPin, /icone\('editar-pin'/);
   assert.doesNotMatch(blocoPin, /'Alterar PIN'/);
   assert.match(blocoPin, /editandoWhatsapp \? '' : String\(saldo\.pin \|\| ct\.pin \|\| doCanal \|\| ''\)/);
   assert.match(blocoPin, /Digite o novo PIN informado pelo cliente/);
-  assert.match(css, /\.link-alterar-pin \{[^}]*border: 0;[^}]*background: none;[^}]*white-space: nowrap;/);
+  assert.match(css, /\.pin-pronto \{[^}]*height: 44px;[^}]*border-radius: 12px;[^}]*border: 1px solid var\(--verde-borda\); \}/);
+  assert.match(css, /\.link-alterar-pin \{[^}]*cursor: pointer;[^}]*white-space: nowrap;/);
 });
