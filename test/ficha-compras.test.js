@@ -134,7 +134,7 @@ test('extrato: opção vai para o título e sai da descrição, inclusive no ree
     transactions: {
       transactions: [
         { id: 4, tipo: 'reembolso', tipoLegivel: 'Reembolso', descricao: 'Reembolso de ativação cancelada #77', valorCents: 1450, ativacaoId: 77 },
-        { id: 3, tipo: 'compra', tipoLegivel: 'Compra', descricao: 'Opção 1 - Compra em andamento - Whatsapp (Brasil)', valorCents: -1450, ativacaoId: 77 },
+        { id: 3, tipo: 'compra', tipoLegivel: 'Compra', descricao: 'Opção 1 - Compra em andamento - Whatsapp (Brasil)', phoneNumber: '5588999467585', valorCents: -1450, ativacaoId: 77 },
         { id: 2, tipo: 'compra', tipoLegivel: 'Compra', descricao: 'Opção 4 - Compra concluída', valorCents: -1450, ativacaoId: 78, option: { id: 1800001, name: 'Opção 4', interno: 'não expor' } },
         { id: 1, tipo: 'recarga', tipoLegivel: 'Recarga', descricao: 'Recarga via PIX', valorCents: 3000 },
       ],
@@ -145,6 +145,7 @@ test('extrato: opção vai para o título e sai da descrição, inclusive no ree
 
   assert.deepEqual(compraAntiga.option, { id: null, name: 'Opção 1' });
   assert.equal(compraAntiga.descricao, 'Compra em andamento - Whatsapp (Brasil)');
+  assert.equal(compraAntiga.numero, '5588999467585');
   assert.deepEqual(reembolso.option, { id: null, name: 'Opção 1' }, 'a mesma ativação compartilha a opção');
   assert.equal(reembolso.descricao, 'Reembolso de ativação cancelada #77');
   assert.deepEqual(compraEstruturada.option, { id: 1800001, name: 'Opção 4' });
@@ -154,6 +155,9 @@ test('extrato: opção vai para o título e sai da descrição, inclusive no ree
   const tela = fs.readFileSync(path.join(__dirname, '..', 'client/assets/js/atendimento.js'), 'utf8');
   assert.match(tela, /t\.option\?\.name \? `\$\{t\.tipoTexto\} - \$\{t\.option\.name\}` : t\.tipoTexto/);
   assert.match(tela, /class: 'tipo', title: titulo \}, titulo/);
+  assert.match(tela, /\^Reembolso de ativação cancelada\\b\/i/);
+  assert.match(tela, /`\$\{t\.numero\} - #\$\{t\.ativacaoId\}`/);
+  assert.match(tela, /`\$\{t\.numero\}\$\{detalheCompraFormatado \? ` \$\{detalheCompraFormatado\}` : ''\}`/);
 });
 
 test('extrato: opção conhecida é ligada somente pelo ID exato da ativação', () => {
@@ -162,12 +166,14 @@ test('extrato: opção conhecida é ligada somente pelo ID exato da ativação',
     { id: 2, tipoTexto: 'Reembolso', ativacaoId: 88, valorCentavos: 1450, option: null },
   ];
   const compras = [
-    { id: 77, valorCentavos: 1450, option: { id: 1, name: 'Opção 1' } },
-    { id: 99, valorCentavos: 1450, option: { id: 2, name: 'Opção 2' } },
+    { id: 77, valorCentavos: 1450, numero: '5588999467585', option: { id: 1, name: 'Opção 1' } },
+    { id: 99, valorCentavos: 1450, numero: '5588777666555', option: { id: 2, name: 'Opção 2' } },
   ];
   const resultado = aplicarOpcoesConhecidas(transacoes, compras);
   assert.deepEqual(resultado[0].option, { id: 1, name: 'Opção 1' });
+  assert.equal(resultado[0].numero, '5588999467585');
   assert.equal(resultado[1].option, null, 'mesmo valor não autoriza deduzir a opção errada');
+  assert.equal(resultado[1].numero, null, 'mesmo valor também não autoriza deduzir o número errado');
 });
 
 test('extrato: tipo desconhecido vira "Movimentação" em vez de quebrar a lista', async () => {

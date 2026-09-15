@@ -1209,7 +1209,7 @@ function criarRotasApi(db, opcoes = {}) {
   rotaDeLeitura('/suporte/compras', (pin, opcoes) => saldo.listarCompras(pin, opcoes));
   rotaDeLeitura('/suporte/transacoes', async (pin, opcoes) => {
     let resultado = await saldo.listarTransacoes(pin, opcoes);
-    if (resultado.transacoes.some((t) => t.ativacaoId && !t.option)) {
+    if (resultado.transacoes.some((t) => t.ativacaoId && (!t.option || !t.numero))) {
       try {
         const comprasRecentes = await saldo.listarCompras(pin, { limite: 100 });
         resultado = { ...resultado, transacoes: aplicarOpcoesConhecidas(resultado.transacoes, comprasRecentes.compras) };

@@ -163,7 +163,7 @@ test('transações: endpoint associa a opção da compra pelo ID exato da ativa�
     },
     async listarCompras(pin, opcoes) {
       consultaCompras = { pin, opcoes };
-      return { compras: [{ id: 77, option: { id: 1, name: 'Opção 1' } }] };
+      return { compras: [{ id: 77, numero: '5588999467585', option: { id: 1, name: 'Opção 1' } }] };
     },
   };
   const app = criarApp(db, { enviador: criarEnviador({ modo: 'silencioso' }), saldo });
@@ -178,6 +178,7 @@ test('transações: endpoint associa a opção da compra pelo ID exato da ativa�
     const dados = await resposta.json();
     assert.equal(resposta.status, 200, JSON.stringify(dados));
     assert.deepEqual(dados.transacoes[0].option, { id: 1, name: 'Opção 1' });
+    assert.equal(dados.transacoes[0].numero, '5588999467585');
     assert.deepEqual(consultaCompras, { pin: 5446, opcoes: { limite: 100 } });
   } finally {
     await new Promise((resolve) => servidor.close(resolve));

@@ -2126,11 +2126,22 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 
   function itemTransacao(t) {
     const titulo = t.option?.name ? `${t.tipoTexto} - ${t.option.name}` : t.tipoTexto;
+    const ehCompra = String(t.tipo || '').toLowerCase().includes('compra');
+    const ehReembolsoCancelado = /^Reembolso de ativação cancelada\b/i.test(String(t.descricao || ''));
+    const detalheCompra = String(t.descricao || '').replace(/^Compra\s+/i, '').trim();
+    const detalheCompraFormatado = detalheCompra
+      ? detalheCompra.charAt(0).toLocaleUpperCase('pt-BR') + detalheCompra.slice(1)
+      : '';
+    const descricao = ehReembolsoCancelado && t.numero && t.ativacaoId
+      ? `${t.numero} - #${t.ativacaoId}`
+      : (ehCompra && t.numero
+        ? `${t.numero}${detalheCompraFormatado ? ` ${detalheCompraFormatado}` : ''}`
+        : t.descricao);
     return el('div', { class: 'transacao-item' },
       el('span', { class: `transacao-ic ${t.entrada ? 'entrada' : 'saida'}` }, icone(t.tipo, t.entrada ? ICONE.maisGrande : ICONE.menos)),
       el('div', { class: 'transacao-texto' },
         el('span', { class: 'tipo', title: titulo }, titulo),
-        el('span', { class: 'desc' }, t.descricao)),
+        el('span', { class: 'desc', title: descricao }, descricao)),
       el('div', { class: 'transacao-valores' },
         el('span', { class: `valor ${t.entrada ? 'entrada' : 'saida'}` }, `${t.entrada ? '+' : ''}${t.valor}`),
         t.saldoDepois ? el('span', { class: 'depois' }, `→ ${t.saldoDepois}`) : null));

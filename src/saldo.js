@@ -146,6 +146,7 @@ function resumirTransacao(t) {
     saldoDepois: depois === null ? null : emReais(depois),
     ativacaoId: Number.isFinite(t?.ativacaoId) ? t.ativacaoId : null,
     option: normalizarOpcao(t?.option),
+    numero: t?.phoneNumber || t?.numero || null,
     feitoPorAdmin: Boolean(t?.feitoPorAdmin),
     data: t?.data || null,
   };
@@ -179,29 +180,35 @@ function organizarOpcoesDoExtrato(transacoes) {
   });
 
   for (const t of preparados) {
-    if (t.option && Number.isSafeInteger(Number(t.ativacaoId)) && Number(t.ativacaoId) > 0) {
-      porAtivacao.set(Number(t.ativacaoId), t.option);
+    if ((t.option || t.numero) && Number.isSafeInteger(Number(t.ativacaoId)) && Number(t.ativacaoId) > 0) {
+      const atual = porAtivacao.get(Number(t.ativacaoId)) || {};
+      porAtivacao.set(Number(t.ativacaoId), {
+        option: atual.option || t.option || null,
+        numero: atual.numero || t.numero || null,
+      });
     }
   }
 
-  return preparados.map((t) => ({
-    ...t,
-    option: t.option || (Number.isSafeInteger(Number(t.ativacaoId))
-      ? porAtivacao.get(Number(t.ativacaoId)) || null
-      : null),
-  }));
+  return preparados.map((t) => {
+    const compra = Number.isSafeInteger(Number(t.ativacaoId)) ? porAtivacao.get(Number(t.ativacaoId)) : null;
+    return { ...t, option: t.option || compra?.option || null, numero: t.numero || compra?.numero || null };
+  });
 }
 
 function aplicarOpcoesConhecidas(transacoes, compras) {
   const porAtivacao = new Map((compras || [])
-    .filter((compra) => Number.isSafeInteger(Number(compra.id)) && Number(compra.id) > 0 && compra.option)
-    .map((compra) => [Number(compra.id), compra.option]));
-  return (transacoes || []).map((transacao) => ({
-    ...transacao,
-    option: transacao.option || (Number.isSafeInteger(Number(transacao.ativacaoId))
-      ? porAtivacao.get(Number(transacao.ativacaoId)) || null
-      : null),
-  }));
+    .filter((compra) => Number.isSafeInteger(Number(compra.id)) && Number(compra.id) > 0)
+    .map((compra) => [Number(compra.id), { option: compra.option || null, numero: compra.numero || null }]));
+  return (transacoes || []).map((transacao) => {
+    const compra = Number.isSafeInteger(Number(transacao.ativacaoId))
+      ? porAtivacao.get(Number(transacao.ativacaoId))
+      : null;
+    return {
+      ...transacao,
+      option: transacao.option || compra?.option || null,
+      numero: transacao.numero || compra?.numero || null,
+    };
+  });
 }
 
 function resumirRecarga(r) {
