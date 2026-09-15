@@ -3,6 +3,20 @@
 
 /* Lado escuro */
 .hero { width: 58%; flex-shrink: 0; position: relative; background: var(--rail); padding: 44px; display: flex; flex-direction: column; overflow: hidden; color: #fff; }
+/* Imagem sobre o verde original: 30% de opacidade = 70% de transparência.
+   A camada negativa fica acima do fundo, mas abaixo de todo o conteúdo. */
+body[data-pagina="login"] .hero { isolation: isolate; }
+@media (min-width: 861px) {
+  body[data-pagina="login"] .hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: .3;
+    background: url('/manus-storage/login-rotina-equipe_2c5eff27.webp') center / cover no-repeat;
+  }
+}
 .hero-glow { position: absolute; right: -180px; top: -140px; width: 620px; height: 620px; border-radius: 50%; background: radial-gradient(circle, rgba(18, 184, 92, .22), rgba(18, 184, 92, 0) 70%); pointer-events: none; }
 .marca { position: relative; display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; align-self: flex-start; }
 .marca:hover { text-decoration: none; }

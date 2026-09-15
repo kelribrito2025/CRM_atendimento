@@ -112,11 +112,16 @@ function pluginManusDebugCollector() {
 
 /* ------------------- Proxy de armazenamento do Manus ------------------- */
 function pluginManusStorageProxy() {
+  const { CAMINHO_FUNDO_LOGIN, criarFundoLogin } = require('./src/fundo-login.js');
+  const fundoLogin = criarFundoLogin();
   return {
     name: 'manus-storage-proxy',
     configureServer(server) {
       server.middlewares.use('/manus-storage', async (req, res) => {
         const key = req.url?.replace(/^\//, '');
+        if (`/manus-storage/${key?.split('?')[0]}` === CAMINHO_FUNDO_LOGIN && ['GET', 'HEAD'].includes(req.method)) {
+          return fundoLogin(req, res);
+        }
         const forgeBaseUrl = (process.env.BUILT_IN_FORGE_API_URL || '').replace(/\/+$/, '');
         const forgeKey = process.env.BUILT_IN_FORGE_API_KEY;
         if (!key) { res.writeHead(400); return res.end('Missing storage key'); }

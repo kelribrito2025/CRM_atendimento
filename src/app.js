@@ -13,6 +13,7 @@ const canais = require('./canais');
 const { nomeDoCabecalho } = require('./util');
 const { criarAvisos } = require('./eventos');
 const presenca = require('./presenca');
+const { CAMINHO_FUNDO_LOGIN, criarFundoLogin } = require('./fundo-login');
 
 const RAIZ = path.join(__dirname, '..');
 const COOKIE_VERIFICACAO = 'crm_verificacao';
@@ -58,6 +59,7 @@ function criarApp(db, opcoes = {}) {
   app.get('/robots.txt', (req, res) => {
     res.type('text/plain').send('User-agent: *\nDisallow: /\n');
   });
+  app.get(CAMINHO_FUNDO_LOGIN, criarFundoLogin());
 
   // Lista dos ícones do Iconly disponíveis na pasta (o navegador só pede os que existem)
   app.get('/icones/manifesto', (req, res) => {
