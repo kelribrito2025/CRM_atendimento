@@ -42,3 +42,15 @@ test('horários UI: widget tem card discreto e não bloqueia envio durante a pau
   assert.match(aplicar, /atendimento\.agoraServidor/);
   assert.doesNotMatch(aplicar, /liberarEnvio\(false\)/);
 });
+
+test('horários UI: fim oferece texto curto para voltar às pendências, abaixo do botão', () => {
+  const js = ler('client/assets/js/horario-atendimento.mjs');
+  const css = ler('client/assets/css/app.css');
+  const trecho = js.slice(js.indexOf('caixa.append(erro, botao);'), js.indexOf('fundo.append(caixa);'));
+  assert.match(trecho, /if \(fim\)/);
+  assert.match(trecho, /'jornada-pendencias', 'Finalizar pendências'/);
+  assert.match(trecho, /addEventListener\('click', \(\) => botao\.click\(\)\)/);
+  assert.match(trecho, /caixa\.append\(pendencias\)/);
+  assert.doesNotMatch(trecho, /api\(|location\.|icone\(/);
+  assert.match(css, /\.jornada-pendencias \{[^}]*border: 0;[^}]*background: none;/);
+});

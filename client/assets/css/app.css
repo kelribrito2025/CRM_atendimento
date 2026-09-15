@@ -1089,6 +1089,9 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 .jornada-modal.fim .jornada-tempo > span { margin: 0; font-size: 12px; }
 .jornada-modal.fim .jornada-proximo { font-size: 18px; margin-top: 4px; }
 .jornada-modal.fim .jornada-acao { height: 52px; }
+.jornada-pendencias { display: inline-block; margin: 12px 0 0; padding: 4px 0; border: 0; background: none; color: var(--texto-suave); font: inherit; font-size: 13px; cursor: pointer; }
+.jornada-pendencias:hover { color: var(--verde-texto); text-decoration: underline; }
+.jornada-pendencias:focus-visible { outline: 2px solid var(--verde); outline-offset: 4px; border-radius: 3px; }
 .jornada-metricas { margin-top: 20px; }
 .jornada-metricas-titulo { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 12px; font-size: 14px; text-align: left; font-weight: 600; }
 .jornada-metricas-titulo strong { font-size: 22px; color: var(--verde-texto); font-variant-numeric: tabular-nums; }

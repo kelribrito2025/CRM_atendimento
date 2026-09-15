@@ -132,6 +132,15 @@ export function criarAvisosHorario({ api, recarregar }) {
       }
     });
     caixa.append(erro, botao);
+    if (fim) {
+      const pendencias = criar('button', 'jornada-pendencias', 'Finalizar pendências');
+      pendencias.type = 'button';
+      pendencias.title = 'Voltar ao chat para finalizar os atendimentos pendentes';
+      // Apenas libera a tela para continuar atendendo. Não resolve conversas,
+      // não encerra a sessão nem altera o horário configurado.
+      pendencias.addEventListener('click', () => botao.click());
+      caixa.append(pendencias);
+    }
     fundo.append(caixa);
     const foco = document.activeElement;
     const teclado = (ev) => {
