@@ -156,10 +156,8 @@ test('extrato: opção vai para o título e sai da descrição, inclusive no ree
   const css = fs.readFileSync(path.join(__dirname, '..', 'client/assets/css/app.css'), 'utf8');
   assert.match(tela, /t\.option\?\.name \? `\$\{t\.tipoTexto\} - \$\{t\.option\.name\}` : t\.tipoTexto/);
   assert.match(tela, /class: 'tipo', title: titulo \}, titulo/);
-  assert.match(tela, /\^Reembolso de ativação cancelada\\b\/i/);
-  assert.match(tela, /`\$\{t\.numero\} - #\$\{t\.ativacaoId\}`/);
-  assert.match(tela, /`\$\{t\.numero\}\$\{detalheCompraFormatado \? ` \$\{detalheCompraFormatado\}` : ''\}`/);
-  assert.match(tela, /class: 'numero-transacao' \}, t\.numero/);
+  assert.match(tela, /apresentarDescricaoTransacao\(t\)/);
+  assert.match(tela, /class: 'numero-transacao' \}, numero/);
   assert.match(css, /\.transacao-texto \.numero-transacao \{[^}]*color: var\(--extrato-verde\);[^}]*font-weight: 700;/);
 });
 

@@ -8,6 +8,7 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
 import { estiloAvatarDoCanal } from './cor-avatar.mjs';
 import { formatarDataHoraCompra } from './data-compra.mjs';
 import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
+import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
 
 (() => {
   'use strict';
@@ -2157,28 +2158,15 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 
   function itemTransacao(t) {
     const titulo = t.option?.name ? `${t.tipoTexto} - ${t.option.name}` : t.tipoTexto;
-    const ehCompra = String(t.tipo || '').toLowerCase().includes('compra');
-    const ehReembolsoCancelado = /^Reembolso de ativação cancelada\b/i.test(String(t.descricao || ''));
-    const detalheCompra = String(t.descricao || '').replace(/^Compra\s+/i, '').trim();
-    const detalheCompraFormatado = detalheCompra
-      ? detalheCompra.charAt(0).toLocaleUpperCase('pt-BR') + detalheCompra.slice(1)
-      : '';
-    const descricao = ehReembolsoCancelado && t.numero && t.ativacaoId
-      ? `${t.numero} - #${t.ativacaoId}`
-      : (ehCompra && t.numero
-        ? `${t.numero}${detalheCompraFormatado ? ` ${detalheCompraFormatado}` : ''}`
-        : t.descricao);
-    const complementoNumero = ehReembolsoCancelado && t.numero && t.ativacaoId
-      ? ` - #${t.ativacaoId}`
-      : (ehCompra && t.numero ? `${detalheCompraFormatado ? ` ${detalheCompraFormatado}` : ''}` : null);
-    const partesDescricao = complementoNumero !== null
-      ? [el('span', { class: 'numero-transacao' }, t.numero), complementoNumero]
-      : [descricao];
+    const { descricao, numero, complemento } = apresentarDescricaoTransacao(t);
+    const partesDescricao = numero
+      ? [el('span', { class: 'numero-transacao' }, numero), complemento || '']
+      : (descricao ? [descricao] : []);
     return el('div', { class: 'transacao-item' },
       el('span', { class: `transacao-ic ${t.entrada ? 'entrada' : 'saida'}` }, icone(t.tipo, t.entrada ? ICONE.maisGrande : ICONE.menos)),
       el('div', { class: 'transacao-texto' },
         el('span', { class: 'tipo', title: titulo }, titulo),
-        el('span', { class: 'desc', title: descricao }, ...partesDescricao)),
+        partesDescricao.length ? el('span', { class: 'desc', title: descricao }, ...partesDescricao) : null),
       el('div', { class: 'transacao-valores' },
         el('span', { class: `valor ${t.entrada ? 'entrada' : 'saida'}` }, `${t.entrada ? '+' : ''}${t.valor}`),
         t.saldoDepois ? el('span', { class: 'depois' }, `→ ${t.saldoDepois}`) : null));
