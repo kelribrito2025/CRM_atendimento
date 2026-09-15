@@ -1629,7 +1629,11 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
       conteudo = el('a', { href: `${a.url}?baixar=1`, target: '_blank', rel: 'noopener', class: 'midia-arquivo' },
         icone('anexo', ICONE.clipe), el('span', {}, a.nome || 'Abrir documento'));
     }
-    return el('div', { class: `balao midia ${a.tipo}` }, conteudo, legenda ? el('span', { class: 'midia-legenda' }, legenda) : null);
+    const midia = el('div', { class: `balao midia ${a.tipo}` }, conteudo);
+    if (!legenda) return midia;
+    return el('div', { class: 'midia-com-legenda' },
+      midia,
+      el('div', { class: 'balao midia-legenda-balao' }, legenda));
   }
 
   // "/" no começo de uma palavra abre as respostas rápidas já filtradas.

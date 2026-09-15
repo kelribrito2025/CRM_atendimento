@@ -300,16 +300,16 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .balao.midia { padding: 4px; display: inline-flex; flex-direction: column; gap: 4px; }
 /* Foto, vídeo e áudio aparecem sem o balão colorido em volta. */
 .balao.midia.imagem, .balao.midia.video, .balao.midia.audio { background: none; border: 0; padding: 0; }
-.balao.midia.imagem .midia-legenda, .balao.midia.video .midia-legenda { color: var(--texto); padding: 0 2px 2px; }
 .msg.saida .balao.midia.imagem, .msg.saida .balao.midia.video, .msg.saida .balao.midia.audio { background: none; }
-.msg.saida .balao.midia.imagem .midia-legenda, .msg.saida .balao.midia.video .midia-legenda { color: var(--texto); }
+.midia-com-legenda { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: 100%; }
+.msg.saida .midia-com-legenda { align-items: flex-end; }
+.midia-legenda-balao { max-width: 100%; }
 .midia-abrir { display: block; line-height: 0; }
 .midia-imagem { max-width: 320px; max-height: 340px; width: auto; height: auto; object-fit: contain; border-radius: 12px; display: block; cursor: zoom-in; }
 .midia-video { max-width: 320px; width: 100%; border-radius: 12px; display: block; background: #000; }
 .midia-audio { width: 260px; max-width: 100%; display: block; }
 .midia-arquivo { display: inline-flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, .18); color: inherit; font-size: 13px; font-weight: 600; text-decoration: none; }
 .midia-arquivo:hover { background: rgba(255, 255, 255, .3); }
-.midia-legenda { padding: 2px 8px 6px; font-size: 13.5px; line-height: 1.5; }
 /* ===== Respostas rápidas (painel da direita) ===== */
 .rapidas {
   position: absolute; left: 10px; right: 10px; bottom: 0; z-index: 40;
@@ -969,8 +969,9 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
    escuro, que lê melhor) e o do atendente no verde escuro, nunca no preto. */
 :root[data-tema="escuro"] .balao { color: #0B1F14; }
 :root[data-tema="escuro"] .msg.saida .balao { background: #173323; border: 1px solid #1F3D2B; color: var(--texto); }
-:root[data-tema="escuro"] .balao.midia .midia-legenda,
-:root[data-tema="escuro"] .msg.saida .balao.midia .midia-legenda { color: var(--texto); }
+:root[data-tema="escuro"] .msg.saida .balao.midia.imagem,
+:root[data-tema="escuro"] .msg.saida .balao.midia.video,
+:root[data-tema="escuro"] .msg.saida .balao.midia.audio { background: none; border: 0; }
 :root[data-tema="escuro"] input, :root[data-tema="escuro"] textarea, :root[data-tema="escuro"] select { color: var(--texto); }
 :root[data-tema="escuro"] .selo-equipe, :root[data-tema="escuro"] .escolha-equipe { background: var(--superficie); }
 

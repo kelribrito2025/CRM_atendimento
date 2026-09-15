@@ -31,6 +31,12 @@ test('anexo: colar imagem prepara uma prévia e só envia com botão ou Enter', 
   assert.match(tela, /class: 'anexo-pendente-loading'/);
   assert.match(css, /\.anexo-pendente-loading\s*\{[^}]*position: absolute/);
   assert.match(css, /\.spinner-anexo\s*\{[^}]*animation: girar-anexo/);
+  assert.match(tela, /const midia = el\('div', \{ class: `balao midia \$\{a\.tipo\}` \}, conteudo\)/);
+  assert.match(tela, /class: 'midia-com-legenda'[\s\S]*class: 'balao midia-legenda-balao'/);
+  assert.doesNotMatch(tela, /class: 'midia-legenda'/);
+  assert.match(css, /\.midia-com-legenda \{[^}]*flex-direction: column/);
+  assert.match(css, /\.msg\.saida \.midia-com-legenda \{ align-items: flex-end; \}/);
+  assert.match(css, /\.balao\.midia\.imagem[^}]*background: none/);
   assert.match(tela, /Anexar arquivo ou colar imagem com Ctrl\+V/);
   assert.match(tela, /setTimeout\(\(\) => \{\s*if \(acentosLigados\)/, 'sem imagem, a colagem de texto continua sendo tratada');
 });
