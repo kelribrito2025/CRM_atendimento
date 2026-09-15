@@ -12,6 +12,7 @@ const acesso = require('./acesso');
 const { ehReembolsoDoAtendimento, personalizarReembolsos } = require('./extrato');
 const { gerarHashSenha } = require('./senha');
 const presenca = require('./presenca');
+const { normalizarHorario, horarioDoUsuario, estadoDoAtendente } = require('./horarios');
 
 const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta', 'encerradas']);
 // Por onde o cliente escreve: dá para ver a caixa de cada canal separada.
@@ -49,6 +50,7 @@ function formatarUsuario(u) {
     papel: u.papel,
     presenca: u.presenca,
     podeLogar: Number(u.pode_logar) !== 0,
+    horario: horarioDoUsuario(u),
   };
 }
 
@@ -104,6 +106,7 @@ function criarRotasApi(db, opcoes = {}) {
   const abrirConta = opcoes.abrirConta || null;
   const avisos = opcoes.avisos || null;
   const cadastroAtendenteAtivo = opcoes.cadastroAtendenteAtivo === true;
+  const agora = typeof opcoes.agora === 'function' ? opcoes.agora : Date.now;
   const r = express.Router();
 
   r.use((req, res, next) => {
@@ -137,7 +140,9 @@ function criarRotasApi(db, opcoes = {}) {
       SELECT m.*, u.nome AS autor_nome
       FROM mensagens m LEFT JOIN usuarios u ON u.id = m.autor_id
       WHERE m.id = ?`),
-    usuariosAtivos: db.prepare('SELECT id, nome, email, papel, presenca, pode_logar FROM usuarios WHERE ativo = 1 ORDER BY nome'),
+    usuariosAtivos: db.prepare(`SELECT id, nome, email, papel, presenca, pode_logar,
+      horario_inicio, pausa_inicio, pausa_fim, horario_fim, retorno_confirmado_em
+      FROM usuarios WHERE ativo = 1 ORDER BY nome`),
     membros: db.prepare('SELECT equipe_id, usuario_id FROM equipe_membros'),
     equipes: db.prepare('SELECT id, nome, cor FROM equipes ORDER BY ordem, nome'),
     temposResposta: db.prepare(`
@@ -306,8 +311,10 @@ function criarRotasApi(db, opcoes = {}) {
   r.get('/equipe', soAdmin, async (req, res) => {
     const daPessoa = await equipesDeCadaUm();
     const online = await presenca.atendentesOnline(db);
-    const usuarios = (await db.prepare('SELECT id, nome, email, papel, presenca, ativo, pode_logar, criado_em FROM usuarios ORDER BY ativo DESC, nome').all())
-      .map((u) => ({ ...formatarUsuario({ ...u, presenca: online.has(Number(u.id)) ? 'online' : 'offline' }), ativo: Number(u.ativo) === 1, equipes: daPessoa(u.id) }));
+    const usuarios = (await db.prepare(`SELECT id, nome, email, papel, presenca, ativo, pode_logar, criado_em,
+      horario_inicio, pausa_inicio, pausa_fim, horario_fim, retorno_confirmado_em
+      FROM usuarios ORDER BY ativo DESC, nome`).all())
+      .map((u) => ({ ...formatarUsuario({ ...u, presenca: online.has(Number(u.id)) ? 'online' : 'offline' }), estadoHorario: estadoDoAtendente(u, agora()), ativo: Number(u.ativo) === 1, equipes: daPessoa(u.id) }));
     const convites = (await acesso.listarConvitesPendentes(db)).map((c) => ({
       id: c.token_hash,
       email: c.email,
@@ -368,7 +375,8 @@ function criarRotasApi(db, opcoes = {}) {
       await db.prepare('INSERT OR IGNORE INTO equipe_membros (equipe_id, usuario_id) VALUES (?, ?)').run(equipeId, id);
     }
     const daPessoa = await equipesDeCadaUm();
-    const criado = await db.prepare('SELECT id, nome, email, papel, presenca, ativo, pode_logar FROM usuarios WHERE id = ?').get(id);
+    const criado = await db.prepare(`SELECT id, nome, email, papel, presenca, ativo, pode_logar,
+      horario_inicio, pausa_inicio, pausa_fim, horario_fim FROM usuarios WHERE id = ?`).get(id);
     res.status(201).json({ usuario: { ...formatarUsuario(criado), ativo: true, equipes: daPessoa(id) } });
   });
 
@@ -469,6 +477,21 @@ function criarRotasApi(db, opcoes = {}) {
       campos.push('ativo = ?');
       valores.push(ativo);
     }
+    if ('horario' in corpo) {
+      let horario = null;
+      try {
+        horario = normalizarHorario(corpo.horario);
+      } catch (erro) {
+        return res.status(400).json({ erro: erro.message });
+      }
+      campos.push('horario_inicio = ?', 'pausa_inicio = ?', 'pausa_fim = ?', 'horario_fim = ?');
+      valores.push(
+        horario?.inicio || null,
+        horario?.pausaInicio || null,
+        horario?.pausaFim || null,
+        horario?.fim || null,
+      );
+    }
     if (campos.length) {
       valores.push(alvo.id);
       await db.prepare(`UPDATE usuarios SET ${campos.join(', ')} WHERE id = ?`).run(...valores);
@@ -489,8 +512,26 @@ function criarRotasApi(db, opcoes = {}) {
     }
 
     const daPessoa = await equipesDeCadaUm();
-    const atualizado = await db.prepare('SELECT id, nome, email, papel, presenca, ativo, pode_logar FROM usuarios WHERE id = ?').get(alvo.id);
+    const atualizado = await db.prepare(`SELECT id, nome, email, papel, presenca, ativo, pode_logar,
+      horario_inicio, pausa_inicio, pausa_fim, horario_fim FROM usuarios WHERE id = ?`).get(alvo.id);
+    if ('horario' in corpo || 'ativo' in corpo) avisos?.avisar({ origem: 'horario', atendenteId: Number(alvo.id) });
     res.json({ usuario: { ...formatarUsuario(atualizado), ativo: Number(atualizado.ativo) === 1, equipes: daPessoa(alvo.id) } });
+  });
+
+  // Só o perfil escolhido na sessão pode confirmar o seu retorno; o horário
+  // vem do banco, nunca do relógio ou do id enviado pelo navegador.
+  r.post('/horario/retornar', async (req, res) => {
+    const instante = agora();
+    const usuario = await db.prepare('SELECT * FROM usuarios WHERE id = ? AND ativo = 1').get(req.usuario.id);
+    const estado = estadoDoAtendente(usuario, instante);
+    if (!estado.retornoDaPausaEm || !['retorno', 'trabalho'].includes(estado.fase)) {
+      return res.status(409).json({ erro: 'O retorno só pode ser confirmado após a pausa, dentro do expediente.' });
+    }
+    if (estado.fase === 'retorno') {
+      await db.prepare('UPDATE usuarios SET retorno_confirmado_em = ? WHERE id = ?').run(instante, req.usuario.id);
+      avisos?.avisar({ origem: 'horario', atendenteId: req.usuario.id });
+    }
+    res.json({ ok: true });
   });
 
   async function outroAdminAtivo(exceto) {
@@ -529,6 +570,7 @@ function criarRotasApi(db, opcoes = {}) {
   r.get('/resumo', async (req, res) => {
     const todas = await todasConversas();
     const abertas = todas.filter((c) => c.status === 'aberta');
+    const agoraResumo = agora();
 
     const ativasPor = {};
     for (const c of abertas) if (c.atendente) ativasPor[c.atendente.id] = (ativasPor[c.atendente.id] || 0) + 1;
@@ -536,6 +578,7 @@ function criarRotasApi(db, opcoes = {}) {
     const online = await presenca.atendentesOnline(db);
     const atendentes = (await sql.usuariosAtivos.all()).map((u) => ({
       ...formatarUsuario({ ...u, presenca: online.has(Number(u.id)) ? 'online' : 'offline' }),
+      estadoHorario: estadoDoAtendente(u, agoraResumo),
       ativas: ativasPor[u.id] || 0,
     }));
     const membros = await sql.membros.all();
@@ -555,10 +598,23 @@ function criarRotasApi(db, opcoes = {}) {
     const media = tempos.length ? tempos.reduce((a, b) => a + b, 0) / tempos.length : null;
     const usuarioAtual = formatarUsuario({ ...req.usuario, presenca: online.has(Number(req.usuario.id)) ? 'online' : 'offline' });
     const contaAtual = formatarUsuario({ ...req.conta, presenca: online.has(Number(req.conta.id)) ? 'online' : 'offline' });
+    const estadoHorarioAtual = estadoDoAtendente(req.usuario, agoraResumo);
+    const minhasAbertas = abertas.filter((c) => Number(c.atendente?.id) === Number(req.usuario.id));
+    const novasNaPausa = estadoHorarioAtual.fase === 'retorno'
+      ? await db.prepare(`SELECT COUNT(*) AS n FROM mensagens m JOIN conversas c ON c.id = m.conversa_id
+          WHERE c.atendente_id = ? AND c.status = 'aberta' AND m.tipo = 'cliente' AND m.criada_em >= ? AND m.criada_em <= ?`)
+        .get(req.usuario.id, estadoHorarioAtual.inicioDaPausaEm, agoraResumo)
+      : null;
 
     res.json({
       usuario: usuarioAtual,
       conta: contaAtual,
+      agoraServidor: agoraResumo,
+      estadoHorario: estadoHorarioAtual,
+      retornoPausa: {
+        mensagensNovas: Number(novasNaPausa?.n) || 0,
+        aguardandoDezMin: minhasAbertas.filter((c) => c.semResposta && agoraResumo - Number(c.ultimaEm) > 600_000).length,
+      },
       caixas: {
         todas: abertas.length,
         minhas: abertas.filter((c) => c.atendente?.id === req.usuario.id).length,

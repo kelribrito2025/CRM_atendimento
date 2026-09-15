@@ -10,6 +10,7 @@ import { formatarDataHoraCompra } from './data-compra.mjs';
 import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
 import { textoDaRespostaRapida } from './saudacao.mjs';
+import { criarAvisosHorario } from './horario-atendimento.mjs';
 
 (() => {
   'use strict';
@@ -249,10 +250,12 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
   /* ================================================================
    * Carregamento de dados
    * ============================================================== */
+  const avisosHorario = criarAvisosHorario({ api, recarregar: carregarResumo });
   async function carregarResumo() {
     estado.resumo = await api('/resumo');
     renderRail();
     renderSidebar();
+    avisosHorario.atualizar(estado.resumo);
   }
 
   function paramsLista() {
@@ -999,14 +1002,18 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
       el('div', { class: 'membros' },
         ...membros.map((m) => {
           const estaOnline = m.presenca === 'online';
+          const fase = m.estadoHorario?.fase;
           const status = estaOnline
-            ? `online · ${m.ativas ? `${m.ativas} ativa${m.ativas === 1 ? '' : 's'}` : 'livre'}`
+            ? (fase === 'pausa' ? `em pausa · volta às ${m.horario.pausaFim}`
+              : fase === 'retorno' ? 'aguardando retorno'
+                : fase === 'fora' ? 'fora do expediente'
+                  : `online · ${m.ativas ? `${m.ativas} ativa${m.ativas === 1 ? '' : 's'}` : 'livre'}`)
             : 'offline';
           return el('div', { class: 'membro hov', title: m.email || '' },
             el('span', { class: 'avatar p' }, m.iniciais),
             el('div', { class: 'membro-info' },
               el('span', { class: 'membro-nome' }, m.nomeCurto),
-              el('span', { class: `membro-status ${estaOnline ? 'online' : 'offline'}` }, status)));
+              el('span', { class: `membro-status ${estaOnline ? 'online' : 'offline'}${estaOnline && ['pausa', 'retorno', 'fora'].includes(fase) ? ' em-pausa' : ''}` }, status)));
         }),
         membros.length ? null : el('div', { class: 'vazio' }, 'Nenhum atendente nesta equipe.')),
       (r.conta || r.usuario).papel === 'admin'
@@ -3130,8 +3137,11 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
   function linhaPessoa(u, equipes) {
     const eu = u.id === estado.resumo?.usuario?.id;
     const ehConta = u.id === estado.resumo?.conta?.id;
-    const presenca = u.ativo ? (u.presenca || 'offline') : 'bloqueado';
-    const classePresenca = !u.ativo ? 'aviso' : (u.presenca === 'online' ? '' : 'cinza');
+    const fase = u.estadoHorario?.fase;
+    const pausado = u.presenca === 'online' && ['pausa', 'retorno', 'fora'].includes(fase);
+    const presenca = !u.ativo ? 'bloqueado' : u.presenca !== 'online' ? 'offline'
+      : fase === 'pausa' ? 'em pausa' : fase === 'retorno' ? 'aguardando retorno' : fase === 'fora' ? 'fora do expediente' : 'online';
+    const classePresenca = !u.ativo || pausado ? 'aviso' : (u.presenca === 'online' ? '' : 'cinza');
     return el('div', { class: `pessoa${u.ativo ? '' : ' inativa'}` },
       el('span', { class: 'avatar p' }, u.iniciais),
       el('div', { class: 'dados' },
@@ -3141,7 +3151,10 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
             type: 'button', class: 'btn-editar-nome hov', title: `Editar nome de ${u.nome}`,
             'aria-label': `Editar nome de ${u.nome}`, onclick: () => editarNomeDe(u),
           }, svg(ICONE.lapisPequeno))),
-        el('span', { class: 'email' }, u.email || 'Perfil de atendimento · usa o login da equipe')),
+        el('span', { class: 'email' }, u.email || 'Perfil de atendimento · usa o login da equipe'),
+        el('span', { class: `horario-resumo${u.horario ? '' : ' vazio'}` }, u.horario
+          ? `Atendimento ${u.horario.inicio}–${u.horario.fim} · pausa ${u.horario.pausaInicio}–${u.horario.pausaFim}`
+          : 'Horário de atendimento não definido')),
       el('div', { class: 'equipes' }, ...(u.equipes.length
         ? u.equipes.map((e) => el('span', { class: 'selo-equipe' }, el('span', { class: 'ponto', style: `background:${e.cor}` }), e.nome))
         : [el('span', { class: 'dica' }, 'sem equipe')])),
@@ -3152,12 +3165,72 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
         }, ...['atendente', 'admin'].map((v) => el('option', { value: v, selected: u.papel === v ? 'selected' : null }, v === 'admin' ? 'Administrador' : 'Atendente')))
         : el('span', { class: 'selo-equipe' }, 'Atendente'),
       el('span', { class: `selo-presenca ${classePresenca}`.trim() }, presenca),
+      el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => editarHorarioDe(u) }, 'Horário'),
       el('button', {
         type: 'button', class: 'btn-icone hov', title: u.ativo ? 'Bloquear o acesso' : 'Liberar o acesso',
         disabled: eu || ehConta ? 'disabled' : null,
         onclick: () => salvarPessoa(u.id, { ativo: !u.ativo }),
       }, svg(u.ativo ? ICONE.cadeado : ICONE.check)),
       el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => editarEquipesDe(u, equipes) }, 'Equipes'));
+  }
+
+  function editarHorarioDe(u) {
+    const padrao = u.horario || { inicio: '09:00', pausaInicio: '12:00', pausaFim: '13:00', fim: '18:00' };
+    const erro = el('span', { class: 'dica erro-texto', 'aria-live': 'polite' });
+    const campos = [
+      ['inicio', 'Início do atendimento'],
+      ['pausaInicio', 'Início da pausa'],
+      ['pausaFim', 'Retorno da pausa'],
+      ['fim', 'Fim do atendimento'],
+    ].map(([chave, rotulo]) => {
+      const input = el('input', { type: 'time', value: padrao[chave], required: 'required', 'aria-label': rotulo });
+      return { chave, input, elemento: el('label', { class: 'config-campo' }, el('span', {}, rotulo), input) };
+    });
+    let salvando = false;
+    const fundo = el('div', { class: 'modal-fundo', onclick: (ev) => { if (ev.target === fundo && !salvando) fundo.remove(); } });
+    const cancelar = el('button', { type: 'button', class: 'btn-suave hov', onclick: () => fundo.remove() }, 'Cancelar');
+    const remover = el('button', { type: 'button', class: 'btn-suave perigo hov', hidden: u.horario ? null : 'hidden' }, 'Remover horário');
+    const salvar = el('button', { type: 'button', class: 'btn-primario' }, 'Salvar horário');
+
+    async function concluir(horario) {
+      if (salvando) return;
+      salvando = true;
+      salvar.disabled = true;
+      cancelar.disabled = true;
+      remover.disabled = true;
+      erro.textContent = '';
+      try {
+        const resultado = await api(`/equipe/usuarios/${u.id}`, { method: 'PATCH', body: { horario } });
+        const salvo = resultado.usuario?.horario;
+        if (salvo === undefined || (horario ? !Object.keys(horario).every((chave) => salvo?.[chave] === horario[chave]) : salvo !== null)) {
+          throw new Error('O servidor ainda não confirmou os horários. Atualize a página e tente novamente.');
+        }
+        fundo.remove();
+        await Promise.all([carregarEquipe(), carregarResumo()]);
+        toast(horario ? 'Horário atualizado.' : 'Horário removido.');
+      } catch (e) {
+        salvando = false;
+        salvar.disabled = false;
+        cancelar.disabled = false;
+        remover.disabled = false;
+        erro.textContent = e.message;
+      }
+    }
+
+    salvar.addEventListener('click', () => concluir(Object.fromEntries(campos.map((campo) => [campo.chave, campo.input.value]))));
+    remover.addEventListener('click', () => concluir(null));
+    fundo.append(el('div', { class: 'modal modal-horario', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': `horario-${u.id}` },
+      el('div', { class: 'modal-corpo' },
+        el('div', { class: 'modal-cab' },
+          el('span', { class: 'modal-horario-icone', 'aria-hidden': 'true' }, svg(ICONE.relogio)),
+          el('div', {}, el('h2', { id: `horario-${u.id}` }, `Horário de ${u.nomeCurto || u.nome}`), el('p', {}, 'De segunda a sexta, no horário de Brasília.')),
+          el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: () => fundo.remove() }, svg(ICONE.fechar))),
+        el('p', { class: 'dica horario-ajuda' }, 'Configure quem atende o Chat do site. O aviso de pausa só aparece para o cliente quando não houver outro atendente em expediente. Contas sem horário não entram nesse cálculo; as mensagens continuam sendo recebidas.'),
+        el('div', { class: 'horario-campos' }, ...campos.map((campo) => campo.elemento)),
+        erro,
+        el('div', { class: 'modal-acoes horario-acoes' }, remover, cancelar, salvar))));
+    document.body.append(fundo);
+    campos[0].input.focus();
   }
 
   function adicionarAtendente() {

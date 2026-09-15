@@ -35,6 +35,13 @@
       <div class="carregando" id="estado">Abrindo a conversa…</div>
     </div>
 
+    <aside class="aviso-horario" id="aviso-horario" aria-live="polite" hidden>
+      <span class="aviso-horario-icone" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+      </span>
+      <div><strong id="aviso-horario-titulo"></strong><p id="aviso-horario-texto"></p></div>
+    </aside>
+
     <form class="compositor" id="form">
       <input type="file" id="arquivo" hidden>
       <button type="button" class="anexar" id="btn-anexar" aria-label="Anexar arquivo" title="Anexar arquivo" disabled>

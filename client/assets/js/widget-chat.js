@@ -7,7 +7,7 @@ import { partesDoTextoComLinks } from './link-texto.mjs';
 const $ = (s) => document.querySelector(s);
 const CHAVE_TOKEN = 'chat_atendimento_token';
 
-const estado = { token: null, ultimaId: 0, totalMensagens: 0, sondagem: null, enviando: false, naoLidas: 0, ouvindo: null, fluxoVivo: false, ultimaBusca: 0 };
+const estado = { token: null, ultimaId: 0, totalMensagens: 0, sondagem: null, enviando: false, naoLidas: 0, ouvindo: null, fluxoVivo: false, ultimaBusca: 0, horarioTimer: null };
 
 function guardarToken(token) {
   estado.token = token;
@@ -40,6 +40,35 @@ function mostrarEstado(texto) {
 
 function limparEstado() {
   $('#estado')?.remove();
+}
+
+function aplicarAtendimento(atendimento) {
+  estado.atendimento = atendimento;
+  const aviso = $('#aviso-horario');
+  clearTimeout(estado.horarioTimer);
+  estado.horarioTimer = null;
+  if (!aviso || !atendimento?.configurado || atendimento.status === 'aberto') {
+    if (aviso) aviso.hidden = true;
+    $('#subtitulo').textContent = 'Costumamos responder em poucos minutos';
+  } else if (atendimento.status === 'retorno') {
+    aviso.hidden = false;
+    $('#aviso-horario-titulo').textContent = 'Estamos retomando o atendimento';
+    $('#aviso-horario-texto').textContent = 'O intervalo terminou e aguardamos o retorno da equipe. Deixe sua mensagem por aqui.';
+    $('#subtitulo').textContent = 'Aguardando o retorno da equipe';
+  } else {
+    const retorno = atendimento.retornoTexto || (atendimento.retornaAs ? `às ${atendimento.retornaAs}` : 'em breve');
+    aviso.hidden = false;
+    $('#aviso-horario-titulo').textContent = atendimento.status === 'pausa' ? 'Estamos em pausa' : 'Estamos fora do horário';
+    $('#aviso-horario-texto').textContent = atendimento.status === 'pausa'
+      ? `Voltamos ${retorno}. Deixe sua mensagem e responderemos assim que retornarmos.`
+      : `Nosso próximo atendimento começa ${retorno}. Deixe sua mensagem e responderemos na abertura.`;
+    $('#subtitulo').textContent = `Voltamos ${retorno}`;
+  }
+  const quando = atendimento?.proximaMudancaEm;
+  if (estado.token && quando != null && Number.isFinite(quando)) {
+    const espera = Math.max(1000, Math.min(quando - (atendimento.agoraServidor || Date.now()) + 100, 2_147_000_000));
+    estado.horarioTimer = setTimeout(() => buscarMensagens(false, false), espera);
+  }
 }
 
 // O arquivo não vem por link direto do S3: a gente busca com a chave da conversa
@@ -143,6 +172,7 @@ async function identificar(dados) {
   try {
     const r = await chamar('/widget/sessao', { method: 'POST', body: dados });
     guardarToken(r.token);
+    aplicarAtendimento(r.atendimento);
     estado.ultimaId = 0;
     estado.totalMensagens = 0;
     $('#mensagens').replaceChildren();
@@ -167,7 +197,8 @@ async function buscarMensagens(primeira = false, recarregar = false) {
   estado.ultimaBusca = Date.now();
   try {
     const totalAnterior = estado.totalMensagens;
-    const { mensagens, total } = await chamar(`/widget/mensagens?desde=${recarregar ? 0 : estado.ultimaId}`);
+    const { mensagens, total, atendimento } = await chamar(`/widget/mensagens?desde=${recarregar ? 0 : estado.ultimaId}`);
+    aplicarAtendimento(atendimento);
     const totalAtual = Number(total);
     // Sem o SSE, a exclusão é percebida pela quantidade: mensagens novas só
     // aumentam o total; se a conta não fechar, recarrega a conversa inteira.
@@ -212,6 +243,7 @@ function iniciarSondagem() {
     buscarMensagens();
   }, 2000);
   ouvirAvisos();
+  aplicarAtendimento(estado.atendimento);
 }
 
 function pararSondagem() {
@@ -220,6 +252,8 @@ function pararSondagem() {
   estado.ouvindo?.abort();
   estado.ouvindo = null;
   estado.fluxoVivo = false;
+  clearTimeout(estado.horarioTimer);
+  estado.horarioTimer = null;
 }
 
 // Fluxo aberto com o servidor: a resposta do atendente aparece na hora, sem
@@ -343,7 +377,7 @@ window.addEventListener('message', (evento) => {
     buscarMensagens().then(rolarParaFim);
     $('#texto')?.focus();
   }
-  else if (dados.tipo === 'sair') { guardarToken(null); pararSondagem(); estado.ultimaId = 0; estado.totalMensagens = 0; $('#mensagens').replaceChildren(); liberarEnvio(false); }
+  else if (dados.tipo === 'sair') { guardarToken(null); pararSondagem(); estado.ultimaId = 0; estado.totalMensagens = 0; $('#mensagens').replaceChildren(); $('#aviso-horario').hidden = true; liberarEnvio(false); }
 });
 
 $('#form').addEventListener('submit', (e) => { e.preventDefault(); enviar(); });

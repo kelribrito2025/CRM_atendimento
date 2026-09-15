@@ -12,6 +12,7 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   margin: 0;
@@ -97,6 +98,20 @@ body {
 .msg.saida .arquivo-linha:hover { background: rgba(255, 255, 255, .16); }
 
 .carregando { margin: auto; text-align: center; font-size: 12.5px; color: var(--texto-suave); line-height: 1.7; padding: 0 18px; white-space: pre-line; }
+
+/* ===== Aviso de pausa/horário ===== */
+.aviso-horario {
+  margin: 10px 12px 0; padding: 13px 14px; border-radius: 15px;
+  border: 1px solid #EADCA8; background: #FFF8E8; color: #755700;
+  display: flex; align-items: flex-start; gap: 11px; flex-shrink: 0;
+}
+.aviso-horario-icone {
+  width: 36px; height: 36px; flex-shrink: 0; border-radius: 11px;
+  background: #FFFFFF; display: inline-flex; align-items: center; justify-content: center;
+  color: #8A6700;
+}
+.aviso-horario strong { display: block; margin: 1px 0 4px; font-size: 13.5px; }
+.aviso-horario p { margin: 0; font-size: 12.5px; line-height: 1.45; }
 
 /* ===== Campo de escrever ===== */
 .compositor {

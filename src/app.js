@@ -483,6 +483,10 @@ function criarApp(db, opcoes = {}) {
 
       const meuContato = Number(req.sessaoWidget.contato_id);
       const parar = widget.assinarAvisos?.((evento) => {
+        if (evento.origem === 'horario') {
+          try { res.write(`data: ${JSON.stringify({ novidade: 1, origem: 'horario' })}\n\n`); } catch { /* conexão caiu */ }
+          return;
+        }
         // Nota interna e mensagem do próprio cliente não interessam ao chat.
         if (!['atendente', 'exclusao'].includes(evento.origem) || Number(evento.contatoId) !== meuContato) return;
         try { res.write(`data: ${JSON.stringify({ novidade: 1, origem: evento.origem })}\n\n`); } catch { /* conexão caiu */ }
@@ -540,7 +544,7 @@ function criarApp(db, opcoes = {}) {
 
   app.get('/', exigirLogin, (req, res) => enviarPagina(req, res, 'atendimento.html'));
 
-  app.use('/api', exigirLogin, criarRotasApi(db, { uazapi: opcoes.uazapi || null, telegram: opcoes.telegram || null, saldo: opcoes.saldo || null, arquivos: opcoes.arquivos || null, urlBase, enviador, abrirConta: opcoes.abrirConta || null, avisos, widget, cadastroAtendenteAtivo: opcoes.cadastroAtendenteAtivo === true }));
+  app.use('/api', exigirLogin, criarRotasApi(db, { uazapi: opcoes.uazapi || null, telegram: opcoes.telegram || null, saldo: opcoes.saldo || null, arquivos: opcoes.arquivos || null, urlBase, enviador, abrirConta: opcoes.abrirConta || null, avisos, widget, cadastroAtendenteAtivo: opcoes.cadastroAtendenteAtivo === true, agora: opcoes.agora }));
 
   app.use((req, res) => {
     if (req.originalUrl.startsWith('/api/') || req.originalUrl.startsWith('/acesso/') || req.originalUrl.startsWith('/webhook/')) {

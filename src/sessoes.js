@@ -28,9 +28,14 @@ async function buscarContextoDaSessao(db, token) {
            conta.nome AS conta_nome, conta.email AS conta_email,
            conta.papel AS conta_papel, conta.presenca AS conta_presenca,
            conta.ativo AS conta_ativa, conta.pode_logar AS conta_pode_logar,
+           conta.horario_inicio AS conta_horario_inicio, conta.pausa_inicio AS conta_pausa_inicio,
+           conta.pausa_fim AS conta_pausa_fim, conta.horario_fim AS conta_horario_fim,
            atendente.nome AS atendente_nome, atendente.email AS atendente_email,
            atendente.presenca AS atendente_presenca, atendente.ativo AS atendente_ativo,
-           atendente.pode_logar AS atendente_pode_logar
+           atendente.pode_logar AS atendente_pode_logar,
+           atendente.horario_inicio AS atendente_horario_inicio, atendente.pausa_inicio AS atendente_pausa_inicio,
+           atendente.pausa_fim AS atendente_pausa_fim, atendente.horario_fim AS atendente_horario_fim,
+           atendente.retorno_confirmado_em AS atendente_retorno_confirmado_em
     FROM sessoes s
     JOIN usuarios conta ON conta.id = s.usuario_id
     LEFT JOIN usuarios atendente ON atendente.id = s.atendente_id
@@ -45,6 +50,8 @@ async function buscarContextoDaSessao(db, token) {
     id: Number(linha.conta_id), nome: linha.conta_nome, email: linha.conta_email,
     papel: linha.conta_papel, presenca: linha.conta_presenca, ativo: linha.conta_ativa,
     pode_logar: linha.conta_pode_logar,
+    horario_inicio: linha.conta_horario_inicio, pausa_inicio: linha.conta_pausa_inicio,
+    pausa_fim: linha.conta_pausa_fim, horario_fim: linha.conta_horario_fim,
   };
   const atendente = linha.atendente_id && linha.atendente_ativo
     ? {
@@ -52,6 +59,9 @@ async function buscarContextoDaSessao(db, token) {
       email: linha.atendente_pode_logar ? linha.atendente_email : null, papel: conta.papel,
       presenca: linha.atendente_presenca, ativo: linha.atendente_ativo,
       pode_logar: linha.atendente_pode_logar,
+      horario_inicio: linha.atendente_horario_inicio, pausa_inicio: linha.atendente_pausa_inicio,
+      pausa_fim: linha.atendente_pausa_fim, horario_fim: linha.atendente_horario_fim,
+      retorno_confirmado_em: linha.atendente_retorno_confirmado_em,
     }
     : null;
   return { conta, atendente };

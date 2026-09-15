@@ -12,6 +12,7 @@
 const crypto = require('node:crypto');
 const { proximoProtocolo } = require('./canais');
 const { TAMANHO_MAXIMO_ANEXO, ROTULO_MIDIA, tipoDoArquivo } = require('./util');
+const { disponibilidadeDaEquipe } = require('./horarios');
 
 const VALIDADE_SESSAO_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
 const TAMANHO_MAXIMO_MENSAGEM = 4000;
@@ -41,7 +42,7 @@ function limpar(valor, tamanho = 191) {
   return String(valor ?? '').trim().slice(0, tamanho);
 }
 
-function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null, avisos = null } = {}) {
+function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null, avisos = null, agora: relogio = Date.now } = {}) {
   // Quem avisa o chat aberto que chegou resposta. Pode vir montado aqui ou ser
   // ligado pelo app depois — assim ninguém monta o sistema sem ele por engano.
   let canal = avisos;
@@ -87,6 +88,7 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null,
       conversaId: conversa ? conversa.id : null,
       contato: { id: contato.id, nome: contato.nome, email: emailNovo || contato.email || null },
       protocolo: conversa ? conversa.protocolo : null,
+      atendimento: await disponibilidadeDaEquipe(db, relogio()),
     };
   }
 
@@ -124,7 +126,8 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null,
   // O arquivo vai como um endereço do próprio CRM (/widget/midia/123): assim o
   // link do S3 nunca aparece no navegador do cliente.
   async function listarMensagens(sessao, desde = 0) {
-    if (!sessao.conversa_id) return { mensagens: [], total: 0 };
+    const atendimento = await disponibilidadeDaEquipe(db, relogio());
+    if (!sessao.conversa_id) return { mensagens: [], total: 0, atendimento };
     const linhas = await db.prepare(`
       SELECT m.id, m.tipo, m.texto, m.criada_em, m.entrega, m.midia_tipo, m.midia_nome, m.midia_mime, m.midia_chave, m.midia_id,
              u.nome AS autor_nome
@@ -142,7 +145,7 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null,
         ? { tipo: m.midia_tipo || 'documento', nome: m.midia_nome || null, mime: m.midia_mime || null, url: `/widget/midia/${m.id}` }
         : null,
     }));
-    return { mensagens, total: Number(total?.n) || 0 };
+    return { mensagens, total: Number(total?.n) || 0, atendimento };
   }
 
   // O arquivo que o cliente anexa no chat do site. Ele vai direto do navegador
@@ -208,6 +211,7 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null,
     enviarMensagem,
     enviarArquivo,
     arquivoDaSessao,
+    disponibilidade: () => disponibilidadeDaEquipe(db, relogio()),
     usarAvisos: (novo) => { canal = canal || novo; },
     assinarAvisos: (ouvinte) => canal?.assinar(ouvinte),
     anexosAtivos: Boolean(arquivos?.configurado),

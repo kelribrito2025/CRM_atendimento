@@ -18,6 +18,11 @@ CREATE TABLE IF NOT EXISTS usuarios (
   presenca VARCHAR(20) NOT NULL DEFAULT 'online',
   ativo BIGINT NOT NULL DEFAULT 1,
   pode_logar BIGINT NOT NULL DEFAULT 1,
+  horario_inicio VARCHAR(5),
+  pausa_inicio VARCHAR(5),
+  pausa_fim VARCHAR(5),
+  horario_fim VARCHAR(5),
+  retorno_confirmado_em BIGINT,
   criado_em VARCHAR(32) NOT NULL
 );
 
@@ -381,6 +386,11 @@ async function migrarNotasDeAberturaParaAuditoria(db) {
 
 async function migrar(db) {
   await garantirColuna(db, 'usuarios', 'pode_logar', 'BIGINT NOT NULL DEFAULT 1');
+  await garantirColuna(db, 'usuarios', 'horario_inicio', 'VARCHAR(5)');
+  await garantirColuna(db, 'usuarios', 'pausa_inicio', 'VARCHAR(5)');
+  await garantirColuna(db, 'usuarios', 'pausa_fim', 'VARCHAR(5)');
+  await garantirColuna(db, 'usuarios', 'horario_fim', 'VARCHAR(5)');
+  await garantirColuna(db, 'usuarios', 'retorno_confirmado_em', 'BIGINT');
   const adicionouAtendenteNaSessao = await garantirColuna(db, 'sessoes', 'atendente_id', 'BIGINT');
   // Sessões abertas antes da existência dos perfis continuam usando a própria
   // conta. Novos logins passam pela escolha quando houver perfis adicionais.
