@@ -2168,11 +2168,17 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
       : (ehCompra && t.numero
         ? `${t.numero}${detalheCompraFormatado ? ` ${detalheCompraFormatado}` : ''}`
         : t.descricao);
+    const complementoNumero = ehReembolsoCancelado && t.numero && t.ativacaoId
+      ? ` - #${t.ativacaoId}`
+      : (ehCompra && t.numero ? `${detalheCompraFormatado ? ` ${detalheCompraFormatado}` : ''}` : null);
+    const partesDescricao = complementoNumero !== null
+      ? [el('span', { class: 'numero-transacao' }, t.numero), complementoNumero]
+      : [descricao];
     return el('div', { class: 'transacao-item' },
       el('span', { class: `transacao-ic ${t.entrada ? 'entrada' : 'saida'}` }, icone(t.tipo, t.entrada ? ICONE.maisGrande : ICONE.menos)),
       el('div', { class: 'transacao-texto' },
         el('span', { class: 'tipo', title: titulo }, titulo),
-        el('span', { class: 'desc', title: descricao }, descricao)),
+        el('span', { class: 'desc', title: descricao }, ...partesDescricao)),
       el('div', { class: 'transacao-valores' },
         el('span', { class: `valor ${t.entrada ? 'entrada' : 'saida'}` }, `${t.entrada ? '+' : ''}${t.valor}`),
         t.saldoDepois ? el('span', { class: 'depois' }, `→ ${t.saldoDepois}`) : null));
