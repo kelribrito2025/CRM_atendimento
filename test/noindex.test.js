@@ -14,6 +14,7 @@ const DIRETIVA = 'noindex, nofollow, noarchive, nosnippet, noimageindex';
 const PAGINAS = [
   'atendimento.html',
   'convite.html',
+  'escolher-atendente.html',
   'login.html',
   'nova-senha.html',
   'recuperar.html',

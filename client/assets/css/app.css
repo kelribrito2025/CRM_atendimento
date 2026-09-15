@@ -128,6 +128,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .menu-usuario .menu-status + button, .menu-usuario .menu-status + form { margin-top: 10px; }
 .menu-usuario form { display: flex; margin-top: 4px; }
 .menu-usuario .btn-suave { width: 100%; justify-content: center; }
+.menu-usuario .trocar-atendente { display: flex; align-items: center; text-decoration: none; margin-top: 6px; }
 
 .btn-branco {
   height: 40px; padding: 0 15px; border-radius: 11px; background: var(--superficie); border: 1px solid var(--borda);
@@ -781,6 +782,8 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 .config-corpo { flex: 1; min-height: 0; overflow: auto; padding: 22px 24px; display: flex; flex-direction: column; gap: 24px; }
 .config-bloco { display: flex; flex-direction: column; gap: 10px; }
 .config-bloco .cabeca { display: flex; flex-direction: column; gap: 2px; }
+.config-bloco .cabeca-com-acao { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+.config-bloco .cabeca-com-acao > div { display: flex; flex-direction: column; gap: 2px; }
 .config-bloco .dica { font-size: 12.5px; color: #8A968D; }
 
 .pessoa {

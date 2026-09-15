@@ -91,6 +91,30 @@
 .links-rodape small { font-size: 12.5px; color: var(--texto-suave); }
 .rodape-form { align-self: center; font-size: 12px; color: var(--texto-suave); padding-top: 24px; }
 
+/* Escolha do atendente depois do login */
+.escolher-atendente { max-width: 540px; }
+.conta-logada { display: flex; align-items: center; gap: 13px; padding: 14px 16px; border: 1px solid var(--borda); border-radius: 15px; background: var(--fundo-suave); margin-bottom: 24px; }
+.conta-logada > span:nth-child(2) { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+.conta-logada strong { font-size: 14px; color: var(--texto); }
+.conta-logada small { color: var(--texto-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar-conta { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; flex-shrink: 0; background: var(--rail); color: #7EE2A8; font-weight: 800; }
+.sair-conta { border: 0; background: none; color: var(--texto-suave); font-weight: 700; padding: 8px; }
+.sair-conta:hover { color: var(--verde-texto); }
+.rotulo-escolha { display: block; margin-bottom: 10px; color: var(--texto-suave); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.lista-atendentes { display: flex; flex-direction: column; gap: 10px; max-height: 40vh; overflow: auto; padding: 2px; }
+.opcao-atendente { width: 100%; min-height: 74px; border: 1.5px solid var(--borda); border-radius: 15px; background: #fff; padding: 13px 15px; display: flex; align-items: center; gap: 13px; color: var(--texto); text-align: left; transition: border-color .14s, background .14s, transform .14s; }
+.opcao-atendente:hover { border-color: var(--verde-borda); background: var(--verde-fundo); }
+.opcao-atendente:active { transform: scale(.99); }
+.opcao-atendente.selecionado { border-color: var(--verde); background: var(--verde-fundo); }
+.opcao-atendente .avatar-escolha { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; flex-shrink: 0; background: var(--verde-claro); color: var(--verde-texto); font-weight: 800; }
+.opcao-atendente.selecionado .avatar-escolha { background: var(--verde); color: #fff; }
+.opcao-atendente .dados { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.opcao-atendente .dados strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opcao-atendente .dados small { font-size: 12px; color: var(--texto-suave); }
+.marcador-atendente { width: 25px; height: 25px; border-radius: 50%; border: 2px solid #C9D4CD; display: grid; place-items: center; flex-shrink: 0; }
+.opcao-atendente.selecionado .marcador-atendente { border-color: var(--verde); background: var(--verde); }
+.opcao-atendente.selecionado .marcador-atendente::after { content: ''; width: 12px; height: 12px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFFFFF' stroke-width='3.4'%3E%3Cpath d='M20 6L9 17l-5-5'/%3E%3C/svg%3E") center/contain no-repeat; }
+
 @media (max-width: 1100px) {
   .hero { width: 48%; padding: 32px; }
   .hero h1 { font-size: 34px; }

@@ -237,7 +237,11 @@ Os ícones da interface vêm do **Iconly**. Coloque os arquivos exportados na pa
 
 A lista completa de nomes esperados está em `client/public/icones/LEIA-ME.md`. Enquanto um arquivo não existir, o sistema usa o ícone padrão desenhado no código, então nada quebra durante a troca. Não é preciso alterar código: basta colocar os arquivos na pasta e recarregar a página.
 
-## Criar usuários e trocar senhas
+## Contas de login e perfis de atendimento
+
+O botão **Adicionar atendente**, na barra lateral ou em **Configurações › Equipe**, cria um perfil interno sem e-mail nem senha. Quando existir pelo menos um desses perfis, cada novo login na conta da equipe passa por **Escolha seu atendente**. Mensagens, conversas e auditoria usam o nome escolhido; as permissões, credenciais de integração e limites antiabuso continuam sendo os da conta autenticada. A auditoria registra perfil e conta separadamente. Também é possível trocar o atendente pelo menu da conta.
+
+Os comandos abaixo continuam reservados a contas individuais que precisam de e-mail e senha próprios:
 
 ```bash
 # criar um atendente
@@ -272,7 +276,7 @@ npm run usuario -- --listar
 - Inbox por canal: caixas separadas de Chat do site, Telegram e WhatsApp, ao lado das equipes.
 - Histórico carregado aos poucos: a conversa abre com as últimas 40 mensagens e busca as anteriores conforme a rolagem sobe.
 - Chat do site (estilo Intercom) para o cliente conversar pelo painel dele, com a conversa caindo na mesma caixa de entrada.
-- Tela de configurações com a gestão da equipe: convite por e-mail, papel, bloqueio de acesso e equipes.
+- Tela de configurações com a gestão da equipe: perfis de atendimento, papel, bloqueio de acesso e equipes.
 - Busca de conversas por nome, celular ou PIN do cliente.
 - Dados de exemplo opcionais (`DADOS_EXEMPLO=true`) para testar a tela.
 - Testes automáticos (`npm test`).
@@ -281,7 +285,7 @@ npm run usuario -- --listar
 
 O botão da engrenagem, no menu lateral, abre a tela de configurações. Hoje ela tem:
 
-- **Equipe** (só administrador): quem trabalha no CRM, com papel, equipes e presença. Dá para convidar alguém por e-mail, mudar de atendente para administrador, bloquear o acesso e escolher em quais equipes a pessoa está. O convite gera um link de sete dias; enquanto não houver serviço de e-mail configurado, o link aparece na própria tela para ser copiado.
+- **Equipe** (só administrador): quem trabalha no CRM, com papel, equipes e presença. Dá para adicionar perfis internos, editar nomes, bloquear perfis e escolher em quais equipes cada pessoa está. Perfis internos usam a conta compartilhada e são escolhidos logo após o login; não recebem senha própria.
 - **Canais**: abre a janela de conexão do WhatsApp e do Telegram.
 - **Respostas rápidas**: todos os atalhos salvos, com criar, editar e excluir. Quem criou (ou um administrador) pode alterar; os dos outros aparecem só para consulta.
 - **Aparência**: tema **claro**, **escuro** ou **seguir o sistema**, e a barra de navegação **na lateral** ou **no topo**. Vale por navegador, para cada pessoa — não muda nada para a equipe.

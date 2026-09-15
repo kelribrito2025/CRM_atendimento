@@ -210,6 +210,10 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
       throw new Error('Sessão expirada.');
     }
     const dados = await resposta.json().catch(() => ({}));
+    if (resposta.status === 409 && dados.escolherAtendente) {
+      location.href = `/escolher-atendente?next=${encodeURIComponent(location.pathname)}`;
+      throw new Error('Escolha quem está atendendo.');
+    }
     if (!resposta.ok) {
       const erro = new Error(dados.erro || `Erro ${resposta.status}`);
       // Detalhes que a tela usa para decidir o que oferecer (ver ações de saldo).
@@ -796,8 +800,8 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     $('#rail-badge').hidden = r.caixas.semResposta === 0;
     $('#btn-usuario').textContent = r.usuario.iniciais;
     $('#menu-nome').textContent = r.usuario.nome;
-    $('#menu-email').textContent = r.usuario.email;
-    const admin = r.usuario.papel === 'admin';
+    $('#menu-email').textContent = r.conta?.email || r.usuario.email;
+    const admin = (r.conta || r.usuario).papel === 'admin';
     $('#btn-conectar').hidden = !admin;
     const wa = (r.canais || []).find((c) => c.id === 'whatsapp');
     const status = $('#menu-whatsapp');
@@ -859,7 +863,9 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
             el('span', { class: 'membro-nome' }, m.nomeCurto),
             el('span', { class: `membro-status${m.presenca === 'online' ? ' online' : ''}` }, `${m.presenca} · ${m.ativas ? `${m.ativas} ativa${m.ativas === 1 ? '' : 's'}` : 'livre'}`)))),
         membros.length ? null : el('div', { class: 'vazio' }, 'Nenhum atendente nesta equipe.')),
-      desligar(el('button', { type: 'button', class: 'btn-tracejado' }, icone('mais', ICONE.mais), 'Adicionar à equipe'), 'Gestão de membros: em breve'),
+      (r.conta || r.usuario).papel === 'admin'
+        ? el('button', { type: 'button', class: 'btn-tracejado', onclick: adicionarAtendente }, icone('mais', ICONE.mais), equipeSel ? 'Adicionar à equipe' : 'Adicionar atendente')
+        : null,
     );
   }
 
@@ -1889,7 +1895,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 
   function zonaDeRisco(c) {
     const cli = saldo.conversaId === c.id ? saldo.cliente : null;
-    const admin = estado.resumo?.usuario?.papel === 'admin';
+    const admin = (estado.resumo?.conta || estado.resumo?.usuario)?.papel === 'admin';
     const pin = pinDaFicha(c);
     const ligado = Boolean(estado.resumo?.saldoAtivo);
 
@@ -2634,7 +2640,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 
   function renderConfig() {
     if (!config.aberto) return;
-    const admin = estado.resumo?.usuario?.papel === 'admin';
+    const admin = (estado.resumo?.conta || estado.resumo?.usuario)?.papel === 'admin';
 
     $('#config-menu').replaceChildren(
       el('h2', {}, 'Configurações'),
@@ -2691,14 +2697,15 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     if (!d) return [el('div', { class: 'config-vazio' }, 'Nada por aqui.')];
 
     return [el('div', { class: 'config-bloco' },
-      el('div', { class: 'cabeca' },
-        el('span', { class: 'rotulo' }, 'Atendentes'),
-        el('span', { class: 'dica' }, 'Cada pessoa vê as caixas das equipes em que está.')),
+      el('div', { class: 'cabeca cabeca-com-acao' },
+        el('div', {}, el('span', { class: 'rotulo' }, 'Atendentes'), el('span', { class: 'dica' }, 'Cada pessoa vê as caixas das equipes em que está.')),
+        el('button', { type: 'button', class: 'btn-primario pequeno', onclick: adicionarAtendente }, icone('mais', ICONE.mais), 'Adicionar atendente')),
       el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, ...d.usuarios.map((u) => linhaPessoa(u, d.equipes))))];
   }
 
   function linhaPessoa(u, equipes) {
     const eu = u.id === estado.resumo?.usuario?.id;
+    const ehConta = u.id === estado.resumo?.conta?.id;
     const presenca = u.ativo ? (u.presenca || 'offline') : 'bloqueado';
     const classePresenca = !u.ativo ? 'aviso' : (u.presenca === 'online' ? '' : 'cinza');
     return el('div', { class: `pessoa${u.ativo ? '' : ' inativa'}` },
@@ -2710,21 +2717,79 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
             type: 'button', class: 'btn-editar-nome hov', title: `Editar nome de ${u.nome}`,
             'aria-label': `Editar nome de ${u.nome}`, onclick: () => editarNomeDe(u),
           }, svg(ICONE.lapisPequeno))),
-        el('span', { class: 'email' }, u.email)),
+        el('span', { class: 'email' }, u.email || 'Perfil de atendimento · usa o login da equipe')),
       el('div', { class: 'equipes' }, ...(u.equipes.length
         ? u.equipes.map((e) => el('span', { class: 'selo-equipe' }, el('span', { class: 'ponto', style: `background:${e.cor}` }), e.nome))
         : [el('span', { class: 'dica' }, 'sem equipe')])),
-      el('select', {
-        class: 'papel', 'aria-label': `Papel de ${u.nome}`, disabled: eu ? 'disabled' : null,
-        onchange: (ev) => salvarPessoa(u.id, { papel: ev.target.value }),
-      }, ...['atendente', 'admin'].map((v) => el('option', { value: v, selected: u.papel === v ? 'selected' : null }, v === 'admin' ? 'Administrador' : 'Atendente'))),
+      u.podeLogar
+        ? el('select', {
+          class: 'papel', 'aria-label': `Papel de ${u.nome}`, disabled: ehConta ? 'disabled' : null,
+          onchange: (ev) => salvarPessoa(u.id, { papel: ev.target.value }),
+        }, ...['atendente', 'admin'].map((v) => el('option', { value: v, selected: u.papel === v ? 'selected' : null }, v === 'admin' ? 'Administrador' : 'Atendente')))
+        : el('span', { class: 'selo-equipe' }, 'Atendente'),
       el('span', { class: `selo-presenca ${classePresenca}`.trim() }, presenca),
       el('button', {
         type: 'button', class: 'btn-icone hov', title: u.ativo ? 'Bloquear o acesso' : 'Liberar o acesso',
-        disabled: eu ? 'disabled' : null,
+        disabled: eu || ehConta ? 'disabled' : null,
         onclick: () => salvarPessoa(u.id, { ativo: !u.ativo }),
       }, svg(u.ativo ? ICONE.cadeado : ICONE.check)),
       el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => editarEquipesDe(u, equipes) }, 'Equipes'));
+  }
+
+  function adicionarAtendente() {
+    const erro = el('span', { class: 'dica erro-texto', 'aria-live': 'polite' });
+    const campo = el('input', {
+      type: 'text', maxlength: '120', autocomplete: 'name', placeholder: 'Nome completo',
+      'aria-label': 'Nome do novo atendente',
+    });
+    const fundo = el('div', { class: 'modal-fundo', onclick: (ev) => { if (ev.target === fundo) fundo.remove(); } });
+    let salvando = false;
+    const cancelar = el('button', { type: 'button', class: 'btn-suave hov', onclick: () => fundo.remove() }, 'Cancelar');
+    const salvar = el('button', { type: 'button', class: 'btn-primario' }, 'Adicionar atendente');
+
+    async function concluir() {
+      if (salvando) return;
+      const nome = campo.value.trim().replace(/\s+/g, ' ');
+      if (nome.length < 2) {
+        erro.textContent = 'Digite um nome com pelo menos 2 caracteres.';
+        campo.focus();
+        return;
+      }
+      salvando = true;
+      salvar.disabled = true;
+      cancelar.disabled = true;
+      erro.textContent = '';
+      try {
+        await api('/equipe/usuarios', {
+          method: 'POST', body: { nome, equipeIds: estado.equipeId ? [estado.equipeId] : [] },
+        });
+        fundo.remove();
+        if (config.aberto && config.secao === 'equipe') await carregarEquipe();
+        await carregarResumo();
+        toast(`${nome} foi adicionado à equipe.`);
+      } catch (e) {
+        salvando = false;
+        salvar.disabled = false;
+        cancelar.disabled = false;
+        erro.textContent = e.message;
+        campo.focus();
+      }
+    }
+
+    campo.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') fundo.remove();
+      if (ev.key === 'Enter' && !ev.isComposing) { ev.preventDefault(); concluir(); }
+    });
+    salvar.addEventListener('click', concluir);
+    fundo.append(el('div', { class: 'modal editar-nome', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'adicionar-atendente-titulo' },
+      el('div', { class: 'modal-corpo' },
+        el('div', { class: 'modal-cab' },
+          el('div', {}, el('h2', { id: 'adicionar-atendente-titulo' }, 'Adicionar atendente'), el('p', {}, 'A pessoa aparecerá na escolha após o próximo login. Não é necessário criar outra senha.')),
+          el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: () => fundo.remove() }, svg(ICONE.fechar))),
+        el('label', { class: 'config-campo' }, el('span', {}, 'Nome do atendente'), campo, erro),
+        el('div', { class: 'modal-acoes' }, cancelar, salvar))));
+    document.body.append(fundo);
+    campo.focus();
   }
 
   function editarNomeDe(u) {
@@ -2776,7 +2841,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     fundo.append(el('div', { class: 'modal editar-nome', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': `editar-nome-${u.id}` },
       el('div', { class: 'modal-corpo' },
         el('div', { class: 'modal-cab' },
-          el('div', {}, el('h2', { id: `editar-nome-${u.id}` }, 'Editar nome'), el('p', {}, `Altere como ${u.email} aparece no atendimento.`)),
+          el('div', {}, el('h2', { id: `editar-nome-${u.id}` }, 'Editar nome'), el('p', {}, 'Altere como este atendente aparece no atendimento.')),
           el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: () => fundo.remove() }, svg(ICONE.fechar))),
         el('label', { class: 'config-campo' }, el('span', {}, 'Nome do atendente'), campo, erro),
         el('div', { class: 'modal-acoes' }, cancelar, salvar))));
@@ -3440,7 +3505,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     const menuUsuario = $('#menu-usuario');
     $('#btn-conectar').addEventListener('click', () => {
       menuUsuario.hidden = true;
-      if (estado.resumo?.usuario?.papel !== 'admin') return toast('Peça a um administrador para conectar os canais.');
+      if ((estado.resumo?.conta || estado.resumo?.usuario)?.papel !== 'admin') return toast('Peça a um administrador para conectar os canais.');
       abrirConfiguracoes('canais');
     });
     $('#btn-usuario').addEventListener('click', (e) => {

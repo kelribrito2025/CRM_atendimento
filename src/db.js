@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   papel VARCHAR(20) NOT NULL DEFAULT 'atendente',
   presenca VARCHAR(20) NOT NULL DEFAULT 'online',
   ativo BIGINT NOT NULL DEFAULT 1,
+  pode_logar BIGINT NOT NULL DEFAULT 1,
   criado_em VARCHAR(32) NOT NULL
 );
 
@@ -35,9 +36,11 @@ CREATE TABLE IF NOT EXISTS ajustes (
 CREATE TABLE IF NOT EXISTS sessoes (
   token_hash VARCHAR(191) PRIMARY KEY,
   usuario_id BIGINT NOT NULL,
+  atendente_id BIGINT,
   expira_em BIGINT NOT NULL,
   criado_em BIGINT NOT NULL,
-  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+  FOREIGN KEY (atendente_id) REFERENCES usuarios(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS equipe_membros (
@@ -133,6 +136,8 @@ CREATE TABLE IF NOT EXISTS auditoria_eventos (
   usuario_id BIGINT,
   usuario_nome TEXT NOT NULL,
   usuario_email VARCHAR(191),
+  conta_id BIGINT,
+  conta_email VARCHAR(191),
   conversa_id BIGINT,
   protocolo VARCHAR(32),
   canal VARCHAR(20),
@@ -141,6 +146,7 @@ CREATE TABLE IF NOT EXISTS auditoria_eventos (
   criado_em BIGINT NOT NULL,
   origem_mensagem_id BIGINT UNIQUE,
   FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE SET NULL,
+  FOREIGN KEY (conta_id) REFERENCES usuarios(id) ON DELETE SET NULL,
   FOREIGN KEY (conversa_id) REFERENCES conversas(id) ON DELETE SET NULL,
   FOREIGN KEY (contato_id) REFERENCES contatos(id) ON DELETE SET NULL
 );
@@ -235,7 +241,9 @@ const INDICES = [
 // Acrescenta colunas criadas em versões mais novas sem perder os dados existentes.
 async function garantirColuna(db, tabela, coluna, definicao) {
   const existentes = await db.colunas(tabela);
-  if (!existentes.includes(coluna)) await db.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${definicao}`);
+  if (existentes.includes(coluna)) return false;
+  await db.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${definicao}`);
+  return true;
 }
 
 // Apaga equipes pelo nome; as conversas e canais ligados a elas ficam "sem equipe".
@@ -324,6 +332,13 @@ async function migrarNotasDeAberturaParaAuditoria(db) {
 }
 
 async function migrar(db) {
+  await garantirColuna(db, 'usuarios', 'pode_logar', 'BIGINT NOT NULL DEFAULT 1');
+  const adicionouAtendenteNaSessao = await garantirColuna(db, 'sessoes', 'atendente_id', 'BIGINT');
+  // Sessões abertas antes da existência dos perfis continuam usando a própria
+  // conta. Novos logins passam pela escolha quando houver perfis adicionais.
+  if (adicionouAtendenteNaSessao) {
+    await db.prepare('UPDATE sessoes SET atendente_id = usuario_id WHERE atendente_id IS NULL').run();
+  }
   await garantirColuna(db, 'canais', 'cor', "VARCHAR(7) NOT NULL DEFAULT '#12B85C'");
   await garantirColuna(db, 'conversas', 'canal_id', 'BIGINT');
   await garantirColuna(db, 'conversas', 'wa_chatid', 'VARCHAR(191)');
@@ -345,6 +360,8 @@ async function migrar(db) {
   await garantirColuna(db, 'contatos', 'tg_foto_em', 'BIGINT');
   // Detalhe do evento na auditoria: o que a ação mexeu (valor, motivo).
   await garantirColuna(db, 'auditoria_eventos', 'detalhe', 'TEXT');
+  await garantirColuna(db, 'auditoria_eventos', 'conta_id', 'BIGINT');
+  await garantirColuna(db, 'auditoria_eventos', 'conta_email', 'VARCHAR(191)');
   for (const [nome, tabela, colunas] of INDICES) await db.criarIndice(nome, tabela, colunas);
   await migrarNotasDeAberturaParaAuditoria(db);
   await limparConversasDeChatVazias(db);
