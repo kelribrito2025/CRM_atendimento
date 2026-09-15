@@ -27,6 +27,7 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
     conversa: null,
     modo: 'resposta',        // resposta | nota
     enviando: false,
+    anexoPendente: null,
   };
 
   const $ = (sel, raiz = document) => raiz.querySelector(sel);
@@ -304,6 +305,10 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
   }
 
   async function abrirConversa(id) {
+    if (Number(id) !== Number(estado.conversaId) && estado.anexoPendente?.enviando) {
+      return toast('Aguarde o arquivo terminar de enviar antes de trocar de conversa.');
+    }
+    if (Number(id) !== Number(estado.conversaId)) descartarAnexoPendente({ redesenhar: false });
     estado.conversaId = id;
     // O saldo consultado vale só para a conversa em que foi pedido.
     if (id !== saldo.conversaId) limparSaldo(id);
@@ -724,7 +729,7 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
     const imagem = modoNota ? null : imagemDoClipboard(evento);
     if (imagem) {
       evento.preventDefault();
-      enviarAnexo(nomearImagemColada(imagem));
+      prepararAnexo(nomearImagemColada(imagem));
       return;
     }
     setTimeout(() => {
@@ -735,6 +740,7 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
 
   function escolherAnexo() {
     if (!estado.conversa) return;
+    if (estado.modo === 'nota') return toast('Volte ao modo de resposta para anexar um arquivo ao cliente.');
     if (!estado.resumo?.anexosAtivos) {
       return toast('Envio de anexos indisponível: peça ao responsável para configurar o armazenamento de arquivos no servidor.', 6000);
     }
@@ -742,36 +748,73 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
     seletor.addEventListener('change', () => {
       const arquivo = seletor.files?.[0];
       seletor.remove();
-      if (arquivo) enviarAnexo(arquivo);
+      if (arquivo) prepararAnexo(arquivo);
     });
     document.body.append(seletor);
     seletor.click();
   }
 
-  // O arquivo aparece na hora no chat, marcado como "enviando", e vai para o cliente.
-  async function enviarAnexo(arquivo) {
+  function descartarAnexoPendente({ redesenhar = true } = {}) {
+    const pendente = estado.anexoPendente;
+    if (!pendente || pendente.enviando) return false;
+    if (pendente.previa) URL.revokeObjectURL(pendente.previa);
+    estado.anexoPendente = null;
+    if (redesenhar && estado.conversa) aplicarConversa(estado.conversa);
+    return true;
+  }
+
+  function prepararAnexo(arquivo) {
     const c = estado.conversa;
     if (!c) return;
+    if (estado.modo === 'nota') return toast('Volte ao modo de resposta para anexar um arquivo ao cliente.');
     if (!estado.resumo?.anexosAtivos) {
       return toast('Envio de anexos indisponível: peça ao responsável para configurar o armazenamento de arquivos no servidor.', 6000);
     }
     if (estado.enviando) return toast('Aguarde o envio atual terminar antes de enviar outro arquivo.');
+    if (!arquivo.size) return toast('O arquivo está vazio. Escolha outro arquivo.', 5000);
     if (arquivo.size > TAMANHO_MAXIMO_ANEXO) return toast('Arquivo muito grande: o limite é 20 MB.', 5000);
-    estado.enviando = true;
-
+    descartarAnexoPendente({ redesenhar: false });
     const tipo = tipoDoArquivo(arquivo);
     const previa = tipo === 'imagem' || tipo === 'video' ? URL.createObjectURL(arquivo) : null;
-    const provisoria = {
-      id: `tmp-${Date.now()}`,
-      tipo: 'atendente',
-      texto: '',
-      entrega: 'enviando',
-      criadaEm: Date.now(),
-      autor: { id: estado.resumo?.usuario?.id, nome: estado.resumo?.usuario?.nome, nomeCurto: estado.resumo?.usuario?.nomeCurto || 'Você' },
-      midia: { tipo, nome: arquivo.name, mime: arquivo.type || null, url: previa },
-      provisoria: true,
-    };
-    c.mensagens.push(provisoria);
+    estado.anexoPendente = { arquivo, tipo, previa, conversaId: c.id, enviando: false };
+    aplicarConversa(c);
+    $('#texto-msg')?.focus();
+  }
+
+  function anexoPendenteDoCompositor() {
+    const p = estado.anexoPendente;
+    if (!p || Number(p.conversaId) !== Number(estado.conversa?.id)) return null;
+    const visual = p.tipo === 'imagem'
+      ? el('img', { src: p.previa, alt: '' })
+      : (p.tipo === 'video'
+        ? el('video', { src: p.previa, muted: true, preload: 'metadata' })
+        : el('span', { class: 'anexo-pendente-icone' }, svg(ICONE.clipe)));
+    return el('div', { class: `anexo-pendente${p.enviando ? ' enviando' : ''}` },
+      el('div', { class: 'anexo-pendente-visual' },
+        visual,
+        p.enviando
+          ? el('span', { class: 'anexo-pendente-loading', role: 'status', 'aria-label': 'Enviando arquivo' },
+            el('span', { class: 'spinner-anexo' }), el('span', {}, 'Enviando'))
+          : null,
+        el('button', {
+          type: 'button', class: 'anexo-pendente-remover', title: 'Remover anexo', 'aria-label': 'Remover anexo',
+          disabled: p.enviando, onclick: () => descartarAnexoPendente(),
+        }, svg(ICONE.fechar))),
+      el('span', { class: 'anexo-pendente-nome', title: p.arquivo.name }, p.arquivo.name));
+  }
+
+  // O upload começa somente depois de Enviar/Enter. Enquanto o S3 e o canal
+  // confirmam o recebimento, a prévia permanece no compositor com loading.
+  async function enviarAnexoPendente(legenda, campo) {
+    const c = estado.conversa;
+    const pendente = estado.anexoPendente;
+    if (!c || !pendente || Number(pendente.conversaId) !== Number(c.id)) return;
+    if (estado.enviando || pendente.enviando) return;
+    const textoAnterior = String(legenda || '').trim();
+    if (textoAnterior.length > 1024) return toast('A legenda do anexo pode ter no máximo 1024 caracteres.', 5000);
+    estado.enviando = true;
+    pendente.enviando = true;
+    if (campo) { campo.value = ''; ajustarAltura(campo); }
     aplicarConversa(c);
 
     try {
@@ -780,27 +823,42 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
         credentials: 'same-origin',
         headers: {
           Accept: 'application/json',
-          'Content-Type': arquivo.type || 'application/octet-stream',
-          'x-nome-arquivo': encodeURIComponent(arquivo.name || 'arquivo'),
+          'Content-Type': pendente.arquivo.type || 'application/octet-stream',
+          'x-nome-arquivo': encodeURIComponent(pendente.arquivo.name || 'arquivo'),
+          ...(textoAnterior ? { 'x-legenda': encodeURIComponent(textoAnterior) } : {}),
         },
-        body: arquivo,
+        body: pendente.arquivo,
       });
-      if (resposta.status === 401) { location.href = `/login?next=${encodeURIComponent(location.pathname)}`; return; }
+      if (resposta.status === 401) {
+        pendente.enviando = false;
+        location.href = `/login?next=${encodeURIComponent(location.pathname)}`;
+        return;
+      }
       const r = await resposta.json().catch(() => ({}));
       if (!resposta.ok) throw new Error(r.erro || `Erro ${resposta.status}`);
       if (r.erroEnvio) toast(`Não foi possível enviar pelo ${NOME_CANAL[c.canal] || c.canal}: ${r.erroEnvio}`, 5000);
-      const posicao = c.mensagens.findIndex((m) => m.id === provisoria.id);
-      if (posicao >= 0) c.mensagens[posicao] = r.mensagem; else c.mensagens.push(r.mensagem);
+      if (!c.mensagens.some((m) => m.id === r.mensagem.id)) c.mensagens.push(r.mensagem);
       Object.assign(c, { status: r.conversa.status, atendente: r.conversa.atendente, atualizadaEm: r.conversa.atualizadaEm });
-      aplicarConversa(c);
-      await Promise.all([carregarResumo(), carregarConversas()]);
+      if (estado.anexoPendente === pendente) {
+        pendente.enviando = false;
+        descartarAnexoPendente({ redesenhar: false });
+      }
+      if (estado.conversa?.id === c.id) aplicarConversa(c);
+      await Promise.all([carregarResumo(), carregarConversas()]).catch(() => {});
     } catch (e) {
-      const posicao = c.mensagens.findIndex((m) => m.id === provisoria.id);
-      if (posicao >= 0) c.mensagens.splice(posicao, 1);
-      aplicarConversa(c);
+      pendente.enviando = false;
+      if (estado.conversa?.id === c.id) {
+        const textoDuranteEnvio = $('#texto-msg')?.value.trim() || '';
+        aplicarConversa(c);
+        const novoCampo = $('#texto-msg');
+        if (novoCampo) {
+          novoCampo.value = [textoAnterior, textoDuranteEnvio].filter(Boolean).join(' ');
+          ajustarAltura(novoCampo);
+          novoCampo.focus();
+        }
+      }
       toast(e.message, 5000);
     } finally {
-      if (previa) URL.revokeObjectURL(previa);
       estado.enviando = false;
     }
   }
@@ -1649,6 +1707,7 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
     const chat = $('#chat');
     const c = estado.conversa;
     if (!c) {
+      descartarAnexoPendente({ redesenhar: false });
       chat.replaceChildren(chatVazio());
       return;
     }
@@ -1685,14 +1744,19 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
       oninput: () => { maiuscularInicio(textarea); corrigirEnquantoDigita(textarea); ajustarAltura(textarea); atalhoBarra(textarea); },
       onpaste: (e) => colarNoCompositor(e, textarea, modoNota),
     });
-    const enviar = () => enviarMensagem(acentosLigados ? corrigirTexto(textarea.value) : textarea.value, modoNota ? 'nota' : 'resposta', textarea);
+    const enviar = () => {
+      const texto = acentosLigados ? corrigirTexto(textarea.value) : textarea.value;
+      if (!modoNota && estado.anexoPendente) return enviarAnexoPendente(texto, textarea);
+      return enviarMensagem(texto, modoNota ? 'nota' : 'resposta', textarea);
+    };
 
     const compositor = el('div', { class: 'compositor' },
       el('div', { class: `caixa-texto${modoNota ? ' modo-nota' : ''}` },
+        modoNota ? null : anexoPendenteDoCompositor(),
         textarea,
         el('div', { class: 'compositor-acoes' },
           comDica(el('button', { type: 'button', class: 'btn-icone hov', onclick: escolherAnexo }, icone('anexo', ICONE.clipe)),
-            'anexo', 'Enviar arquivo ou colar imagem com Ctrl+V'),
+            'anexo', 'Anexar arquivo ou colar imagem com Ctrl+V'),
           comDica(el('button', {
             type: 'button', class: `btn-icone hov${rapidas.aberto ? ' ativo' : ''}`,
             onclick: () => (rapidas.aberto ? fecharRapidas() : abrirRapidas()),
@@ -1705,11 +1769,14 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
           comDica(el('button', {
             type: 'button', class: `btn-icone hov nota-toggle${modoNota ? ' ativo' : ''}`,
             'aria-pressed': modoNota ? 'true' : 'false',
-            onclick: () => mudarModo(modoNota ? 'resposta' : 'nota'),
+            onclick: () => {
+              if (!modoNota && estado.anexoPendente) return toast('Envie ou remova o anexo antes de criar uma nota interna.');
+              mudarModo(modoNota ? 'resposta' : 'nota');
+            },
           }, icone('nota', ICONE.lapis)), 'nota', modoNota ? 'Voltar a responder o cliente' : 'Nota interna'),
           modoNota ? el('span', { class: 'aviso-nota' }, 'Nota interna: só a equipe vê') : null,
           el('span', { class: 'empurrar' }),
-          el('button', { type: 'button', class: 'btn-primario', id: 'btn-enviar', onclick: enviar }, modoNota ? 'Salvar nota' : 'Enviar', modoNota ? null : icone('enviar', ICONE.enviar, { animado: true, classe: 'branco' })))));
+          el('button', { type: 'button', class: 'btn-primario', id: 'btn-enviar', disabled: estado.enviando, onclick: enviar }, modoNota ? 'Salvar nota' : 'Enviar', modoNota ? null : icone('enviar', ICONE.enviar, { animado: true, classe: 'branco' })))));
 
     chat.replaceChildren(cabecalho, mensagens, compositor);
     ajustarAltura(textarea);

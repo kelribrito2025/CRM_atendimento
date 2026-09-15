@@ -2,7 +2,7 @@
 
 const express = require('express');
 const crypto = require('node:crypto');
-const { iniciais, nomeCurto, TAMANHO_MAXIMO_ANEXO, ROTULO_MIDIA, tipoDoArquivo, nomeDoCabecalho } = require('./util');
+const { iniciais, nomeCurto, TAMANHO_MAXIMO_ANEXO, ROTULO_MIDIA, tipoDoArquivo, nomeDoCabecalho, textoDoCabecalho } = require('./util');
 const canais = require('./canais');
 const { tokenValido } = require('./telegram');
 const { normalizarPin, aplicarOpcoesConhecidas } = require('./saldo');
@@ -673,7 +673,7 @@ function criarRotasApi(db, opcoes = {}) {
 
     const nome = nomeDoCabecalho(req.get('x-nome-arquivo'));
     const mime = String(req.get('content-type') || 'application/octet-stream').split(';')[0].trim();
-    const legenda = nomeDoCabecalho(req.get('x-legenda'), '').slice(0, 1024);
+    const legenda = textoDoCabecalho(req.get('x-legenda'));
     const tipo = tipoDoArquivo(mime, nome);
 
     let guardado;

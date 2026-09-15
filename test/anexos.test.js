@@ -16,14 +16,22 @@ const canais = require('../src/canais');
 const ADMIN = { email: 'admin@teste.com', senha: 'segredo123' };
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6360000002000100ffff03000006000557bfabd40000000049454e44ae426082', 'hex');
 
-test('anexo: colar imagem no campo prepara o arquivo e preserva a colagem de texto', () => {
+test('anexo: colar imagem prepara uma prévia e só envia com botão ou Enter', () => {
   const tela = fs.readFileSync(path.join(__dirname, '..', 'client/assets/js/atendimento.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'client/assets/css/app.css'), 'utf8');
   assert.match(tela, /evento\.clipboardData\?\.items/);
   assert.match(tela, /i\.kind === 'file'.*startsWith\('image\/'\)/);
-  assert.match(tela, /evento\.preventDefault\(\);\s*enviarAnexo\(nomearImagemColada\(imagem\)\)/);
+  assert.match(tela, /evento\.preventDefault\(\);\s*prepararAnexo\(nomearImagemColada\(imagem\)\)/);
+  assert.doesNotMatch(tela, /evento\.preventDefault\(\);\s*enviarAnexo/);
   assert.match(tela, /`imagem-colada-\$\{Date\.now\(\)\}\.\$\{extensao\}`/);
   assert.match(tela, /onpaste: \(e\) => colarNoCompositor\(e, textarea, modoNota\)/);
-  assert.match(tela, /Enviar arquivo ou colar imagem com Ctrl\+V/);
+  assert.match(tela, /if \(!modoNota && estado\.anexoPendente\) return enviarAnexoPendente\(texto, textarea\)/);
+  assert.match(tela, /modoNota \? null : anexoPendenteDoCompositor\(\)/);
+  assert.match(tela, /class: 'anexo-pendente-remover'/);
+  assert.match(tela, /class: 'anexo-pendente-loading'/);
+  assert.match(css, /\.anexo-pendente-loading\s*\{[^}]*position: absolute/);
+  assert.match(css, /\.spinner-anexo\s*\{[^}]*animation: girar-anexo/);
+  assert.match(tela, /Anexar arquivo ou colar imagem com Ctrl\+V/);
   assert.match(tela, /setTimeout\(\(\) => \{\s*if \(acentosLigados\)/, 'sem imagem, a colagem de texto continua sendo tratada');
 });
 
@@ -73,10 +81,15 @@ async function subirServidor({ arquivos = arquivosFalsos(), chamadas = [] } = {}
     const r = await fetch(`${base}${caminho}`, { method: metodo, headers: { Cookie: ck, 'Content-Type': 'application/json' }, body: corpo ? JSON.stringify(corpo) : undefined });
     return { status: r.status, dados: await r.json().catch(() => ({})) };
   };
-  const enviarArquivo = async (conversaId, { bytes = PNG, nome = 'comprovante.png', mime = 'image/png' } = {}, ck = cookie) => {
+  const enviarArquivo = async (conversaId, { bytes = PNG, nome = 'comprovante.png', mime = 'image/png', legenda = '' } = {}, ck = cookie) => {
     const r = await fetch(`${base}/api/conversas/${conversaId}/anexos`, {
       method: 'POST',
-      headers: { Cookie: ck, 'Content-Type': mime, 'x-nome-arquivo': encodeURIComponent(nome) },
+      headers: {
+        Cookie: ck,
+        'Content-Type': mime,
+        'x-nome-arquivo': encodeURIComponent(nome),
+        ...(legenda ? { 'x-legenda': encodeURIComponent(legenda) } : {}),
+      },
       body: bytes,
     });
     return { status: r.status, dados: await r.json().catch(() => ({})) };
@@ -141,11 +154,15 @@ test('anexo: nome com acento, tipo pelo conteúdo e limites', async () => {
   try {
     const { conversa } = await conversaDeWhatsapp(s);
 
-    const doc = await s.enviarArquivo(conversa.id, { bytes: Buffer.from('conteudo'), nome: 'Relatório de março.pdf', mime: 'application/pdf' });
+    const legenda = `Confira https://app.numero-virtual.com/history: ${'detalhe '.repeat(25)}`.trim();
+    assert.ok(legenda.length > 120, 'o teste cobre legenda maior que o limite antigo');
+    const doc = await s.enviarArquivo(conversa.id, { bytes: Buffer.from('conteudo'), nome: 'Relatório de março.pdf', mime: 'application/pdf', legenda });
     assert.equal(doc.status, 201);
     assert.equal(doc.dados.mensagem.midia.nome, 'Relatório de março.pdf');
     assert.equal(doc.dados.mensagem.midia.tipo, 'documento');
+    assert.equal(doc.dados.mensagem.texto, legenda);
     assert.equal(s.chamadas.at(-1)[2].tipo, 'document');
+    assert.equal(s.chamadas.at(-1)[2].legenda, legenda);
 
     // arquivo vazio não passa
     const vazio = await fetch(`${s.base}/api/conversas/${conversa.id}/anexos`, {

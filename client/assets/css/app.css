@@ -405,6 +405,19 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .caixa-texto { border: 1px solid var(--borda); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; background: var(--superficie); }
 .caixa-texto:focus-within { border-color: var(--verde); }
 .caixa-texto.modo-nota { background: var(--nota-fundo); border: 1px dashed var(--nota-borda); }
+.anexo-pendente { width: 108px; display: flex; flex-direction: column; gap: 5px; }
+.anexo-pendente-visual { width: 96px; height: 76px; position: relative; overflow: visible; border: 1px solid var(--borda); border-radius: 13px; background: var(--fundo-suave); display: flex; align-items: center; justify-content: center; }
+.anexo-pendente-visual > img, .anexo-pendente-visual > video { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; }
+.anexo-pendente-icone { color: var(--verde-texto); }
+.anexo-pendente-icone svg { width: 24px; height: 24px; }
+.anexo-pendente-remover { position: absolute; z-index: 2; top: -7px; right: -7px; width: 23px; height: 23px; padding: 0; border: 1px solid var(--borda); border-radius: 999px; background: var(--superficie); color: var(--texto); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 7px rgba(11, 31, 20, .13); }
+.anexo-pendente-remover svg { width: 13px; height: 13px; }
+.anexo-pendente-remover:disabled { opacity: 0; pointer-events: none; }
+.anexo-pendente-nome { width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: var(--texto-suave); }
+.anexo-pendente-loading { position: absolute; z-index: 1; inset: 0; border-radius: 12px; background: rgba(11, 31, 20, .68); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 10px; font-weight: 700; }
+.spinner-anexo { width: 22px; height: 22px; border: 2.5px solid rgba(255, 255, 255, .36); border-top-color: #fff; border-radius: 999px; animation: girar-anexo .75s linear infinite; }
+@keyframes girar-anexo { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner-anexo { animation: none; } }
 .caixa-texto textarea { border: 0; resize: none; outline: none; font-size: 13.5px; line-height: 1.5; color: var(--texto); background: none; min-height: 44px; max-height: var(--altura-maxima, 160px); width: 100%; overflow-y: auto; }
 .compositor-acoes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .acentos-toggle { font-size: 15px; font-weight: 700; line-height: 1; color: var(--texto-suave); }
