@@ -1014,19 +1014,22 @@ function criarRotasApi(db, opcoes = {}) {
   /* -------------------- respostas rápidas -------------------- */
 
   const ESCOPOS = new Set(['todas', 'equipe', 'eu']);
+  const ATALHOS_SAUDACAO = new Set(['saudacao', 'bom-dia', 'boa-tarde', 'boa-noite']);
 
   function formatarResposta(r, usuarioId) {
+    const saudacao = String(r.atalho).toLowerCase() === 'saudacao';
     return {
       id: r.id,
       atalho: r.atalho,
       titulo: r.titulo,
       texto: r.texto,
+      dinamica: saudacao ? 'saudacao' : null,
       escopo: r.escopo,
       equipeId: r.equipe_id || null,
       equipeNome: r.equipe_nome || null,
       usos: Number(r.usos || 0),
       minha: Number(r.criado_por) === Number(usuarioId),
-      podeEditar: Number(r.criado_por) === Number(usuarioId) || usuarioId === null,
+      podeEditar: !saudacao && (Number(r.criado_por) === Number(usuarioId) || usuarioId === null),
     };
   }
 
@@ -1040,7 +1043,10 @@ function criarRotasApi(db, opcoes = {}) {
          OR (r.escopo = 'eu' AND r.usuario_id = ?)
          OR (r.escopo = 'equipe' AND r.equipe_id IN (SELECT equipe_id FROM equipe_membros WHERE usuario_id = ?))
       ORDER BY r.usos DESC, r.atalho`).all(usuario.id, usuario.id);
-    return lista.map((r) => ({ ...formatarResposta(r, usuario.id), podeEditar: Number(r.criado_por) === Number(usuario.id) || usuario.papel === 'admin' }));
+    return lista.map((r) => {
+      const formatada = formatarResposta(r, usuario.id);
+      return { ...formatada, podeEditar: !formatada.dinamica && (Number(r.criado_por) === Number(usuario.id) || usuario.papel === 'admin') };
+    });
   }
 
   function limparAtalho(valor) {
@@ -1075,6 +1081,7 @@ function criarRotasApi(db, opcoes = {}) {
   r.post('/respostas', async (req, res) => {
     const dados = await lerCorpoResposta(req, res);
     if (!dados) return;
+    if (ATALHOS_SAUDACAO.has(dados.atalho)) return res.status(409).json({ erro: 'Este atalho é reservado para a Saudação automática.' });
     const repetido = await db.prepare('SELECT id FROM respostas_rapidas WHERE atalho = ? AND (escopo != ? OR usuario_id = ?)')
       .get(dados.atalho, 'eu', req.usuario.id);
     if (repetido) return res.status(409).json({ erro: `O atalho /${dados.atalho} já está em uso.` });
@@ -1091,11 +1098,13 @@ function criarRotasApi(db, opcoes = {}) {
     const id = idDaRota(req);
     const atual = id ? await db.prepare('SELECT * FROM respostas_rapidas WHERE id = ?').get(id) : null;
     if (!atual) return res.status(404).json({ erro: 'Resposta rápida não encontrada.' });
+    if (String(atual.atalho).toLowerCase() === 'saudacao') return res.status(403).json({ erro: 'A Saudação automática é fixa e não pode ser alterada.' });
     if (Number(atual.criado_por) !== Number(req.usuario.id) && req.usuario.papel !== 'admin') {
       return res.status(403).json({ erro: 'Só quem criou a resposta (ou um administrador) pode alterá-la.' });
     }
     const dados = await lerCorpoResposta(req, res);
     if (!dados) return;
+    if (ATALHOS_SAUDACAO.has(dados.atalho)) return res.status(409).json({ erro: 'Este atalho é reservado para a Saudação automática.' });
     const repetido = await db.prepare('SELECT id FROM respostas_rapidas WHERE atalho = ? AND id != ?').get(dados.atalho, id);
     if (repetido) return res.status(409).json({ erro: `O atalho /${dados.atalho} já está em uso.` });
 
@@ -1109,6 +1118,7 @@ function criarRotasApi(db, opcoes = {}) {
     const id = idDaRota(req);
     const atual = id ? await db.prepare('SELECT * FROM respostas_rapidas WHERE id = ?').get(id) : null;
     if (!atual) return res.status(404).json({ erro: 'Resposta rápida não encontrada.' });
+    if (String(atual.atalho).toLowerCase() === 'saudacao') return res.status(403).json({ erro: 'A Saudação automática é fixa e não pode ser excluída.' });
     if (Number(atual.criado_por) !== Number(req.usuario.id) && req.usuario.papel !== 'admin') {
       return res.status(403).json({ erro: 'Só quem criou a resposta (ou um administrador) pode excluí-la.' });
     }

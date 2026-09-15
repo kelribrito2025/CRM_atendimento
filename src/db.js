@@ -284,6 +284,41 @@ async function garantirEquipe(db, nome, cor) {
   await db.prepare('INSERT INTO equipes (nome, cor, ordem) VALUES (?, ?, ?)').run(nome, cor, Number(ultima?.fim ?? -1) + 1);
 }
 
+// Substitui as respostas separadas de manhã, tarde e noite por um único atalho
+// do sistema. O navegador escolhe o texto certo no instante em que ele é usado.
+async function garantirSaudacaoFixa(db) {
+  const atalhos = ['saudacao', 'bom-dia', 'boa-tarde', 'boa-noite'];
+  const marcadores = atalhos.map(() => '?').join(', ');
+  await db.transacao(async () => {
+    const antigas = await db.prepare(
+      `SELECT * FROM respostas_rapidas WHERE LOWER(atalho) IN (${marcadores}) ORDER BY id`,
+    ).all(...atalhos);
+    const atual = antigas.find((r) => String(r.atalho).toLowerCase() === 'saudacao');
+    const usos = antigas.reduce((total, r) => total + Number(r.usos || 0), 0);
+    const criadoPor = atual?.criado_por ?? antigas.find((r) => r.criado_por != null)?.criado_por ?? null;
+    const criadoEm = atual?.criado_em ?? antigas[0]?.criado_em ?? Date.now();
+    const agora = Date.now();
+    let id;
+
+    if (atual) {
+      id = Number(atual.id);
+      await db.prepare(`UPDATE respostas_rapidas
+        SET atalho = 'saudacao', titulo = 'Saudação', texto = ?, escopo = 'todas',
+            equipe_id = NULL, usuario_id = NULL, criado_por = ?, usos = ?, atualizado_em = ?
+        WHERE id = ?`).run('A saudação muda automaticamente conforme o horário.', criadoPor, usos, agora, id);
+    } else {
+      const info = await db.prepare(`INSERT INTO respostas_rapidas
+        (atalho, titulo, texto, escopo, equipe_id, usuario_id, criado_por, usos, criado_em, atualizado_em)
+        VALUES ('saudacao', 'Saudação', ?, 'todas', NULL, NULL, ?, ?, ?, ?)`)
+        .run('A saudação muda automaticamente conforme o horário.', criadoPor, usos, criadoEm, agora);
+      id = Number(info.lastInsertRowid);
+    }
+
+    const remover = antigas.filter((r) => Number(r.id) !== id).map((r) => Number(r.id));
+    if (remover.length) await db.exec(`DELETE FROM respostas_rapidas WHERE id IN (${remover.join(', ')})`);
+  });
+}
+
 // Bancos criados antes: a sessão do chat exigia conversa, e por isso a conversa
 // nascia junto com o login do cliente. Aqui a coluna passa a aceitar vazio e as
 // conversas que nunca receberam mensagem são apagadas — não perdem nada, porque
@@ -376,6 +411,7 @@ async function migrar(db) {
   await garantirColuna(db, 'auditoria_eventos', 'conta_id', 'BIGINT');
   await garantirColuna(db, 'auditoria_eventos', 'conta_email', 'VARCHAR(191)');
   for (const [nome, tabela, colunas] of INDICES) await db.criarIndice(nome, tabela, colunas);
+  await garantirSaudacaoFixa(db);
   await migrarNotasDeAberturaParaAuditoria(db);
   await limparConversasDeChatVazias(db);
   await renomearEquipe(db, 'Cobrança', 'Admin');

@@ -9,6 +9,7 @@ import { estiloAvatarDoCanal } from './cor-avatar.mjs';
 import { formatarDataHoraCompra } from './data-compra.mjs';
 import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
+import { textoDaRespostaRapida } from './saudacao.mjs';
 
 (() => {
   'use strict';
@@ -1391,9 +1392,10 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
   async function usarResposta(r) {
     const campo = $('#texto-msg');
     if (campo) {
+      const textoResposta = textoDaRespostaRapida(r);
       // Se a pessoa digitou "/algo", troca isso pela resposta inteira.
       const semAtalho = campo.value.replace(/(^|\s)\/[^\s]*$/, '$1');
-      campo.value = semAtalho ? `${semAtalho.replace(/\s+$/, '')} ${r.texto}` : r.texto;
+      campo.value = semAtalho ? `${semAtalho.replace(/\s+$/, '')} ${textoResposta}` : textoResposta;
       campo.focus();
       campo.setSelectionRange(campo.value.length, campo.value.length);
       ajustarAltura(campo);
@@ -1406,7 +1408,7 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
     const busca = rapidas.busca.trim().toLowerCase();
     const lista = rapidas.lista || [];
     if (!busca) return lista;
-    return lista.filter((r) => [r.atalho, r.titulo, r.texto].some((v) => String(v).toLowerCase().includes(busca)));
+    return lista.filter((r) => [r.atalho, r.titulo, textoDaRespostaRapida(r)].some((v) => String(v).toLowerCase().includes(busca)));
   }
 
   function itemResposta(r) {
@@ -1420,10 +1422,10 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
             onclick: (e) => { e.stopPropagation(); abrirFormRapida(r); },
           }, icone('acoes', ICONE.pontos))
           : null),
-      el('span', { class: 'rapida-texto' }, r.texto),
+      el('span', { class: 'rapida-texto' }, textoDaRespostaRapida(r)),
       el('span', { class: 'rapida-meta' }, [
         r.usos ? `usada ${r.usos}×` : 'ainda não usada',
-        r.escopo === 'equipe' ? `equipe ${r.equipeNome || ''}`.trim() : (r.escopo === 'eu' ? 'só eu' : 'todas as equipes'),
+        r.dinamica ? 'automática por horário' : (r.escopo === 'equipe' ? `equipe ${r.equipeNome || ''}`.trim() : (r.escopo === 'eu' ? 'só eu' : 'todas as equipes')),
       ].join(' · ')));
   }
 
@@ -3411,10 +3413,12 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
             el('span', { class: 'rapida-atalho' }, `/${rr.atalho}`),
             el('div', { class: 'dados' },
               el('span', { class: 'nome' }, rr.titulo),
-              el('span', { class: 'email', title: rr.texto }, rr.texto)),
+              el('span', { class: 'email', title: textoDaRespostaRapida(rr) }, textoDaRespostaRapida(rr))),
             el('span', { class: 'papel' }, quemVe(rr)),
             el('span', { class: 'selo-presenca cinza' }, rr.usos ? `${rr.usos} uso${rr.usos === 1 ? '' : 's'}` : 'não usada'),
-            rr.podeEditar
+            rr.dinamica
+              ? el('span', { class: 'dica' }, 'fixa')
+              : rr.podeEditar
               ? el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => abrirFormConfRapida(rr) }, 'Editar')
               : el('span', { class: 'dica' }, 'de outra pessoa')))
           : [el('div', { class: 'config-vazio' }, 'Nenhuma resposta rápida criada ainda.')])),
