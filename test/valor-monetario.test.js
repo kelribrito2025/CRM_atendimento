@@ -42,23 +42,23 @@ test('ações de saldo: crédito e débito usam a máscara no campo de valor', (
   assert.match(campo, /value: tipo === 'reembolsar' \? '' : '0,00'/);
   assert.doesNotMatch(campo, /'50,00'/);
   assert.match(tela, /if \(tipo !== 'reembolsar'\) \{[\s\S]*campoValor\.select\(\)/);
-  assert.match(tela, /'Motivo \(opcional\)'/);
+  // O motivo voltou a ser obrigatório: o site exige nas sete ações, de 5 a 300.
+  assert.doesNotMatch(tela, /'Motivo \(opcional\)'/);
+  assert.match(tela, /const MINIMO_DO_MOTIVO = 5;/);
   assert.match(tela, /'Crédito manual para a conta'/);
   assert.match(tela, /'Ajuste manual para menos'/);
   assert.doesNotMatch(tela, /com motivo registrado/);
 
-  // Só a folha de SALDO deixou de exigir o motivo. A folha das ações de conta
-  // (desativar, banir) continua exigindo — lá o motivo é o que explica, meses
-  // depois, por que a conta de alguém foi cortada. Por isso a conferência olha
-  // a folha de saldo, e não o arquivo inteiro.
+  // As duas folhas cobram o motivo, e pelo MESMO número: quando o site mudar de
+  // ideia de novo, elas mudam juntas em vez de discordarem uma da outra.
   const inicioFolha = tela.indexOf('function abrirFolhaSaldo');
   const fimFolha = tela.indexOf('function abrirFolhaConta', inicioFolha);
-  const folhaSaldo = tela.slice(inicioFolha, fimFolha);
   assert.ok(inicioFolha > 0 && fimFolha > inicioFolha, 'as duas folhas precisam existir');
-  assert.doesNotMatch(folhaSaldo, /campoMotivo\.value\.trim\(\)\.length < (?:5|10)/);
 
-  const folhaConta = tela.slice(fimFolha);
-  assert.match(folhaConta, /minlength: '5'/);
-  assert.match(folhaConta, /campoMotivo\.value\.trim\(\)\.length < 5/, 'ação de conta com menos de cinco caracteres não pode sair do CRM');
-  assert.match(folhaConta, /pelo menos 5 caracteres/);
+  for (const folha of [tela.slice(inicioFolha, fimFolha), tela.slice(fimFolha)]) {
+    assert.match(folha, /campoMotivo\.value\.trim\(\)\.length < MINIMO_DO_MOTIVO/);
+    assert.match(folha, /pelo menos \$\{MINIMO_DO_MOTIVO\} caracteres/);
+  }
+  assert.match(tela, /minlength: '5'/);
+  assert.doesNotMatch(tela, /campoMotivo[^\n]*length < 10/, 'o mínimo antigo não pode ter sobrado em lugar nenhum');
 });

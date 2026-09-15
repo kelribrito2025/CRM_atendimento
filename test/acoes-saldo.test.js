@@ -99,19 +99,35 @@ test('reembolso: manda a compra escolhida e nunca o valor', async () => {
   assert.match(r.valor, /^R\$\s12,50$/);
 });
 
-test('motivo é opcional em crédito, débito e reembolso', async () => {
+test('motivo de 5 a 300 nas sete ações: o CRM barra antes de a requisição sair', async () => {
+  // O site exige motivo nas sete, de 5 a 300 caracteres. Se o CRM validasse mais
+  // frouxo, não ficaria mais permissivo: o pedido sairia e voltaria como um 400
+  // técnico, depois da viagem. O mínimo baixou de 10 para 5 porque "fraude" e
+  // "duplicado" são motivos legítimos e cabem em menos de dez letras.
   const { chamadas, fetchImpl } = apiFalsa(() => ok({ activationId: 555 }));
   const saldo = criarSaldo({ url: BASE, token: CHAVE, fetchImpl });
   const base = { pin: 7712, atendente: ATENDENTE };
 
-  await saldo.creditar({ ...base, valorCents: 500, motivo: '', chaveIdempotencia: 'sem-motivo-credito' });
-  await saldo.debitar({ ...base, valorCents: 500, motivo: 'ok', chaveIdempotencia: 'motivo-curto-debito' });
-  await saldo.reembolsar({ ...base, activationId: 555, chaveIdempotencia: 'sem-motivo-reembolso' });
+  for (const motivo of ['', 'ok', 'erro', '  ok  ']) {
+    await assert.rejects(
+      () => saldo.creditar({ ...base, valorCents: 500, motivo, chaveIdempotencia: 'm' }),
+      (e) => e.codigo === 'dados_invalidos' && /pelo menos 5/.test(e.message),
+      `"${motivo}" não podia passar`);
+  }
+  await assert.rejects(
+    () => saldo.debitar({ ...base, valorCents: 500, motivo: 'x'.repeat(301), chaveIdempotencia: 'm' }),
+    (e) => e.codigo === 'dados_invalidos');
+  assert.equal(chamadas.length, 0, 'nada disso pode chegar a sair do CRM');
+
+  // E os curtos que o site aceita passam, com o espaço já aparado.
+  await saldo.creditar({ ...base, valorCents: 500, motivo: 'fraude', chaveIdempotencia: 'm1' });
+  await saldo.debitar({ ...base, valorCents: 500, motivo: 'golpe', chaveIdempotencia: 'm2' });
+  await saldo.reembolsar({ ...base, activationId: 555, motivo: '  duplicado  ', chaveIdempotencia: 'm3' });
 
   assert.equal(chamadas.length, 3);
-  assert.equal('motivo' in chamadas[0].corpo, false);
-  assert.equal(chamadas[1].corpo.motivo, 'ok');
-  assert.equal('motivo' in chamadas[2].corpo, false);
+  assert.equal(chamadas[0].corpo.motivo, 'fraude');
+  assert.equal(chamadas[1].corpo.motivo, 'golpe');
+  assert.equal(chamadas[2].corpo.motivo, 'duplicado');
 });
 
 test('recusas: cada motivo vira um recado em português, e só duas valem repetir', async () => {
@@ -265,18 +281,24 @@ test('rota do CRM: a operação fica na auditoria, com valor e motivo', async ()
   } finally { await s.fechar(); }
 });
 
-test('rota do CRM: motivo vazio é aceito e a auditoria não ganha separador vazio', async () => {
+test('rota do CRM: sem motivo não sai, e o motivo curto vai inteiro para a auditoria', async () => {
   const s = await subirCrm();
   try {
-    const r = await s.chamar(`/api/conversas/${s.conversaId}/saldo/debitar`, 'POST', {
+    const vazio = await s.chamar(`/api/conversas/${s.conversaId}/saldo/debitar`, 'POST', {
       pin: '7712', valorCents: 500, motivo: '', chaveIdempotencia: 'marca-sem-motivo',
     });
+    assert.equal(vazio.status, 400);
+    assert.equal(vazio.dados.codigo, 'dados_invalidos');
+    assert.equal(s.chamadas.length, 0, 'sem motivo nada chega ao site');
+
+    const r = await s.chamar(`/api/conversas/${s.conversaId}/saldo/debitar`, 'POST', {
+      pin: '7712', valorCents: 500, motivo: 'fraude', chaveIdempotencia: 'marca-com-motivo',
+    });
     assert.equal(r.status, 200, JSON.stringify(r.dados));
-    assert.equal('motivo' in s.chamadas.at(-1).corpo, false);
+    assert.equal(s.chamadas.at(-1).corpo.motivo, 'fraude');
 
     const evento = await s.db.prepare("SELECT detalhe FROM auditoria_eventos WHERE acao = 'saldo_debitar' ORDER BY id DESC LIMIT 1").get();
-    assert.equal(evento.detalhe, 'Debitou R$ 5,00');
-    assert.doesNotMatch(evento.detalhe, /—/);
+    assert.match(evento.detalhe, /^Debitou R\$\s5,00 — fraude$/);
   } finally { await s.fechar(); }
 });
 

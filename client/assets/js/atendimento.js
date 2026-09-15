@@ -2050,6 +2050,9 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
   // na API e nunca o tipo da tela, então a confirmação de um crédito dizia
   // "debitando" — a última pergunta antes de mexer no dinheiro, invertida.
   const VERBO_DA_CONFIRMACAO = { adicionar: 'creditando', debitar: 'debitando' };
+  // Mesmo mínimo do site, nas sete ações. Num lugar só: quando ele mudar de
+  // ideia, as duas folhas mudam juntas em vez de discordarem uma da outra.
+  const MINIMO_DO_MOTIVO = 5;
   const NOME_DO_FEITO = { adicionar: 'Crédito', debitar: 'Débito', reembolsar: 'Reembolso' };
 
   function emReaisDoCentavo(centavos) {
@@ -2188,6 +2191,11 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 
     function confirmar() {
       if (estadoFolha.enviando) return;
+      // O site exige motivo nas sete ações. Cobrar aqui troca um 400 técnico
+      // vindo do outro lado por um recado claro, antes de a requisição sair.
+      if (campoMotivo.value.trim().length < MINIMO_DO_MOTIVO) {
+        return mostrarAviso(`Escreva o motivo com pelo menos ${MINIMO_DO_MOTIVO} caracteres — ele fica no registro da operação.`);
+      }
       if (tipo === 'reembolsar') {
         if (!estadoFolha.compra) return mostrarAviso('Escolha a compra que será reembolsada.');
         if (estadoFolha.compra.recebeuSms
@@ -2231,7 +2239,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
           antesDepois,
 
           el('div', { class: 'folha-campo' },
-            el('span', { class: 'secao-titulo' }, 'Motivo (opcional)'),
+            el('span', { class: 'secao-titulo' }, 'Motivo'),
             campoMotivo,
             el('span', { class: 'folha-dica' }, 'Se preenchido, fica no registro da operação, aqui e no sistema do site.'))),
 
@@ -2349,8 +2357,8 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 
     function confirmar() {
       if (estadoFolha.enviando) return;
-      if (campoMotivo.value.trim().length < 5) {
-        return mostrarAviso('Escreva o motivo com pelo menos 5 caracteres — ele fica no registro da operação.');
+      if (campoMotivo.value.trim().length < MINIMO_DO_MOTIVO) {
+        return mostrarAviso(`Escreva o motivo com pelo menos ${MINIMO_DO_MOTIVO} caracteres — ele fica no registro da operação.`);
       }
       if (perigosa && !window.confirm(`Banir a conta de ${nome}?\n\nO cliente perde o acesso e as chaves de API dele são cortadas na hora.`)) return;
       enviar();

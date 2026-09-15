@@ -298,21 +298,25 @@ function criarSaldo({ url = URL_PADRAO, token = '', fetchImpl = globalThis.fetch
     const marca = String(chaveIdempotencia || '').trim();
     if (!marca || marca.length > 120) throw new ErroSaldo(RECADO_DA_RECUSA.sem_idempotency_key, { status: 400, codigo: 'sem_idempotency_key' });
 
+    // O site exige motivo nas sete ações, de 5 a 300 caracteres. Validar aqui
+    // troca um 400 técnico do outro lado por um recado que o atendente entende,
+    // e antes de a requisição sair.
     const razao = String(motivo || '').trim();
-    if (razao.length > 300) {
-      throw new ErroSaldo('O motivo pode ter no máximo 300 caracteres.', { status: 400, codigo: 'dados_invalidos' });
+    if (razao.length < 5 || razao.length > 300) {
+      throw new ErroSaldo('Escreva o motivo com pelo menos 5 caracteres — ele fica no registro da operação.', { status: 400, codigo: 'dados_invalidos' });
     }
     if (!atendente?.nome || !String(atendente?.email || '').includes('@')) {
       throw new ErroSaldo('Faltou identificar o atendente. Saia e entre de novo no CRM.', { status: 400, codigo: 'dados_invalidos' });
     }
 
-    const corpo = {
-      pin: pinNumero(pin),
-      atendente: { id: String(atendente.id), nome: String(atendente.nome), email: String(atendente.email) },
+    return {
+      marca,
+      corpo: {
+        pin: pinNumero(pin),
+        motivo: razao,
+        atendente: { id: String(atendente.id), nome: String(atendente.nome), email: String(atendente.email) },
+      },
     };
-    // Motivo vazio não vai como campo em branco: o site trata a ausência.
-    if (razao) corpo.motivo = razao;
-    return { marca, corpo };
   }
 
   // Manda o pedido e devolve a resposta já lida. Recusa vira ErroSaldo com o
@@ -415,13 +419,6 @@ function criarSaldo({ url = URL_PADRAO, token = '', fetchImpl = globalThis.fetch
   // por exemplo) para a tela não precisar decidir — e para o atendente não
   // achar que resolveu quando a conta continua bloqueada por outro motivo.
   async function acaoDeConta(nome, { pin, motivo, atendente, chaveIdempotencia }) {
-    // Aqui o motivo é obrigatório, ao contrário das ações de saldo: é ele que
-    // explica, meses depois, por que a conta de alguém foi cortada. O site
-    // também exige — de 5 a 300 caracteres —, então mandar vazio só renderia
-    // uma recusa confusa na cara do atendente.
-    if (String(motivo || '').trim().length < 5) {
-      throw new ErroSaldo('Escreva o motivo com pelo menos 5 caracteres — ele fica no registro da operação.', { status: 400, codigo: 'dados_invalidos' });
-    }
     const { marca, corpo } = conferirPedido({ pin, motivo, atendente, chaveIdempotencia });
     const { dados, repetida } = await postar(
       enderecoIrmao(endereco, CAMINHO_DA_CONTA[nome]), marca, corpo, RECADO_DA_CONTA[nome] || {});
