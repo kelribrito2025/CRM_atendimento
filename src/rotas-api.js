@@ -5,7 +5,7 @@ const crypto = require('node:crypto');
 const { iniciais, nomeCurto, TAMANHO_MAXIMO_ANEXO, ROTULO_MIDIA, tipoDoArquivo, nomeDoCabecalho } = require('./util');
 const canais = require('./canais');
 const { tokenValido } = require('./telegram');
-const { normalizarPin } = require('./saldo');
+const { normalizarPin, aplicarOpcoesConhecidas } = require('./saldo');
 const { LimitadorTentativas } = require('./limitador');
 const { interpretarStatus } = require('./uazapi');
 const acesso = require('./acesso');
@@ -1208,7 +1208,15 @@ function criarRotasApi(db, opcoes = {}) {
 
   rotaDeLeitura('/suporte/compras', (pin, opcoes) => saldo.listarCompras(pin, opcoes));
   rotaDeLeitura('/suporte/transacoes', async (pin, opcoes) => {
-    const resultado = await saldo.listarTransacoes(pin, opcoes);
+    let resultado = await saldo.listarTransacoes(pin, opcoes);
+    if (resultado.transacoes.some((t) => t.ativacaoId && !t.option)) {
+      try {
+        const comprasRecentes = await saldo.listarCompras(pin, { limite: 100 });
+        resultado = { ...resultado, transacoes: aplicarOpcoesConhecidas(resultado.transacoes, comprasRecentes.compras) };
+      } catch {
+        // O extrato continua disponível mesmo se a consulta auxiliar de compras falhar.
+      }
+    }
     const compras = [...new Set(resultado.transacoes
       .filter((t) => ehReembolsoDoAtendimento(t)
         && Number.isSafeInteger(Number(t.ativacaoId)) && Number(t.ativacaoId) > 0)

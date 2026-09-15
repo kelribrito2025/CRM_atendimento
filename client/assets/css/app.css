@@ -507,7 +507,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .transacao-ic.entrada { background: var(--extrato-verde-fundo); color: var(--extrato-verde); }
 .transacao-ic.saida { background: var(--extrato-vermelho-fundo); color: var(--extrato-vermelho); }
 .transacao-texto { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-.transacao-texto .tipo { font-size: 12px; font-weight: 700; }
+.transacao-texto .tipo { font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .transacao-texto .desc { font-size: 10.5px; color: var(--texto-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .transacao-valores { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
 .transacao-valores .valor { font-family: "Courier New", monospace; font-size: 12px; font-weight: 700; }

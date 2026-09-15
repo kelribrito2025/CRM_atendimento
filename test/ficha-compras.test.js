@@ -5,7 +5,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { criarSaldo } = require('../src/saldo');
+const fs = require('node:fs');
+const path = require('node:path');
+const { criarSaldo, aplicarOpcoesConhecidas } = require('../src/saldo');
 
 const CHAVE = 'chave-de-teste';
 const BASE = 'https://exemplo.internal/api/agents/customer/lookup';
@@ -125,6 +127,47 @@ test('extrato: valor com sinal, saldo que ficou e rótulo pronto', async () => {
   assert.equal(reembolso.feitoPorAdmin, true);
   assert.equal(reembolso.tipoTexto, 'Reembolso manual');
   assert.equal(r.total, 137);
+});
+
+test('extrato: opção vai para o título e sai da descrição, inclusive no reembolso correspondente', async () => {
+  const { fetchImpl } = apiFalsa({
+    transactions: {
+      transactions: [
+        { id: 4, tipo: 'reembolso', tipoLegivel: 'Reembolso', descricao: 'Reembolso de ativação cancelada #77', valorCents: 1450, ativacaoId: 77 },
+        { id: 3, tipo: 'compra', tipoLegivel: 'Compra', descricao: 'Opção 1 - Compra em andamento - Whatsapp (Brasil)', valorCents: -1450, ativacaoId: 77 },
+        { id: 2, tipo: 'compra', tipoLegivel: 'Compra', descricao: 'Opção 4 - Compra concluída', valorCents: -1450, ativacaoId: 78, option: { id: 1800001, name: 'Opção 4', interno: 'não expor' } },
+        { id: 1, tipo: 'recarga', tipoLegivel: 'Recarga', descricao: 'Recarga via PIX', valorCents: 3000 },
+      ],
+    },
+  });
+  const r = await criarSaldo({ url: BASE, token: CHAVE, fetchImpl }).listarTransacoes(7712);
+  const [reembolso, compraAntiga, compraEstruturada, recarga] = r.transacoes;
+
+  assert.deepEqual(compraAntiga.option, { id: null, name: 'Opção 1' });
+  assert.equal(compraAntiga.descricao, 'Compra em andamento - Whatsapp (Brasil)');
+  assert.deepEqual(reembolso.option, { id: null, name: 'Opção 1' }, 'a mesma ativação compartilha a opção');
+  assert.equal(reembolso.descricao, 'Reembolso de ativação cancelada #77');
+  assert.deepEqual(compraEstruturada.option, { id: 1800001, name: 'Opção 4' });
+  assert.equal(compraEstruturada.descricao, 'Compra concluída');
+  assert.equal(recarga.option, null);
+
+  const tela = fs.readFileSync(path.join(__dirname, '..', 'client/assets/js/atendimento.js'), 'utf8');
+  assert.match(tela, /t\.option\?\.name \? `\$\{t\.tipoTexto\} - \$\{t\.option\.name\}` : t\.tipoTexto/);
+  assert.match(tela, /class: 'tipo', title: titulo \}, titulo/);
+});
+
+test('extrato: opção conhecida é ligada somente pelo ID exato da ativação', () => {
+  const transacoes = [
+    { id: 1, tipoTexto: 'Reembolso', ativacaoId: 77, valorCentavos: 1450, option: null },
+    { id: 2, tipoTexto: 'Reembolso', ativacaoId: 88, valorCentavos: 1450, option: null },
+  ];
+  const compras = [
+    { id: 77, valorCentavos: 1450, option: { id: 1, name: 'Opção 1' } },
+    { id: 99, valorCentavos: 1450, option: { id: 2, name: 'Opção 2' } },
+  ];
+  const resultado = aplicarOpcoesConhecidas(transacoes, compras);
+  assert.deepEqual(resultado[0].option, { id: 1, name: 'Opção 1' });
+  assert.equal(resultado[1].option, null, 'mesmo valor não autoriza deduzir a opção errada');
 });
 
 test('extrato: tipo desconhecido vira "Movimentação" em vez de quebrar a lista', async () => {

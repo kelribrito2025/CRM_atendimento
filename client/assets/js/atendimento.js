@@ -2125,10 +2125,11 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
   }
 
   function itemTransacao(t) {
+    const titulo = t.option?.name ? `${t.tipoTexto} - ${t.option.name}` : t.tipoTexto;
     return el('div', { class: 'transacao-item' },
       el('span', { class: `transacao-ic ${t.entrada ? 'entrada' : 'saida'}` }, icone(t.tipo, t.entrada ? ICONE.maisGrande : ICONE.menos)),
       el('div', { class: 'transacao-texto' },
-        el('span', { class: 'tipo' }, t.tipoTexto),
+        el('span', { class: 'tipo', title: titulo }, titulo),
         el('span', { class: 'desc' }, t.descricao)),
       el('div', { class: 'transacao-valores' },
         el('span', { class: `valor ${t.entrada ? 'entrada' : 'saida'}` }, `${t.entrada ? '+' : ''}${t.valor}`),
