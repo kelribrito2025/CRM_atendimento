@@ -2144,6 +2144,11 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     debitar: ['Debitar saldo', 'Ajuste manual para menos'],
     reembolsar: ['Reembolsar', 'Selecione a compra a devolver'],
   };
+  const ICONES_FOLHA_SALDO = {
+    adicionar: ['adicionar', ICONE.maisGrande],
+    debitar: ['debitar', ICONE.menos],
+    reembolsar: ['reembolsar', ICONE.voltar],
+  };
   const ATALHOS_VALOR = ['10,00', '20,00', '50,00', '100,00'];
   // Na tela é "Adicionar"; na API do site a ação chama "creditar".
   const ACAO_NA_API = { adicionar: 'creditar', debitar: 'debitar', reembolsar: 'reembolsar' };
@@ -2175,6 +2180,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 
   function abrirFolhaSaldo(tipo, c) {
     const [titulo, subtitulo] = TITULOS_FOLHA[tipo];
+    const [nomeIcone, fallbackIcone] = ICONES_FOLHA_SALDO[tipo];
     const cli = saldo.conversaId === c.id ? saldo.cliente : null;
     const nome = cli?.nome || c.contato.nome;
     const pin = String(saldo.pin || c.contato.pin || '').trim();
@@ -2314,6 +2320,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     const fundo = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === fundo) fundo.remove(); } },
       el('div', { class: 'folha', role: 'dialog', 'aria-modal': 'true', 'aria-label': titulo },
         el('div', { class: 'folha-cab' },
+          el('span', { class: `folha-titulo-icone ${tipo}`, 'aria-hidden': 'true' }, icone(nomeIcone, fallbackIcone)),
           el('div', { class: 'folha-titulo' },
             el('strong', {}, titulo),
             el('span', {}, `${nome}${pin ? ` · PIN ${pin}` : ''}`)),
