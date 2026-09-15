@@ -1491,7 +1491,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
         avatarCliente(c, 'avatar g verde'),
         el('div', { class: 'chat-info' },
           el('span', { class: 'chat-nome' }, c.contato.nome),
-          el('span', { class: 'chat-sub' }, [c.contato.empresa, `protocolo #${c.protocolo}`, textoAberto(c.criadaEm, c.status)].filter(Boolean).join(' · '))),
+          el('span', { class: 'chat-sub' }, [c.contato.empresa, textoAberto(c.criadaEm, c.status)].filter(Boolean).join(' · '))),
         comDica(el('button', { type: 'button', class: 'btn-icone btn-info hov', onclick: () => $('#painel').classList.toggle('aberto') }, icone('info', ICONE.info)), 'ficha', 'Ficha do cliente'),
         comDica(el('button', { type: 'button', class: 'btn-icone hov', onclick: (e) => { e.stopPropagation(); abrirMenuAcoes(e.currentTarget); } }, icone('acoes', ICONE.pontos)), 'acoes', 'Mais ações')));
 
