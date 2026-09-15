@@ -9,14 +9,15 @@ const { abrirBancoDeTeste } = require('./apoio');
 const { criarApp } = require('../src/app');
 const { criarEnviador } = require('../src/email');
 const { gerarHashSenha } = require('../src/senha');
+const { criarAvisos } = require('../src/eventos');
 
 const ADMIN = { email: 'admin@teste.com', senha: 'segredo123' };
 
-async function subirServidor() {
+async function subirServidor(opcoes = {}) {
   const db = await abrirBancoDeTeste();
   await semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Kely Ribeiro', comDadosExemplo: false });
   const enviador = criarEnviador({ modo: 'silencioso' });
-  const app = criarApp(db, { enviador, baseUrl: 'https://crm.exemplo.com.br' });
+  const app = criarApp(db, { enviador, baseUrl: 'https://crm.exemplo.com.br', ...opcoes });
   const servidor = await new Promise((r) => { const s = app.listen(0, () => r(s)); });
   const base = `http://127.0.0.1:${servidor.address().port}`;
 
@@ -50,6 +51,43 @@ test('equipe: lista quem trabalha no CRM, com papel, equipes e presença', async
     );
     assert.deepEqual(r.dados.equipes.map((e) => e.nome), ['Reembolso', 'Admin', 'Prioridade']);
     assert.deepEqual(r.dados.convites, []);
+  } finally { await s.fechar(); }
+});
+
+test('inbox da equipe: administrador cria com nome e cor e ela aparece vazia no resumo', async () => {
+  const avisos = criarAvisos();
+  const eventos = [];
+  avisos.assinar((evento) => eventos.push(evento));
+  const s = await subirServidor({ avisos });
+  try {
+    const criada = await s.chamar('/api/equipe/inboxes', 'POST', { nome: '  Financeiro   VIP  ', cor: '#a1b2c3' });
+    assert.equal(criada.status, 201, JSON.stringify(criada.dados));
+    assert.deepEqual(
+      { nome: criada.dados.equipe.nome, cor: criada.dados.equipe.cor, abertas: criada.dados.equipe.abertas, membros: criada.dados.equipe.membros },
+      { nome: 'Financeiro VIP', cor: '#A1B2C3', abertas: 0, membros: [] },
+    );
+
+    const resumo = await s.chamar('/api/resumo');
+    const inbox = resumo.dados.equipes.find((e) => Number(e.id) === Number(criada.dados.equipe.id));
+    assert.deepEqual(
+      { nome: inbox.nome, cor: inbox.cor, abertas: inbox.abertas, semResposta: inbox.semResposta, membros: inbox.membros },
+      { nome: 'Financeiro VIP', cor: '#A1B2C3', abertas: 0, semResposta: 0, membros: [] },
+    );
+    assert.equal(resumo.dados.equipes.at(-1).nome, 'Financeiro VIP', 'a nova inbox entra depois das existentes');
+    assert.ok((await s.chamar('/api/equipe')).dados.equipes.some((e) => e.nome === 'Financeiro VIP'));
+    assert.deepEqual(eventos.at(-1), { origem: 'equipe_criada', equipeId: criada.dados.equipe.id });
+  } finally { await s.fechar(); }
+});
+
+test('inbox da equipe: recusa nome repetido, reservado ou inválido e cor inválida', async () => {
+  const s = await subirServidor();
+  try {
+    assert.equal((await s.chamar('/api/equipe/inboxes', 'POST', { nome: 'Financeiro', cor: '#123ABC' })).status, 201);
+    assert.equal((await s.chamar('/api/equipe/inboxes', 'POST', { nome: 'financeiro', cor: '#654321' })).status, 409);
+    assert.equal((await s.chamar('/api/equipe/inboxes', 'POST', { nome: 'Admin', cor: '#654321' })).status, 400);
+    assert.equal((await s.chamar('/api/equipe/inboxes', 'POST', { nome: 'A', cor: '#654321' })).status, 400);
+    assert.equal((await s.chamar('/api/equipe/inboxes', 'POST', { nome: 'x'.repeat(61), cor: '#654321' })).status, 400);
+    assert.equal((await s.chamar('/api/equipe/inboxes', 'POST', { nome: 'Suporte', cor: 'verde' })).status, 400);
   } finally { await s.fechar(); }
 });
 
@@ -169,6 +207,7 @@ test('equipe: atendente comum não entra nas configurações da equipe', async (
     const dele = await s.entrar('bruno@teste.com', 'outrasenha123');
     for (const [caminho, metodo, corpo] of [
       ['/api/equipe', 'GET', null],
+      ['/api/equipe/inboxes', 'POST', { nome: 'Financeiro', cor: '#12B85C' }],
       ['/api/equipe/convites', 'POST', { email: 'x@y.com' }],
       ['/api/equipe/convites/abc', 'DELETE', null],
       ['/api/equipe/usuarios/1', 'PATCH', { nome: 'Nome alterado' }],

@@ -309,6 +309,28 @@ function criarRotasApi(db, opcoes = {}) {
     res.json({ usuarios, convites, equipes: await sql.equipes.all() });
   });
 
+  // Cria uma caixa organizacional da equipe. Ela nasce vazia e já fica
+  // disponível para receber conversas pelo menu de atribuição.
+  r.post('/equipe/inboxes', soAdmin, async (req, res) => {
+    const nome = String(req.body?.nome || '').trim().replace(/\s+/g, ' ');
+    const cor = normalizarCorCanal(req.body?.cor);
+    if (nome.length < 2) return res.status(400).json({ erro: 'Digite um nome com pelo menos 2 caracteres.' });
+    if (nome.length > 60) return res.status(400).json({ erro: 'O nome da inbox pode ter no máximo 60 caracteres.' });
+    if (nome.toLocaleLowerCase('pt-BR') === 'admin') {
+      return res.status(400).json({ erro: 'O nome Admin é reservado pelo sistema.' });
+    }
+    if (!cor) return res.status(400).json({ erro: 'Escolha uma cor válida para a inbox.' });
+    const existente = await db.prepare('SELECT id FROM equipes WHERE LOWER(nome) = LOWER(?)').get(nome);
+    if (existente) return res.status(409).json({ erro: 'Já existe uma inbox com esse nome.' });
+
+    const ultima = await db.prepare('SELECT MAX(ordem) AS fim FROM equipes').get();
+    const info = await db.prepare('INSERT INTO equipes (nome, cor, ordem) VALUES (?, ?, ?)')
+      .run(nome, cor, Number(ultima?.fim ?? -1) + 1);
+    const equipe = await db.prepare('SELECT id, nome, cor FROM equipes WHERE id = ?').get(Number(info.lastInsertRowid));
+    avisos?.avisar({ origem: 'equipe_criada', equipeId: Number(equipe.id) });
+    res.status(201).json({ equipe: { ...equipe, abertas: 0, semResposta: 0, membros: [] } });
+  });
+
   // Perfil interno: não recebe senha nem pode entrar sozinho. Depois do login,
   // a conta escolhe qual pessoa está atendendo e toda autoria usa esse perfil.
   r.post('/equipe/usuarios', soAdmin, async (req, res) => {

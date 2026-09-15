@@ -724,6 +724,14 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 .modal-confirmacao-icone svg { width: 20px; height: 20px; }
 .modal-acoes { display: flex; justify-content: flex-end; gap: 9px; }
 .modal-acoes .btn-suave, .modal-acoes .btn-perigo { height: 40px; padding: 0 16px; }
+.modal.criar-inbox { max-width: 500px; }
+.criar-inbox-campos { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.criar-inbox-campos input { box-sizing: border-box; width: 100%; }
+.criar-inbox-cor { width: 94px; min-width: 0; }
+.criar-inbox-cor input[type="color"] { width: 94px; padding: 5px; cursor: pointer; }
+.criar-inbox-cor input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.criar-inbox-cor input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 8px; }
+.criar-inbox-cor input[type="color"]::-moz-color-swatch { border: 0; border-radius: 8px; }
 .modal.atribuir-inbox { max-width: 480px; }
 .atribuir-inbox-lista { display: flex; flex-direction: column; gap: 8px; }
 .atribuir-inbox-opcao {

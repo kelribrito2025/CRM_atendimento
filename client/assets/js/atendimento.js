@@ -1000,7 +1000,12 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
       el('span', { class: 'separador' }),
       el('div', { class: 'linha-rotulo' },
         el('span', { class: 'rotulo' }, 'Inbox da equipe'),
-        desligar(el('button', { type: 'button', class: 'btn-mini' }, icone('mais', ICONE.mais)), 'Cadastro de equipes: em breve')),
+        (r.conta || r.usuario).papel === 'admin'
+          ? el('button', {
+            type: 'button', class: 'btn-mini hov', title: 'Criar inbox da equipe',
+            'aria-label': 'Criar inbox da equipe', onclick: abrirCriacaoInbox,
+          }, icone('mais', ICONE.mais))
+          : null),
       el('div', { class: 'lista-nav' },
         ...r.equipes
           .filter((e) => e.nome.trim().toLocaleLowerCase('pt-BR') !== 'admin')
@@ -1026,6 +1031,83 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
           : desligar(el('button', { type: 'button', class: 'btn-tracejado' }, icone('mais', ICONE.mais), equipeSel ? 'Adicionar à equipe' : 'Adicionar atendente'), 'Cadastro de atendentes temporariamente bloqueado'))
         : null,
     );
+  }
+
+  function abrirCriacaoInbox() {
+    if ((estado.resumo?.conta || estado.resumo?.usuario)?.papel !== 'admin') {
+      return toast('Só um administrador pode criar inboxes da equipe.');
+    }
+    const erro = el('span', { class: 'dica erro-texto', 'aria-live': 'polite' });
+    const nome = el('input', {
+      type: 'text', maxlength: '60', autocomplete: 'off', placeholder: 'Ex.: Financeiro',
+      'aria-label': 'Nome da nova inbox',
+    });
+    const cor = el('input', {
+      type: 'color', value: '#12B85C', 'aria-label': 'Cor da nova inbox', title: 'Escolher cor da inbox',
+    });
+    let salvando = false;
+    const fundo = el('div', { class: 'modal-fundo' });
+    const cancelar = el('button', { type: 'button', class: 'btn-suave hov' }, 'Cancelar');
+    const salvar = el('button', { type: 'button', class: 'btn-primario' }, 'Criar inbox');
+
+    function fechar() {
+      if (salvando) return;
+      document.removeEventListener('keydown', aoTeclado);
+      fundo.remove();
+    }
+    const aoTeclado = (ev) => { if (ev.key === 'Escape') fechar(); };
+    fundo.addEventListener('click', (ev) => { if (ev.target === fundo) fechar(); });
+    cancelar.addEventListener('click', fechar);
+
+    async function concluir() {
+      if (salvando) return;
+      const nomeLimpo = nome.value.trim().replace(/\s+/g, ' ');
+      if (nomeLimpo.length < 2) {
+        erro.textContent = 'Digite um nome com pelo menos 2 caracteres.';
+        nome.focus();
+        return;
+      }
+      if (nomeLimpo.toLocaleLowerCase('pt-BR') === 'admin') {
+        erro.textContent = 'O nome Admin é reservado pelo sistema.';
+        nome.focus();
+        return;
+      }
+      salvando = true;
+      salvar.disabled = true;
+      cancelar.disabled = true;
+      erro.textContent = '';
+      try {
+        const { equipe } = await api('/equipe/inboxes', { method: 'POST', body: { nome: nomeLimpo, cor: cor.value } });
+        document.removeEventListener('keydown', aoTeclado);
+        fundo.remove();
+        await carregarResumo();
+        toast(`Inbox ${equipe.nome} criada.`);
+      } catch (e) {
+        salvando = false;
+        salvar.disabled = false;
+        cancelar.disabled = false;
+        erro.textContent = e.message;
+        nome.focus();
+      }
+    }
+
+    nome.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' && !ev.isComposing) { ev.preventDefault(); concluir(); }
+    });
+    salvar.addEventListener('click', concluir);
+    fundo.append(el('div', { class: 'modal criar-inbox', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'criar-inbox-titulo' },
+      el('div', { class: 'modal-corpo' },
+        el('div', { class: 'modal-cab' },
+          el('div', {}, el('h2', { id: 'criar-inbox-titulo' }, 'Criar inbox da equipe'), el('p', {}, 'Separe os atendimentos por assunto ou responsabilidade.')),
+          el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', 'aria-label': 'Fechar', onclick: fechar }, svg(ICONE.fechar))),
+        el('div', { class: 'criar-inbox-campos' },
+          el('label', { class: 'config-campo' }, el('span', {}, 'Nome da inbox'), nome),
+          el('label', { class: 'config-campo criar-inbox-cor' }, el('span', {}, 'Cor'), cor)),
+        erro,
+        el('div', { class: 'modal-acoes' }, cancelar, salvar))));
+    document.body.append(fundo);
+    document.addEventListener('keydown', aoTeclado);
+    nome.focus();
   }
 
   /* ================================================================
