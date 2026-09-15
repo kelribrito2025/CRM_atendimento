@@ -24,6 +24,11 @@ test('compras: card mostra a data recebida da API sem inventar valor ausente', (
   assert.match(css, /\.compra-item \.data-compra/);
 });
 
+test('compras: título acrescenta a opção recebida e não inventa texto quando ela é nula', () => {
+  assert.match(javascript, /compra\.option\?\.name \? `\$\{compra\.descricao\} - \$\{compra\.option\.name\}` : compra\.descricao/);
+  assert.match(javascript, /class: 'nome', title: titulo/);
+});
+
 test('compras: número comprado e data usam texto maior', () => {
   assert.match(css, /\.compra-item \.numero \{[^}]*font-size: 12px;[^}]*font-weight: 700;[^}]*color: var\(--extrato-verde\);/);
   assert.match(css, /\.compra-item \.data-compra \{ font-size: 12px;/);

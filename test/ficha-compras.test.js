@@ -39,6 +39,7 @@ const UMA_COMPRA = {
   podeReembolsar: true,
   motivoNaoPodeReembolsar: null,
   createdAt: '2026-09-14T11:00:00.000Z',
+  option: { id: 1800001, name: 'Opção 4', campoInterno: 'não expor' },
 };
 
 test('compras: o CRM pede pelo PIN como número e entende a paginação', async () => {
@@ -64,14 +65,24 @@ test('compras: o CRM pede pelo PIN como número e entende a paginação', async 
   assert.match(c.valor, /^R\$\s12,50$/);
   assert.equal(c.statusTexto, 'Concluída');
   assert.equal(c.data, '2026-09-14T11:00:00.000Z');
+  assert.deepEqual(c.option, { id: 1800001, name: 'Opção 4' });
   assert.equal(c.podeReembolsar, true);
   assert.equal(c.recebeuSms, true);
   // A margem do fornecedor não passa para a tela.
   assert.equal('costCents' in c, false);
   assert.equal(JSON.stringify(c).includes('400'), false);
+  assert.equal(JSON.stringify(c).includes('campoInterno'), false);
 
   await saldo.listarCompras(555, { cursor: 554 });
   assert.equal(chamadas[1].corpo.cursor, 554, 'a página seguinte manda o cursor');
+});
+
+test('compras: opção ausente ou apagada continua nula, sem dedução', async () => {
+  const { fetchImpl } = apiFalsa({
+    activations: { activations: [{ ...UMA_COMPRA, option: null }], total: 1, proximoCursor: null },
+  });
+  const r = await criarSaldo({ url: BASE, token: CHAVE, fetchImpl }).listarCompras(99);
+  assert.equal(r.compras[0].option, null);
 });
 
 test('compras: o motivo de não poder reembolsar chega pronto para o atendente', async () => {

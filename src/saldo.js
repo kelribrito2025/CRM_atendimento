@@ -105,9 +105,13 @@ function resumirCompra(a) {
   const centavos = Number.isFinite(a?.sellingPriceCents) ? Math.round(a.sellingPriceCents)
     : (Number.isFinite(a?.sellingPrice) ? Math.round(a.sellingPrice * 100) : 0);
   const rotulo = [a?.service?.name, a?.country?.name].filter(Boolean).join(' · ');
+  const option = a?.option && typeof a.option === 'object' && String(a.option.name || '').trim()
+    ? { id: a.option.id ?? null, name: String(a.option.name).trim() }
+    : null;
   return {
     id: a?.id ?? null,
     descricao: a?.descricao || rotulo || 'Compra',
+    option,
     numero: a?.phoneNumber || null,
     valor: emReais(centavos),
     valorCentavos: centavos,

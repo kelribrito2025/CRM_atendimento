@@ -2073,9 +2073,10 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     const cancelada = compra.status === 'cancelled' || String(compra.statusTexto || '').toLowerCase() === 'cancelada';
     const selo = cancelada ? 'cancelada' : (compra.reembolsada ? 'reembolsada' : (compra.status === 'completed' || compra.status === 'active' ? 'ok' : 'neutro'));
     const dataHora = formatarDataHoraCompra(compra.data);
+    const titulo = compra.option?.name ? `${compra.descricao} - ${compra.option.name}` : compra.descricao;
     return el('div', { class: 'compra-item' },
       el('div', { class: 'linha' },
-        el('span', { class: 'nome' }, compra.descricao),
+        el('span', { class: 'nome', title: titulo }, titulo),
         el('span', { class: 'valor' }, compra.valor)),
       el('div', { class: 'linha' },
         compra.numero
