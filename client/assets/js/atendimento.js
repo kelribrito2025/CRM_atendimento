@@ -11,6 +11,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
 import { textoDaRespostaRapida } from './saudacao.mjs';
 import { criarAvisosHorario } from './horario-atendimento.mjs';
+import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
 
 (() => {
   'use strict';
@@ -272,6 +273,7 @@ import { criarAvisosHorario } from './horario-atendimento.mjs';
     estado.conversas = conversas;
     renderLista();
     const aindaExiste = conversas.some((c) => c.id === estado.conversaId);
+    if (selecionarPrimeira && aindaExiste && estado.conversa) aplicarConversa(estado.conversa);
     if (selecionarPrimeira && !aindaExiste) {
       if (conversas.length) await abrirConversa(conversas[0].id);
       else {
@@ -357,6 +359,7 @@ import { criarAvisosHorario } from './horario-atendimento.mjs';
         || ultimaNova !== ultimaAtual
         || idsNovos !== idsAtuais
         || conversa.status !== atual.status
+        || conversa.statusEquipe !== atual.statusEquipe
         || conversa.atendente?.id !== atual.atendente?.id
         || conversa.equipe?.id !== atual.equipe?.id
         || conversa.contato.pinValidadoEm !== atual.contato.pinValidadoEm;
@@ -871,7 +874,7 @@ import { criarAvisosHorario } from './horario-atendimento.mjs';
     if (!c) return null;
     try {
       const r = await api(`/conversas/${c.id}`, { method: 'PATCH', body: corpo });
-      Object.assign(c, { atendente: r.conversa.atendente, equipe: r.conversa.equipe });
+      Object.assign(c, { atendente: r.conversa.atendente, equipe: r.conversa.equipe, statusEquipe: r.conversa.statusEquipe });
       aplicarConversa(c);
       await Promise.all([carregarResumo(), carregarConversas()]);
       return r.conversa;
@@ -891,30 +894,37 @@ import { criarAvisosHorario } from './horario-atendimento.mjs';
   // O card some assim que o gesto completa; a confirmação vai atrás. Se o
   // servidor recusar, a conversa volta para a lista e o atendente é avisado.
   async function encerrarPeloCard(id) {
-    if (encerrandoAgora.has(id)) return;
-    encerrandoAgora.add(id);
-    const conversaAberta = estado.conversa?.id === id ? estado.conversa.status : null;
+    const equipeId = estado.equipeId;
+    const chave = chaveDaInbox(id, equipeId);
+    const campo = equipeId ? 'statusEquipe' : 'status';
+    if (encerrandoAgora.has(chave)) return;
+    encerrandoAgora.add(chave);
+    const conversaAberta = estado.conversa?.id === id ? estado.conversa[campo] : null;
     if (conversaAberta) {
-      estado.conversa.status = 'resolvida';
+      estado.conversa[campo] = 'resolvida';
       aplicarConversa(estado.conversa);
     }
     renderLista();
-    toast('Conversa encerrada.');
+    toast(equipeId ? 'Conversa encerrada nesta inbox.' : 'Conversa encerrada na caixa de entrada.');
     try {
-      await api(`/conversas/${id}/status`, { method: 'POST', body: { status: 'resolvida' } });
+      const r = await api(`/conversas/${id}/status`, { method: 'POST', body: { status: 'resolvida', equipeId } });
+      if (estado.conversa?.id === id) {
+        Object.assign(estado.conversa, { status: r.conversa.status, statusEquipe: r.conversa.statusEquipe });
+        aplicarConversa(estado.conversa);
+      }
       await Promise.all([carregarResumo(), carregarConversas()]);
     } catch (e) {
       // Não deu: devolve a conversa para a lista, como estava. Sair da lista de
       // "encerrando" vem ANTES de redesenhar, senão o card continua escondido.
-      encerrandoAgora.delete(id);
+      encerrandoAgora.delete(chave);
       if (conversaAberta && estado.conversa?.id === id) {
-        estado.conversa.status = conversaAberta;
+        estado.conversa[campo] = conversaAberta;
         aplicarConversa(estado.conversa);
       }
       toast(e.message);
       renderLista();
     } finally {
-      encerrandoAgora.delete(id);
+      encerrandoAgora.delete(chave);
     }
   }
 
@@ -922,8 +932,8 @@ import { criarAvisosHorario } from './horario-atendimento.mjs';
     const c = estado.conversa;
     if (!c) return;
     try {
-      const r = await api(`/conversas/${c.id}/status`, { method: 'POST', body: { status } });
-      Object.assign(c, { status: r.conversa.status });
+      const r = await api(`/conversas/${c.id}/status`, { method: 'POST', body: { status, equipeId: estado.equipeId } });
+      Object.assign(c, { status: r.conversa.status, statusEquipe: r.conversa.statusEquipe });
       aplicarConversa(c);
       toast(status === 'resolvida' ? 'Conversa marcada como resolvida.' : 'Conversa reaberta.');
       await Promise.all([carregarResumo(), carregarConversas()]);
@@ -1117,7 +1127,9 @@ import { criarAvisosHorario } from './horario-atendimento.mjs';
     return t.length > limite ? `${t.slice(0, limite - 1).trimEnd()}…` : t;
   }
 
-  function itemConversa(c) {
+  function itemConversa(original) {
+    const status = statusNaInbox(original, estado.equipeId);
+    const c = { ...original, status, semResposta: original.semResposta && status === 'aberta' };
     const ativa = c.id === estado.conversaId;
     const semRespostaAtrasada = c.semResposta && Number(c.semRespostaMin) > 5;
     const corAvatar = ativa ? 'verde' : (c.canal === 'telegram' ? 'azul' : 'cinza');
@@ -1230,10 +1242,10 @@ import { criarAvisosHorario } from './horario-atendimento.mjs';
   function renderLista() {
     cancelarPressao(); // a lista vai ser trocada: nenhum gesto sobrevive a isso
     const lista = encerrandoAgora.size
-      ? estado.conversas.filter((c) => !encerrandoAgora.has(c.id))
+      ? estado.conversas.filter((c) => !encerrandoAgora.has(chaveDaInbox(c.id, estado.equipeId)))
       : estado.conversas;
-    const abertas = lista.filter((c) => c.status === 'aberta').length;
-    const sem = lista.filter((c) => c.semResposta).length;
+    const abertas = lista.filter((c) => statusNaInbox(c, estado.equipeId) === 'aberta').length;
+    const sem = lista.filter((c) => c.semResposta && statusNaInbox(c, estado.equipeId) === 'aberta').length;
     $('#lista-titulo').textContent = tituloLista();
     $('#lista-sub').textContent = `${abertas} conversa${abertas === 1 ? '' : 's'} · ${sem} sem resposta`;
     const cont = $('#conversas');
@@ -1769,7 +1781,7 @@ import { criarAvisosHorario } from './horario-atendimento.mjs';
     const aoTeclado = (e) => { if (e.key === 'Escape') encerrar(); };
 
     const opcoes = equipes.map((equipe) => {
-      const atual = Number(conversa.equipe?.id) === Number(equipe.id);
+      const atual = Number(conversa.equipe?.id) === Number(equipe.id) && conversa.statusEquipe === 'aberta';
       const botao = el('button', {
         type: 'button',
         class: `atribuir-inbox-opcao${atual ? ' atual' : ''}`,
@@ -1819,7 +1831,7 @@ import { criarAvisosHorario } from './horario-atendimento.mjs';
     if ($('.menu-flutuante')) return fecharMenus();
     const c = estado.conversa;
     const menu = el('div', { class: 'menu-flutuante' },
-      c.status === 'resolvida'
+      statusNaInbox(c, estado.equipeId) === 'resolvida'
         ? el('button', { type: 'button', onclick: () => { fecharMenus(); mudarStatus('aberta'); } }, 'Reabrir conversa')
         : null,
       el('button', { type: 'button', onclick: () => { fecharMenus(); atualizarConversa({ atendenteId: estado.resumo.usuario.id }); } }, 'Assumir esta conversa'),
@@ -1845,7 +1857,7 @@ import { criarAvisosHorario } from './horario-atendimento.mjs';
         avatarCliente(c, 'avatar g verde'),
         el('div', { class: 'chat-info' },
           el('span', { class: 'chat-nome' }, c.contato.nome),
-          el('span', { class: 'chat-sub' }, [c.contato.empresa, textoAberto(c.criadaEm, c.status)].filter(Boolean).join(' · '))),
+          el('span', { class: 'chat-sub' }, [c.contato.empresa, textoAberto(c.criadaEm, statusNaInbox(c, estado.equipeId))].filter(Boolean).join(' · '))),
         comDica(el('button', { type: 'button', class: 'btn-icone btn-info hov', onclick: () => $('#painel').classList.toggle('aberto') }, icone('info', ICONE.info)), 'ficha', 'Ficha do cliente'),
         comDica(el('button', { type: 'button', class: 'btn-icone hov', onclick: (e) => { e.stopPropagation(); abrirMenuAcoes(e.currentTarget); } }, icone('acoes', ICONE.pontos)), 'acoes', 'Mais ações')));
 

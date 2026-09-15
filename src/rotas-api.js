@@ -73,7 +73,7 @@ function normalizarCorCanal(valor, usarPadrao = true) {
 
 const SQL_CONVERSAS = `
   SELECT c.id, c.protocolo, c.canal, c.status, c.alerta, c.nao_lidas, c.criada_em, c.atualizada_em,
-         c.equipe_id, c.atendente_id, c.canal_id, c.wa_chatid,
+         c.equipe_id, c.equipe_status, c.atendente_id, c.canal_id, c.wa_chatid,
          ca.cor AS canal_cor,
          ct.id AS contato_id, ct.nome AS contato_nome, ct.empresa, ct.cnpj, ct.telefone, ct.email, ct.tg_usuario, ct.tg_id, ct.tg_foto_id, ct.wa_foto_url, ct.site_id,
          u.nome AS atendente_nome,
@@ -163,13 +163,15 @@ function criarRotasApi(db, opcoes = {}) {
   };
 
   function formatarConversa(row, agora = Date.now()) {
-    const semResposta = row.status === 'aberta' && row.ultima_tipo === 'cliente';
+    const statusEquipe = row.equipe_id ? (row.equipe_status || row.status) : null;
+    const semResposta = (row.status === 'aberta' || statusEquipe === 'aberta') && row.ultima_tipo === 'cliente';
     return {
       id: row.id,
       protocolo: row.protocolo,
       canal: row.canal,
       canalCor: row.canal === 'whatsapp' ? (normalizarCorCanal(row.canal_cor) || COR_CANAL_PADRAO) : null,
       status: row.status,
+      statusEquipe,
       naoLidas: row.nao_lidas,
       criadaEm: row.criada_em,
       atualizadaEm: row.atualizada_em,
@@ -578,10 +580,11 @@ function criarRotasApi(db, opcoes = {}) {
   r.get('/resumo', async (req, res) => {
     const todas = await todasConversas();
     const abertas = todas.filter((c) => c.status === 'aberta');
+    const pendentes = todas.filter((c) => c.status === 'aberta' || c.statusEquipe === 'aberta');
     const agoraResumo = agora();
 
     const ativasPor = {};
-    for (const c of abertas) if (c.atendente) ativasPor[c.atendente.id] = (ativasPor[c.atendente.id] || 0) + 1;
+    for (const c of pendentes) if (c.atendente) ativasPor[c.atendente.id] = (ativasPor[c.atendente.id] || 0) + 1;
 
     const online = await presenca.atendentesOnline(db);
     const atendentes = (await sql.usuariosAtivos.all()).map((u) => ({
@@ -592,8 +595,8 @@ function criarRotasApi(db, opcoes = {}) {
     const membros = await sql.membros.all();
     const equipes = (await sql.equipes.all()).map((e) => ({
       ...e,
-      abertas: abertas.filter((c) => c.equipe?.id === e.id).length,
-      semResposta: abertas.filter((c) => c.equipe?.id === e.id && c.semResposta).length,
+      abertas: todas.filter((c) => c.equipe?.id === e.id && c.statusEquipe === 'aberta').length,
+      semResposta: todas.filter((c) => c.equipe?.id === e.id && c.statusEquipe === 'aberta' && c.semResposta).length,
       membros: membros
         .filter((m) => m.equipe_id === e.id)
         .map((m) => atendentes.find((a) => a.id === m.usuario_id))
@@ -607,10 +610,11 @@ function criarRotasApi(db, opcoes = {}) {
     const usuarioAtual = formatarUsuario({ ...req.usuario, presenca: online.has(Number(req.usuario.id)) ? 'online' : 'offline' });
     const contaAtual = formatarUsuario({ ...req.conta, presenca: online.has(Number(req.conta.id)) ? 'online' : 'offline' });
     const estadoHorarioAtual = estadoDoAtendente(req.usuario, agoraResumo);
-    const minhasAbertas = abertas.filter((c) => Number(c.atendente?.id) === Number(req.usuario.id));
+    const minhasAbertas = pendentes.filter((c) => Number(c.atendente?.id) === Number(req.usuario.id));
     const novasNaPausa = estadoHorarioAtual.fase === 'retorno'
       ? await db.prepare(`SELECT COUNT(*) AS n FROM mensagens m JOIN conversas c ON c.id = m.conversa_id
-          WHERE c.atendente_id = ? AND c.status = 'aberta' AND m.tipo = 'cliente' AND m.criada_em >= ? AND m.criada_em <= ?`)
+          WHERE c.atendente_id = ? AND (c.status = 'aberta' OR (c.equipe_id IS NOT NULL AND c.equipe_status = 'aberta'))
+          AND m.tipo = 'cliente' AND m.criada_em >= ? AND m.criada_em <= ?`)
         .get(req.usuario.id, estadoHorarioAtual.inicioDaPausaEm, agoraResumo)
       : null;
 
@@ -653,7 +657,8 @@ function criarRotasApi(db, opcoes = {}) {
     const busca = String(req.query.q || '').trim().toLowerCase();
     const limiteResolvidas = Date.now() - DIAS_ENCERRADAS * 24 * 60 * 60 * 1000;
 
-    let lista = (await todasConversas()).filter((c) => c.status === 'aberta' || c.atualizadaEm >= limiteResolvidas);
+    const statusNaCaixa = (c) => equipeId ? c.statusEquipe : c.status;
+    let lista = (await todasConversas()).filter((c) => statusNaCaixa(c) === 'aberta' || c.atualizadaEm >= limiteResolvidas);
     if (equipeId) lista = lista.filter((c) => c.equipe?.id === equipeId);
     const canal = CANAIS_FILTRO.has(req.query.canal) ? req.query.canal : null;
     if (canal) lista = lista.filter((c) => c.canal === canal);
@@ -661,10 +666,10 @@ function criarRotasApi(db, opcoes = {}) {
     // conversa sai delas e passa para a caixa "Encerradas".
     if (caixa === 'minhas') lista = lista.filter((c) => c.atendente?.id === req.usuario.id);
     if (caixa === 'sem_resposta') lista = lista.filter((c) => c.semResposta);
-    // Conversa encerrada sai de todas as listas e fica guardada em "Encerradas".
+    // O encerramento afeta apenas a caixa consultada, não a outra inbox.
     // Na busca ela continua aparecendo, para achar o histórico de um cliente.
-    if (caixa === 'encerradas') lista = lista.filter((c) => c.status === 'resolvida');
-    else if (!busca) lista = lista.filter((c) => c.status === 'aberta');
+    if (caixa === 'encerradas') lista = lista.filter((c) => statusNaCaixa(c) === 'resolvida');
+    else if (!busca) lista = lista.filter((c) => statusNaCaixa(c) === 'aberta');
     // Busca por nome, celular ou PIN do cliente. Quando a pessoa digita só
     // números, o telefone é comparado sem a formatação (+55 31 98888-7777).
     if (busca) {
@@ -716,7 +721,7 @@ function criarRotasApi(db, opcoes = {}) {
       // Quem respondeu por último passa a ser o atendente da conversa: é o nome que
       // aparece no selo da lista, porque é quem está atendendo agora.
       if (c.atendente?.id !== req.usuario.id) { campos.push('atendente_id = ?'); valores.push(req.usuario.id); }
-      if (c.status === 'resolvida') { campos.push("status = 'aberta'"); }
+      if (c.status === 'resolvida' && c.statusEquipe !== 'aberta') { campos.push("status = 'aberta'"); }
     }
     valores.push(c.id);
     await db.prepare(`UPDATE conversas SET ${campos.join(', ')} WHERE id = ?`).run(...valores);
@@ -789,7 +794,7 @@ function criarRotasApi(db, opcoes = {}) {
     const campos = ['atualizada_em = ?'];
     const valores = [agora];
     if (c.atendente?.id !== req.usuario.id) { campos.push('atendente_id = ?'); valores.push(req.usuario.id); }
-    if (c.status === 'resolvida') campos.push("status = 'aberta'");
+    if (c.status === 'resolvida' && c.statusEquipe !== 'aberta') campos.push("status = 'aberta'");
     valores.push(c.id);
     await db.prepare(`UPDATE conversas SET ${campos.join(', ')} WHERE id = ?`).run(...valores);
 
@@ -920,6 +925,8 @@ function criarRotasApi(db, opcoes = {}) {
       }
       campos.push('equipe_id = ?');
       valores.push(v);
+      campos.push('equipe_status = ?');
+      valores.push(v === null ? null : 'aberta');
     }
     if ('atendenteId' in corpo) {
       const v = corpo.atendenteId === null || corpo.atendenteId === '' ? null : Number(corpo.atendenteId);
@@ -942,7 +949,23 @@ function criarRotasApi(db, opcoes = {}) {
   r.post('/conversas/:id/status', comConversa, async (req, res) => {
     const status = req.body?.status;
     if (!STATUS.has(status)) return res.status(400).json({ erro: 'Status inválido.' });
-    await db.prepare('UPDATE conversas SET status = ?, atualizada_em = ? WHERE id = ?').run(status, Date.now(), req.conversa.id);
+    const equipeId = req.body?.equipeId;
+    if (equipeId != null) {
+      if (!Number.isSafeInteger(Number(equipeId)) || Number(equipeId) < 1) {
+        return res.status(400).json({ erro: 'Inbox da equipe inválida.' });
+      }
+      const alterada = await db.prepare(`UPDATE conversas SET equipe_status = ?, atualizada_em = ?
+        WHERE id = ? AND equipe_id = ?`).run(status, Date.now(), req.conversa.id, Number(equipeId));
+      if (!Number(alterada.changes)) {
+        return res.status(409).json({ erro: 'A conversa não está mais nesta inbox. Atualize a lista.' });
+      }
+    } else {
+      // Materializa a situação atual da equipe ANTES de alterar a entrada.
+      // A ordem é intencional também para o UPDATE do MySQL/TiDB.
+      await db.prepare(`UPDATE conversas SET equipe_status = COALESCE(equipe_status, status),
+        status = ?, atualizada_em = ? WHERE id = ?`).run(status, Date.now(), req.conversa.id);
+    }
+    avisos?.avisar({ origem: 'status', conversaId: req.conversa.id, contatoId: req.conversa.contato.id });
     res.json({ conversa: await buscarConversa(req.conversa.id) });
   });
 

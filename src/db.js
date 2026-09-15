@@ -127,6 +127,7 @@ CREATE TABLE IF NOT EXISTS conversas (
   atendente_id BIGINT,
   canal VARCHAR(20) NOT NULL DEFAULT 'whatsapp',
   status VARCHAR(20) NOT NULL DEFAULT 'aberta',
+  equipe_status VARCHAR(20),
   alerta TEXT,
   nao_lidas BIGINT NOT NULL DEFAULT 0,
   criada_em BIGINT NOT NULL,
@@ -413,6 +414,9 @@ async function migrar(db) {
   await garantirColuna(db, 'canais', 'cor', "VARCHAR(7) NOT NULL DEFAULT '#12B85C'");
   await garantirColuna(db, 'conversas', 'canal_id', 'BIGINT');
   await garantirColuna(db, 'conversas', 'wa_chatid', 'VARCHAR(191)');
+  // NULL mantém o estado legado. A primeira atribuição/ação materializa a
+  // situação da equipe sem reabrir em massa conversas encerradas antigas.
+  await garantirColuna(db, 'conversas', 'equipe_status', 'VARCHAR(20)');
   await garantirColuna(db, 'mensagens', 'externo_id', 'VARCHAR(191)');
   await garantirColuna(db, 'mensagens', 'midia_tipo', 'VARCHAR(20)');
   await garantirColuna(db, 'mensagens', 'midia_id', 'VARCHAR(255)');

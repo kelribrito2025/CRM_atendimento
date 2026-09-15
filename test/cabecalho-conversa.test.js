@@ -16,6 +16,6 @@ const renderChat = javascript.slice(inicio, fim);
 
 test('cabeçalho da conversa: oculta o protocolo e mantém o tempo de abertura', () => {
   assert.ok(inicio >= 0 && fim > inicio, 'renderChat precisa continuar identificável');
-  assert.match(renderChat, /class: 'chat-sub'[\s\S]*textoAberto\(c\.criadaEm, c\.status\)/);
+  assert.match(renderChat, /class: 'chat-sub'[\s\S]*textoAberto\(c\.criadaEm, statusNaInbox\(c, estado\.equipeId\)\)/);
   assert.doesNotMatch(renderChat, /protocolo #\$\{c\.protocolo\}/);
 });
