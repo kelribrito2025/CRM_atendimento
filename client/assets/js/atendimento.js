@@ -952,22 +952,6 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
     $('#btn-usuario').textContent = r.usuario.iniciais;
     $('#menu-nome').textContent = r.usuario.nome;
     $('#menu-email').textContent = r.conta?.email || r.usuario.email;
-    const admin = (r.conta || r.usuario).papel === 'admin';
-    $('#btn-conectar').hidden = !admin;
-    const wa = (r.canais || []).find((c) => c.id === 'whatsapp');
-    const status = $('#menu-whatsapp');
-    status.hidden = !(admin && wa);
-    if (admin && wa) {
-      const conectados = wa.canais.filter((c) => c.status === 'connected').map((c) => c.numeroFormatado || c.nome);
-      status.textContent = wa.conectado ? `WhatsApp conectado: ${conectados.join(', ')}` : (wa.configurado ? 'WhatsApp não conectado' : 'WhatsApp não configurado no servidor');
-    }
-    const tg = (r.canais || []).find((c) => c.id === 'telegram');
-    const statusTg = $('#menu-telegram');
-    statusTg.hidden = !(admin && tg);
-    if (admin && tg) {
-      const bots = tg.canais.filter((c) => c.status === 'connected').map((c) => c.numeroFormatado || c.nome);
-      statusTg.textContent = tg.conectado ? `Telegram conectado: ${bots.join(', ')}` : 'Telegram não conectado';
-    }
   }
 
   /* ================================================================
@@ -3844,11 +3828,6 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
     document.querySelector('.rail-btn[title="Atendimento"]')?.addEventListener('click', fecharConfiguracoes);
 
     const menuUsuario = $('#menu-usuario');
-    $('#btn-conectar').addEventListener('click', () => {
-      menuUsuario.hidden = true;
-      if ((estado.resumo?.conta || estado.resumo?.usuario)?.papel !== 'admin') return toast('Peça a um administrador para conectar os canais.');
-      abrirConfiguracoes('canais');
-    });
     $('#btn-usuario').addEventListener('click', (e) => {
       e.stopPropagation();
       menuUsuario.hidden = !menuUsuario.hidden;

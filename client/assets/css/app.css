@@ -123,9 +123,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 }
 .menu-usuario strong { font-size: 13.5px; }
 .menu-usuario .email { font-size: 12px; color: var(--texto-suave); margin-bottom: 8px; word-break: break-all; }
-.menu-usuario .menu-status { font-size: 12px; color: var(--texto-suave); }
-.menu-usuario .menu-status + .menu-status { margin-top: -2px; }
-.menu-usuario .menu-status + button, .menu-usuario .menu-status + form { margin-top: 10px; }
 .menu-usuario form { display: flex; margin-top: 4px; }
 .menu-usuario .btn-suave { width: 100%; justify-content: center; }
 .menu-usuario .trocar-atendente { display: flex; align-items: center; text-decoration: none; margin-top: 6px; }
