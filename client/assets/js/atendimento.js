@@ -1,6 +1,6 @@
 import { icone, montarIcones } from './icones.js';
 import { detectarNovasMensagens } from './alerta-mensagem.mjs';
-import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
+import { corrigirPalavra, corrigirTexto, ehEnderecoInternet } from './acentos.mjs';
 import { capturarCompositor, restaurarCompositor } from './foco-compositor.mjs';
 import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notificacoes.mjs';
 import { deveSalvarNota } from './nota-editor.mjs';
@@ -1470,6 +1470,8 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
     if (!separador) return;
     const m = /(\p{L}+)([\s.,;:!?)\]}"'…])$/u.exec(antes);
     if (!m) return;
+    const trechoAtual = antes.slice(0, -m[2].length).split(/\s/u).at(-1) || '';
+    if (ehEnderecoInternet(trechoAtual)) return;
     const corrigida = corrigirPalavra(m[1]);
     if (!corrigida) return;
     const inicio = fim - m[0].length;

@@ -72,9 +72,29 @@ export function corrigirPalavra(palavra) {
   return null;
 }
 
-// Corrige o texto inteiro (usado ao colar ou antes de enviar).
+// Endereços precisam permanecer byte a byte como a pessoa digitou: trocar
+// "numero" por "número" dentro de um link ou e-mail quebra o destino.
+export function ehEnderecoInternet(trecho) {
+  return /(?:https?:\/\/|www\.|[^\s@]+@[^\s@]+|(?:[a-z0-9-]+\.)+[a-z]{2,})/iu.test(String(trecho || ''));
+}
+
+function corrigirTrechoComum(texto) {
+  return texto.replace(/\p{L}+/gu, (p) => corrigirPalavra(p) ?? p);
+}
+
+// Corrige o texto inteiro (usado ao colar ou antes de enviar), mas copia URLs
+// e e-mails exatamente como vieram. Assim os links continuam válidos.
 export function corrigirTexto(texto) {
-  return String(texto || '').replace(/\p{L}+/gu, (p) => corrigirPalavra(p) ?? p);
+  const original = String(texto || '');
+  const enderecos = /(?:https?:\/\/|www\.)[^\s<>"']+|[^\s@]+@[^\s@]+\.[^\s@]+|(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s<>"']*)?/giu;
+  let resultado = '';
+  let inicio = 0;
+  for (const endereco of original.matchAll(enderecos)) {
+    resultado += corrigirTrechoComum(original.slice(inicio, endereco.index));
+    resultado += endereco[0];
+    inicio = endereco.index + endereco[0].length;
+  }
+  return resultado + corrigirTrechoComum(original.slice(inicio));
 }
 
 export { ABREVIACOES, PALAVRAS, REGRAS };
