@@ -47,4 +47,14 @@ function nomeDoCabecalho(valor, padrao = 'arquivo') {
   return nome || padrao;
 }
 
-module.exports = { iniciais, nomeCurto, TAMANHO_MAXIMO_ANEXO, ROTULO_MIDIA, tipoDoArquivo, nomeDoCabecalho };
+function textoDoCabecalho(valor, limite = 1024) {
+  let texto = '';
+  try {
+    texto = decodeURIComponent(String(valor || ''));
+  } catch {
+    texto = String(valor || '');
+  }
+  return texto.replace(/[\r\n]+/g, ' ').trim().slice(0, limite);
+}
+
+module.exports = { iniciais, nomeCurto, TAMANHO_MAXIMO_ANEXO, ROTULO_MIDIA, tipoDoArquivo, nomeDoCabecalho, textoDoCabecalho };

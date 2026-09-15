@@ -98,6 +98,12 @@ const ROTULO_ATIVACAO = {
   cancelled: 'Cancelada', failed: 'Falhou', expired: 'Expirada',
 };
 
+function normalizarOpcao(option) {
+  return option && typeof option === 'object' && String(option.name || '').trim()
+    ? { id: option.id ?? null, name: String(option.name).trim() }
+    : null;
+}
+
 // Uma compra (ativação) como a ficha mostra. De propósito não carregamos o
 // custo de fornecedor que vem na resposta: é margem do Número Virtual e a tela
 // do atendente não tem o que fazer com ela.
@@ -105,9 +111,11 @@ function resumirCompra(a) {
   const centavos = Number.isFinite(a?.sellingPriceCents) ? Math.round(a.sellingPriceCents)
     : (Number.isFinite(a?.sellingPrice) ? Math.round(a.sellingPrice * 100) : 0);
   const rotulo = [a?.service?.name, a?.country?.name].filter(Boolean).join(' · ');
+  const option = normalizarOpcao(a?.option);
   return {
     id: a?.id ?? null,
     descricao: a?.descricao || rotulo || 'Compra',
+    option,
     numero: a?.phoneNumber || null,
     valor: emReais(centavos),
     valorCentavos: centavos,
@@ -137,9 +145,70 @@ function resumirTransacao(t) {
     entrada: typeof t?.entrada === 'boolean' ? t.entrada : centavos >= 0,
     saldoDepois: depois === null ? null : emReais(depois),
     ativacaoId: Number.isFinite(t?.ativacaoId) ? t.ativacaoId : null,
+    option: normalizarOpcao(t?.option),
+    numero: t?.phoneNumber || t?.numero || null,
     feitoPorAdmin: Boolean(t?.feitoPorAdmin),
     data: t?.data || null,
   };
+}
+
+// O extrato antigo traz a opção no começo da descrição da compra
+// ("Opção 1 - Compra em andamento..."). Quando o site já mandar `option`, esse
+// objeto tem prioridade. Um reembolso herda somente a opção de uma compra com o
+// mesmo ID de ativação na página; nunca inferimos por preço, serviço ou país.
+function organizarOpcoesDoExtrato(transacoes) {
+  const porAtivacao = new Map();
+  const preparados = transacoes.map((t) => {
+    let option = t.option;
+    let descricao = String(t.descricao || '');
+    const ehCompra = String(t.tipo || '').toLowerCase().includes('compra');
+
+    if (ehCompra && option) {
+      const prefixo = `${option.name} - `;
+      if (descricao.toLocaleLowerCase('pt-BR').startsWith(prefixo.toLocaleLowerCase('pt-BR'))) {
+        descricao = descricao.slice(prefixo.length).trim();
+      }
+    } else if (ehCompra && !option) {
+      const partes = descricao.match(/^\s*((?:Opção|Opcao)\s+[^-]+?)\s*-\s*(.+)$/i);
+      if (partes) {
+        option = { id: null, name: partes[1].trim() };
+        descricao = partes[2].trim();
+      }
+    }
+
+    return { ...t, option, descricao };
+  });
+
+  for (const t of preparados) {
+    if ((t.option || t.numero) && Number.isSafeInteger(Number(t.ativacaoId)) && Number(t.ativacaoId) > 0) {
+      const atual = porAtivacao.get(Number(t.ativacaoId)) || {};
+      porAtivacao.set(Number(t.ativacaoId), {
+        option: atual.option || t.option || null,
+        numero: atual.numero || t.numero || null,
+      });
+    }
+  }
+
+  return preparados.map((t) => {
+    const compra = Number.isSafeInteger(Number(t.ativacaoId)) ? porAtivacao.get(Number(t.ativacaoId)) : null;
+    return { ...t, option: t.option || compra?.option || null, numero: t.numero || compra?.numero || null };
+  });
+}
+
+function aplicarOpcoesConhecidas(transacoes, compras) {
+  const porAtivacao = new Map((compras || [])
+    .filter((compra) => Number.isSafeInteger(Number(compra.id)) && Number(compra.id) > 0)
+    .map((compra) => [Number(compra.id), { option: compra.option || null, numero: compra.numero || null }]));
+  return (transacoes || []).map((transacao) => {
+    const compra = Number.isSafeInteger(Number(transacao.ativacaoId))
+      ? porAtivacao.get(Number(transacao.ativacaoId))
+      : null;
+    return {
+      ...transacao,
+      option: transacao.option || compra?.option || null,
+      numero: transacao.numero || compra?.numero || null,
+    };
+  });
 }
 
 function resumirRecarga(r) {
@@ -278,7 +347,7 @@ function criarSaldo({ url = URL_PADRAO, token = '', fetchImpl = globalThis.fetch
     const dados = await chamar(enderecoIrmao(endereco, 'transactions'), corpo);
     const lista = Array.isArray(dados.transactions) ? dados.transactions : [];
     return {
-      transacoes: lista.map(resumirTransacao),
+      transacoes: organizarOpcoesDoExtrato(lista.map(resumirTransacao)),
       total: Number.isFinite(dados.total) ? dados.total : lista.length,
       proximoCursor: Number.isFinite(dados.proximoCursor) ? dados.proximoCursor : null,
     };
@@ -452,4 +521,4 @@ function criarSaldo({ url = URL_PADRAO, token = '', fetchImpl = globalThis.fetch
   };
 }
 
-module.exports = { criarSaldo, normalizarPin, resumirCliente, resumirCompra, resumirTransacao, situacaoDoCliente, emReais, ErroSaldo, URL_PADRAO };
+module.exports = { criarSaldo, normalizarPin, resumirCliente, resumirCompra, resumirTransacao, aplicarOpcoesConhecidas, situacaoDoCliente, emReais, ErroSaldo, URL_PADRAO };

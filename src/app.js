@@ -12,6 +12,7 @@ const { criarRotasApi } = require('./rotas-api');
 const canais = require('./canais');
 const { nomeDoCabecalho } = require('./util');
 const { criarAvisos } = require('./eventos');
+const presenca = require('./presenca');
 
 const RAIZ = path.join(__dirname, '..');
 const COOKIE_VERIFICACAO = 'crm_verificacao';
@@ -82,7 +83,9 @@ function criarApp(db, opcoes = {}) {
       const cookies = sessoes.lerCookies(req);
       req.cookies = cookies;
       req.tokenSessao = cookies[sessoes.NOME_COOKIE] || null;
-      req.usuario = await sessoes.buscarUsuarioDaSessao(db, req.tokenSessao);
+      const contexto = await sessoes.buscarContextoDaSessao(db, req.tokenSessao);
+      req.conta = contexto?.conta || null;
+      req.usuario = contexto?.atendente || null;
       next();
     } catch (erro) {
       next(erro);
@@ -94,12 +97,27 @@ function criarApp(db, opcoes = {}) {
   const cookieBase = { httpOnly: true, sameSite: 'lax', secure: cookieSeguro, path: '/' };
 
   async function iniciarSessao(res, usuarioId, lembrar) {
-    const { token, expira } = await sessoes.criarSessao(db, usuarioId, lembrar);
+    const { token, expira, precisaEscolher } = await sessoes.criarSessao(db, usuarioId, lembrar);
     res.cookie(sessoes.NOME_COOKIE, token, { ...cookieBase, expires: new Date(expira) });
+    return { precisaEscolher };
+  }
+
+  function exigirConta(req, res, next) {
+    if (req.conta) return next();
+    if (querJson(req)) return res.status(401).json({ erro: 'Sessão expirada. Faça login novamente.' });
+    const destino = req.originalUrl && req.originalUrl !== '/' ? `?next=${encodeURIComponent(req.originalUrl)}` : '';
+    return res.redirect(`/login${destino}`);
   }
 
   function exigirLogin(req, res, next) {
     if (req.usuario) return next();
+    if (req.conta) {
+      const destino = req.originalUrl && req.originalUrl !== '/' ? `?next=${encodeURIComponent(req.originalUrl)}` : '';
+      if (req.originalUrl.startsWith('/api/')) {
+        return res.status(409).json({ erro: 'Escolha quem está atendendo antes de continuar.', escolherAtendente: true });
+      }
+      return res.redirect(`/escolher-atendente${destino}`);
+    }
     if (req.originalUrl.startsWith('/api/')) {
       return res.status(401).json({ erro: 'Sessão expirada. Faça login novamente.' });
     }
@@ -113,6 +131,12 @@ function criarApp(db, opcoes = {}) {
 
   function destinoSeguro(valor) {
     return typeof valor === 'string' && valor.startsWith('/') && !valor.startsWith('//') ? valor : '/';
+  }
+
+  function destinoDaSessao(destino, precisaEscolher) {
+    return precisaEscolher
+      ? `/escolher-atendente?next=${encodeURIComponent(destinoSeguro(destino))}`
+      : destinoSeguro(destino);
   }
 
   function enviarPagina(req, res, arquivo) {
@@ -145,7 +169,13 @@ function criarApp(db, opcoes = {}) {
 
   app.get('/saude', (req, res) => res.json({ ok: true }));
 
-  app.get('/login', (req, res) => (req.usuario ? res.redirect('/') : enviarPagina(req, res, 'login.html')));
+  app.get('/login', (req, res) => {
+    if (req.usuario) return res.redirect('/');
+    if (req.conta) return res.redirect('/escolher-atendente');
+    return enviarPagina(req, res, 'login.html');
+  });
+
+  app.get('/escolher-atendente', exigirConta, (req, res) => enviarPagina(req, res, 'escolher-atendente.html'));
 
   app.get('/verificar', async (req, res) => {
     if (req.usuario) return res.redirect('/');
@@ -179,9 +209,9 @@ function criarApp(db, opcoes = {}) {
       return responderErro(429, `Muitas tentativas. Tente novamente em ${minutos} min.`);
     }
 
-    const usuario = await db.prepare('SELECT id, nome, email, senha_hash, ativo FROM usuarios WHERE email = ?').get(email);
+    const usuario = await db.prepare('SELECT id, nome, email, senha_hash, ativo, pode_logar FROM usuarios WHERE email = ?').get(email);
     const senhaOk = verificarSenha(senha, usuario ? usuario.senha_hash : HASH_FALSO);
-    if (!usuario || !usuario.ativo || !senhaOk) {
+    if (!usuario || !usuario.ativo || !usuario.pode_logar || !senhaOk) {
       limitador.registrarFalha(chave);
       return responderErro(401, 'E-mail ou senha inválidos.');
     }
@@ -195,8 +225,9 @@ function criarApp(db, opcoes = {}) {
       return json ? res.json({ ok: true, redirect: url, verificacao: true }) : res.redirect(url);
     }
 
-    await iniciarSessao(res, usuario.id, lembrar);
-    return json ? res.json({ ok: true, redirect: destino }) : res.redirect(destino);
+    const sessao = await iniciarSessao(res, usuario.id, lembrar);
+    const redirect = destinoDaSessao(destino, sessao.precisaEscolher);
+    return json ? res.json({ ok: true, redirect }) : res.redirect(redirect);
   });
 
   app.post('/logout', async (req, res) => {
@@ -226,7 +257,32 @@ function criarApp(db, opcoes = {}) {
       return res.status(r.reiniciar ? 401 : 400).json({ erro: r.erro, reiniciar: Boolean(r.reiniciar) });
     }
     res.clearCookie(COOKIE_VERIFICACAO, { path: '/' });
-    await iniciarSessao(res, r.usuarioId, r.lembrar);
+    const sessao = await iniciarSessao(res, r.usuarioId, r.lembrar);
+    res.json({ ok: true, redirect: destinoDaSessao(req.body?.next, sessao.precisaEscolher) });
+  });
+
+  app.get('/acesso/atendentes', exigirConta, async (req, res) => {
+    const atendentes = await db.prepare(`SELECT id, nome, presenca FROM usuarios
+      WHERE ativo = 1 AND (pode_logar = 0 OR id = ?) ORDER BY nome`).all(req.conta.id);
+    const online = await presenca.atendentesOnline(db);
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      conta: { nome: req.conta.nome, email: req.conta.email },
+      selecionadoId: req.usuario?.id || null,
+      atendentes: atendentes.map((a) => ({
+        id: Number(a.id), nome: a.nome, presenca: online.has(Number(a.id)) ? 'online' : 'offline',
+      })),
+    });
+  });
+
+  app.post('/acesso/atendente', exigirConta, async (req, res) => {
+    const atendenteId = Number(req.body?.atendenteId);
+    if (!Number.isInteger(atendenteId) || atendenteId <= 0) {
+      return res.status(400).json({ erro: 'Escolha um atendente.' });
+    }
+    if (!await sessoes.escolherAtendente(db, req.tokenSessao, atendenteId)) {
+      return res.status(400).json({ erro: 'Atendente não encontrado ou sem acesso.' });
+    }
     res.json({ ok: true, redirect: destinoSeguro(req.body?.next) });
   });
 
@@ -322,8 +378,8 @@ function criarApp(db, opcoes = {}) {
       limitadorConvite.registrarFalha(chave);
       return res.status(400).json({ erro: r.erro });
     }
-    await iniciarSessao(res, r.usuarioId, false);
-    res.status(201).json({ ok: true, redirect: '/' });
+    const sessao = await iniciarSessao(res, r.usuarioId, false);
+    res.status(201).json({ ok: true, redirect: destinoDaSessao('/', sessao.precisaEscolher) });
   });
 
   /* ------------------------ chat do site (widget) ------------------------ */
@@ -388,7 +444,7 @@ function criarApp(db, opcoes = {}) {
 
     app.get('/widget/mensagens', comSessaoWidget, async (req, res) => {
       res.set('Cache-Control', 'no-store');
-      res.json({ mensagens: await widget.listarMensagens(req.sessaoWidget, req.query.desde) });
+      res.json(await widget.listarMensagens(req.sessaoWidget, req.query.desde));
     });
 
     app.post('/widget/mensagens', comSessaoWidget, async (req, res) => {
@@ -428,8 +484,8 @@ function criarApp(db, opcoes = {}) {
       const meuContato = Number(req.sessaoWidget.contato_id);
       const parar = widget.assinarAvisos?.((evento) => {
         // Nota interna e mensagem do próprio cliente não interessam ao chat.
-        if (evento.origem !== 'atendente' || Number(evento.contatoId) !== meuContato) return;
-        try { res.write('data: {"novidade":1}\n\n'); } catch { /* conexão caiu */ }
+        if (!['atendente', 'exclusao'].includes(evento.origem) || Number(evento.contatoId) !== meuContato) return;
+        try { res.write(`data: ${JSON.stringify({ novidade: 1, origem: evento.origem })}\n\n`); } catch { /* conexão caiu */ }
       });
       const batida = setInterval(() => { try { res.write(': batida\n\n'); } catch { /* idem */ } }, 25_000);
       const encerrar = () => { clearInterval(batida); parar?.(); };
@@ -481,7 +537,7 @@ function criarApp(db, opcoes = {}) {
 
   app.get('/', exigirLogin, (req, res) => enviarPagina(req, res, 'atendimento.html'));
 
-  app.use('/api', exigirLogin, criarRotasApi(db, { uazapi: opcoes.uazapi || null, telegram: opcoes.telegram || null, saldo: opcoes.saldo || null, arquivos: opcoes.arquivos || null, urlBase, enviador, abrirConta: opcoes.abrirConta || null, avisos, widget }));
+  app.use('/api', exigirLogin, criarRotasApi(db, { uazapi: opcoes.uazapi || null, telegram: opcoes.telegram || null, saldo: opcoes.saldo || null, arquivos: opcoes.arquivos || null, urlBase, enviador, abrirConta: opcoes.abrirConta || null, avisos, widget, cadastroAtendenteAtivo: opcoes.cadastroAtendenteAtivo === true }));
 
   app.use((req, res) => {
     if (req.originalUrl.startsWith('/api/') || req.originalUrl.startsWith('/acesso/') || req.originalUrl.startsWith('/webhook/')) {

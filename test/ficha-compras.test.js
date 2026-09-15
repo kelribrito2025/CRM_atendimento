@@ -5,7 +5,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { criarSaldo } = require('../src/saldo');
+const fs = require('node:fs');
+const path = require('node:path');
+const { criarSaldo, aplicarOpcoesConhecidas } = require('../src/saldo');
 
 const CHAVE = 'chave-de-teste';
 const BASE = 'https://exemplo.internal/api/agents/customer/lookup';
@@ -39,6 +41,7 @@ const UMA_COMPRA = {
   podeReembolsar: true,
   motivoNaoPodeReembolsar: null,
   createdAt: '2026-09-14T11:00:00.000Z',
+  option: { id: 1800001, name: 'Opção 4', campoInterno: 'não expor' },
 };
 
 test('compras: o CRM pede pelo PIN como número e entende a paginação', async () => {
@@ -64,14 +67,24 @@ test('compras: o CRM pede pelo PIN como número e entende a paginação', async 
   assert.match(c.valor, /^R\$\s12,50$/);
   assert.equal(c.statusTexto, 'Concluída');
   assert.equal(c.data, '2026-09-14T11:00:00.000Z');
+  assert.deepEqual(c.option, { id: 1800001, name: 'Opção 4' });
   assert.equal(c.podeReembolsar, true);
   assert.equal(c.recebeuSms, true);
   // A margem do fornecedor não passa para a tela.
   assert.equal('costCents' in c, false);
   assert.equal(JSON.stringify(c).includes('400'), false);
+  assert.equal(JSON.stringify(c).includes('campoInterno'), false);
 
   await saldo.listarCompras(555, { cursor: 554 });
   assert.equal(chamadas[1].corpo.cursor, 554, 'a página seguinte manda o cursor');
+});
+
+test('compras: opção ausente ou apagada continua nula, sem dedução', async () => {
+  const { fetchImpl } = apiFalsa({
+    activations: { activations: [{ ...UMA_COMPRA, option: null }], total: 1, proximoCursor: null },
+  });
+  const r = await criarSaldo({ url: BASE, token: CHAVE, fetchImpl }).listarCompras(99);
+  assert.equal(r.compras[0].option, null);
 });
 
 test('compras: o motivo de não poder reembolsar chega pronto para o atendente', async () => {
@@ -114,6 +127,54 @@ test('extrato: valor com sinal, saldo que ficou e rótulo pronto', async () => {
   assert.equal(reembolso.feitoPorAdmin, true);
   assert.equal(reembolso.tipoTexto, 'Reembolso manual');
   assert.equal(r.total, 137);
+});
+
+test('extrato: opção vai para o título e sai da descrição, inclusive no reembolso correspondente', async () => {
+  const { fetchImpl } = apiFalsa({
+    transactions: {
+      transactions: [
+        { id: 4, tipo: 'reembolso', tipoLegivel: 'Reembolso', descricao: 'Reembolso de ativação cancelada #77', valorCents: 1450, ativacaoId: 77 },
+        { id: 3, tipo: 'compra', tipoLegivel: 'Compra', descricao: 'Opção 1 - Compra em andamento - Whatsapp (Brasil)', phoneNumber: '5588999467585', valorCents: -1450, ativacaoId: 77 },
+        { id: 2, tipo: 'compra', tipoLegivel: 'Compra', descricao: 'Opção 4 - Compra concluída', valorCents: -1450, ativacaoId: 78, option: { id: 1800001, name: 'Opção 4', interno: 'não expor' } },
+        { id: 1, tipo: 'recarga', tipoLegivel: 'Recarga', descricao: 'Recarga via PIX', valorCents: 3000 },
+      ],
+    },
+  });
+  const r = await criarSaldo({ url: BASE, token: CHAVE, fetchImpl }).listarTransacoes(7712);
+  const [reembolso, compraAntiga, compraEstruturada, recarga] = r.transacoes;
+
+  assert.deepEqual(compraAntiga.option, { id: null, name: 'Opção 1' });
+  assert.equal(compraAntiga.descricao, 'Compra em andamento - Whatsapp (Brasil)');
+  assert.equal(compraAntiga.numero, '5588999467585');
+  assert.deepEqual(reembolso.option, { id: null, name: 'Opção 1' }, 'a mesma ativação compartilha a opção');
+  assert.equal(reembolso.descricao, 'Reembolso de ativação cancelada #77');
+  assert.deepEqual(compraEstruturada.option, { id: 1800001, name: 'Opção 4' });
+  assert.equal(compraEstruturada.descricao, 'Compra concluída');
+  assert.equal(recarga.option, null);
+
+  const tela = fs.readFileSync(path.join(__dirname, '..', 'client/assets/js/atendimento.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'client/assets/css/app.css'), 'utf8');
+  assert.match(tela, /t\.option\?\.name \? `\$\{t\.tipoTexto\} - \$\{t\.option\.name\}` : t\.tipoTexto/);
+  assert.match(tela, /class: 'tipo', title: titulo \}, titulo/);
+  assert.match(tela, /apresentarDescricaoTransacao\(t\)/);
+  assert.match(tela, /class: 'numero-transacao' \}, numero/);
+  assert.match(css, /\.transacao-texto \.numero-transacao \{[^}]*color: var\(--extrato-verde\);[^}]*font-weight: 700;/);
+});
+
+test('extrato: opção conhecida é ligada somente pelo ID exato da ativação', () => {
+  const transacoes = [
+    { id: 1, tipoTexto: 'Reembolso', ativacaoId: 77, valorCentavos: 1450, option: null },
+    { id: 2, tipoTexto: 'Reembolso', ativacaoId: 88, valorCentavos: 1450, option: null },
+  ];
+  const compras = [
+    { id: 77, valorCentavos: 1450, numero: '5588999467585', option: { id: 1, name: 'Opção 1' } },
+    { id: 99, valorCentavos: 1450, numero: '5588777666555', option: { id: 2, name: 'Opção 2' } },
+  ];
+  const resultado = aplicarOpcoesConhecidas(transacoes, compras);
+  assert.deepEqual(resultado[0].option, { id: 1, name: 'Opção 1' });
+  assert.equal(resultado[0].numero, '5588999467585');
+  assert.equal(resultado[1].option, null, 'mesmo valor não autoriza deduzir a opção errada');
+  assert.equal(resultado[1].numero, null, 'mesmo valor também não autoriza deduzir o número errado');
 });
 
 test('extrato: tipo desconhecido vira "Movimentação" em vez de quebrar a lista', async () => {

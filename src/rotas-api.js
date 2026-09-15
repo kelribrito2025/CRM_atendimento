@@ -2,14 +2,16 @@
 
 const express = require('express');
 const crypto = require('node:crypto');
-const { iniciais, nomeCurto, TAMANHO_MAXIMO_ANEXO, ROTULO_MIDIA, tipoDoArquivo, nomeDoCabecalho } = require('./util');
+const { iniciais, nomeCurto, TAMANHO_MAXIMO_ANEXO, ROTULO_MIDIA, tipoDoArquivo, nomeDoCabecalho, textoDoCabecalho } = require('./util');
 const canais = require('./canais');
 const { tokenValido } = require('./telegram');
-const { normalizarPin } = require('./saldo');
+const { normalizarPin, aplicarOpcoesConhecidas } = require('./saldo');
 const { LimitadorTentativas } = require('./limitador');
 const { interpretarStatus } = require('./uazapi');
 const acesso = require('./acesso');
 const { ehReembolsoDoAtendimento, personalizarReembolsos } = require('./extrato');
+const { gerarHashSenha } = require('./senha');
+const presenca = require('./presenca');
 
 const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta', 'encerradas']);
 // Por onde o cliente escreve: dá para ver a caixa de cada canal separada.
@@ -22,6 +24,10 @@ const TAMANHO_MAXIMO_MENSAGEM = 4000;
 // sobe a rolagem, para um histórico grande não deixar a tela pesada.
 const PAGINA_MENSAGENS = 40;
 const VALIDADE_LINK_ANEXO_S = 15 * 60; // o WhatsApp/Telegram busca o arquivo neste prazo
+
+function chaveDeLimite(prefixo, req) {
+  return `${prefixo}:${req.conta?.id || req.usuario?.id}`;
+}
 
 function lerJson(texto, padrao = null) {
   if (!texto) return padrao;
@@ -39,9 +45,10 @@ function formatarUsuario(u) {
     nome: u.nome,
     nomeCurto: nomeCurto(u.nome),
     iniciais: iniciais(u.nome),
-    email: u.email,
+    email: Number(u.pode_logar) === 0 ? null : u.email,
     papel: u.papel,
     presenca: u.presenca,
+    podeLogar: Number(u.pode_logar) !== 0,
   };
 }
 
@@ -96,6 +103,7 @@ function criarRotasApi(db, opcoes = {}) {
   const enviador = opcoes.enviador || { modo: 'silencioso', async enviar() {} };
   const abrirConta = opcoes.abrirConta || null;
   const avisos = opcoes.avisos || null;
+  const cadastroAtendenteAtivo = opcoes.cadastroAtendenteAtivo === true;
   const r = express.Router();
 
   r.use((req, res, next) => {
@@ -129,7 +137,7 @@ function criarRotasApi(db, opcoes = {}) {
       SELECT m.*, u.nome AS autor_nome
       FROM mensagens m LEFT JOIN usuarios u ON u.id = m.autor_id
       WHERE m.id = ?`),
-    usuariosAtivos: db.prepare('SELECT id, nome, email, papel, presenca FROM usuarios WHERE ativo = 1 ORDER BY nome'),
+    usuariosAtivos: db.prepare('SELECT id, nome, email, papel, presenca, pode_logar FROM usuarios WHERE ativo = 1 ORDER BY nome'),
     membros: db.prepare('SELECT equipe_id, usuario_id FROM equipe_membros'),
     equipes: db.prepare('SELECT id, nome, cor FROM equipes ORDER BY ordem, nome'),
     temposResposta: db.prepare(`
@@ -269,7 +277,7 @@ function criarRotasApi(db, opcoes = {}) {
 
   // Configurações › Equipe: só administrador mexe.
   function soAdmin(req, res, next) {
-    if (req.usuario.papel !== 'admin') {
+    if (req.conta.papel !== 'admin') {
       return res.status(403).json({ erro: 'Só um administrador pode mexer nas configurações da equipe.' });
     }
     next();
@@ -286,8 +294,9 @@ function criarRotasApi(db, opcoes = {}) {
 
   r.get('/equipe', soAdmin, async (req, res) => {
     const daPessoa = await equipesDeCadaUm();
-    const usuarios = (await db.prepare('SELECT id, nome, email, papel, presenca, ativo, criado_em FROM usuarios ORDER BY ativo DESC, nome').all())
-      .map((u) => ({ ...formatarUsuario(u), ativo: Number(u.ativo) === 1, equipes: daPessoa(u.id) }));
+    const online = await presenca.atendentesOnline(db);
+    const usuarios = (await db.prepare('SELECT id, nome, email, papel, presenca, ativo, pode_logar, criado_em FROM usuarios ORDER BY ativo DESC, nome').all())
+      .map((u) => ({ ...formatarUsuario({ ...u, presenca: online.has(Number(u.id)) ? 'online' : 'offline' }), ativo: Number(u.ativo) === 1, equipes: daPessoa(u.id) }));
     const convites = (await acesso.listarConvitesPendentes(db)).map((c) => ({
       id: c.token_hash,
       email: c.email,
@@ -300,18 +309,71 @@ function criarRotasApi(db, opcoes = {}) {
     res.json({ usuarios, convites, equipes: await sql.equipes.all() });
   });
 
+  // Cria uma caixa organizacional da equipe. Ela nasce vazia e já fica
+  // disponível para receber conversas pelo menu de atribuição.
+  r.post('/equipe/inboxes', soAdmin, async (req, res) => {
+    const nome = String(req.body?.nome || '').trim().replace(/\s+/g, ' ');
+    const cor = normalizarCorCanal(req.body?.cor);
+    if (nome.length < 2) return res.status(400).json({ erro: 'Digite um nome com pelo menos 2 caracteres.' });
+    if (nome.length > 60) return res.status(400).json({ erro: 'O nome da inbox pode ter no máximo 60 caracteres.' });
+    if (nome.toLocaleLowerCase('pt-BR') === 'admin') {
+      return res.status(400).json({ erro: 'O nome Admin é reservado pelo sistema.' });
+    }
+    if (!cor) return res.status(400).json({ erro: 'Escolha uma cor válida para a inbox.' });
+    const existente = await db.prepare('SELECT id FROM equipes WHERE LOWER(nome) = LOWER(?)').get(nome);
+    if (existente) return res.status(409).json({ erro: 'Já existe uma inbox com esse nome.' });
+
+    const ultima = await db.prepare('SELECT MAX(ordem) AS fim FROM equipes').get();
+    const info = await db.prepare('INSERT INTO equipes (nome, cor, ordem) VALUES (?, ?, ?)')
+      .run(nome, cor, Number(ultima?.fim ?? -1) + 1);
+    const equipe = await db.prepare('SELECT id, nome, cor FROM equipes WHERE id = ?').get(Number(info.lastInsertRowid));
+    avisos?.avisar({ origem: 'equipe_criada', equipeId: Number(equipe.id) });
+    res.status(201).json({ equipe: { ...equipe, abertas: 0, semResposta: 0, membros: [] } });
+  });
+
+  // Perfil interno: não recebe senha nem pode entrar sozinho. Depois do login,
+  // a conta escolhe qual pessoa está atendendo e toda autoria usa esse perfil.
+  r.post('/equipe/usuarios', soAdmin, async (req, res) => {
+    if (!cadastroAtendenteAtivo) {
+      return res.status(403).json({ erro: 'O cadastro de atendentes está temporariamente bloqueado.' });
+    }
+    const nome = String(req.body?.nome || '').trim().replace(/\s+/g, ' ');
+    const equipeIds = Array.isArray(req.body?.equipeIds)
+      ? [...new Set(req.body.equipeIds.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
+      : [];
+    if (nome.length < 2) return res.status(400).json({ erro: 'Digite um nome com pelo menos 2 caracteres.' });
+    if (nome.length > 120) return res.status(400).json({ erro: 'O nome pode ter no máximo 120 caracteres.' });
+    for (const id of equipeIds) {
+      if (!await sql.equipeExiste.get(id)) return res.status(400).json({ erro: 'Equipe não encontrada.' });
+    }
+
+    const emailInterno = `perfil-${crypto.randomUUID()}@atendimento.local`;
+    const senhaInutilizavel = gerarHashSenha(crypto.randomBytes(32).toString('base64url'));
+    const info = await db.prepare(`INSERT INTO usuarios
+      (nome, email, senha_hash, papel, presenca, ativo, pode_logar, criado_em)
+      VALUES (?, ?, ?, 'atendente', 'online', 1, 0, ?)`).run(nome, emailInterno, senhaInutilizavel, new Date().toISOString());
+    const id = Number(info.lastInsertRowid);
+    for (const equipeId of equipeIds) {
+      await db.prepare('INSERT OR IGNORE INTO equipe_membros (equipe_id, usuario_id) VALUES (?, ?)').run(equipeId, id);
+    }
+    const daPessoa = await equipesDeCadaUm();
+    const criado = await db.prepare('SELECT id, nome, email, papel, presenca, ativo, pode_logar FROM usuarios WHERE id = ?').get(id);
+    res.status(201).json({ usuario: { ...formatarUsuario(criado), ativo: true, equipes: daPessoa(id) } });
+  });
+
   // Registro de segurança somente para leitura. Mantém os dados essenciais em
   // forma de fotografia para o histórico continuar legível se uma conta,
   // conversa ou contato for removido depois.
   r.get('/auditoria', soAdmin, async (req, res) => {
     const linhas = await db.prepare(`SELECT id, acao, usuario_id, usuario_nome, usuario_email,
-      conversa_id, protocolo, canal, contato_id, contato_nome, criado_em, detalhe
+      conta_id, conta_email, conversa_id, protocolo, canal, contato_id, contato_nome, criado_em, detalhe
       FROM auditoria_eventos ORDER BY criado_em DESC, id DESC LIMIT 200`).all();
     res.json({ eventos: linhas.map((e) => ({
       id: Number(e.id),
       acao: e.acao,
       descricao: e.detalhe || (e.acao === 'abrir_conta' ? 'Abriu a conta do cliente no site.' : e.acao),
       usuario: { id: e.usuario_id == null ? null : Number(e.usuario_id), nome: e.usuario_nome, email: e.usuario_email || null },
+      conta: e.conta_id == null ? null : { id: Number(e.conta_id), email: e.conta_email || null },
       conversa: { id: e.conversa_id == null ? null : Number(e.conversa_id), protocolo: e.protocolo || null, canal: e.canal || null },
       contato: { id: e.contato_id == null ? null : Number(e.contato_id), nome: e.contato_nome || null },
       criadoEm: Number(e.criado_em),
@@ -364,7 +426,10 @@ function criarRotasApi(db, opcoes = {}) {
     const alvo = id ? await db.prepare('SELECT * FROM usuarios WHERE id = ?').get(id) : null;
     if (!alvo) return res.status(404).json({ erro: 'Atendente não encontrado.' });
     const corpo = req.body || {};
-    const euMesmo = Number(alvo.id) === Number(req.usuario.id);
+    const euMesmo = Number(alvo.id) === Number(req.conta.id);
+    if (!alvo.pode_logar && 'papel' in corpo) {
+      return res.status(400).json({ erro: 'Perfis de atendimento usam as permissões da conta que fez login.' });
+    }
 
     const campos = [];
     const valores = [];
@@ -396,7 +461,9 @@ function criarRotasApi(db, opcoes = {}) {
     if (campos.length) {
       valores.push(alvo.id);
       await db.prepare(`UPDATE usuarios SET ${campos.join(', ')} WHERE id = ?`).run(...valores);
-      if ('ativo' in corpo && !corpo.ativo) await db.prepare('DELETE FROM sessoes WHERE usuario_id = ?').run(alvo.id);
+      if ('ativo' in corpo && !corpo.ativo) {
+        await db.prepare('DELETE FROM sessoes WHERE usuario_id = ? OR atendente_id = ?').run(alvo.id, alvo.id);
+      }
     }
 
     if (Array.isArray(corpo.equipeIds)) {
@@ -411,17 +478,42 @@ function criarRotasApi(db, opcoes = {}) {
     }
 
     const daPessoa = await equipesDeCadaUm();
-    const atualizado = await db.prepare('SELECT id, nome, email, papel, presenca, ativo FROM usuarios WHERE id = ?').get(alvo.id);
+    const atualizado = await db.prepare('SELECT id, nome, email, papel, presenca, ativo, pode_logar FROM usuarios WHERE id = ?').get(alvo.id);
     res.json({ usuario: { ...formatarUsuario(atualizado), ativo: Number(atualizado.ativo) === 1, equipes: daPessoa(alvo.id) } });
   });
 
   async function outroAdminAtivo(exceto) {
-    const r2 = await db.prepare("SELECT COUNT(*) AS n FROM usuarios WHERE papel = 'admin' AND ativo = 1 AND id != ?").get(exceto);
+    const r2 = await db.prepare("SELECT COUNT(*) AS n FROM usuarios WHERE papel = 'admin' AND ativo = 1 AND pode_logar = 1 AND id != ?").get(exceto);
     return Number(r2.n) > 0;
   }
 
+  r.post('/presenca', async (req, res) => {
+    const resultado = await presenca.sinalizar(db, {
+      token: req.tokenSessao,
+      abaId: req.body?.abaId,
+      atendenteId: req.usuario.id,
+    });
+    if (!resultado.ok) return res.status(400).json({ erro: 'Não foi possível registrar a presença desta tela.' });
+    if (resultado.mudou) avisos?.avisar({ origem: 'presenca', atendenteId: req.usuario.id, status: 'online' });
+    res.json({ ok: true, renovarEm: presenca.INTERVALO_HEARTBEAT_MS });
+  });
 
-  r.get('/me', (req, res) => res.json({ usuario: formatarUsuario(req.usuario) }));
+  r.delete('/presenca', async (req, res) => {
+    const resultado = await presenca.encerrar(db, {
+      token: req.tokenSessao,
+      abaId: req.body?.abaId,
+      atendenteId: req.usuario.id,
+    });
+    if (resultado.mudou) avisos?.avisar({ origem: 'presenca', atendenteId: req.usuario.id, status: 'offline' });
+    res.json({ ok: true });
+  });
+
+  r.get('/me', async (req, res) => {
+    const online = await presenca.atendentesOnline(db);
+    const usuario = formatarUsuario({ ...req.usuario, presenca: online.has(Number(req.usuario.id)) ? 'online' : 'offline' });
+    const conta = formatarUsuario({ ...req.conta, presenca: online.has(Number(req.conta.id)) ? 'online' : 'offline' });
+    res.json({ usuario, conta });
+  });
 
   r.get('/resumo', async (req, res) => {
     const todas = await todasConversas();
@@ -430,7 +522,11 @@ function criarRotasApi(db, opcoes = {}) {
     const ativasPor = {};
     for (const c of abertas) if (c.atendente) ativasPor[c.atendente.id] = (ativasPor[c.atendente.id] || 0) + 1;
 
-    const atendentes = (await sql.usuariosAtivos.all()).map((u) => ({ ...formatarUsuario(u), ativas: ativasPor[u.id] || 0 }));
+    const online = await presenca.atendentesOnline(db);
+    const atendentes = (await sql.usuariosAtivos.all()).map((u) => ({
+      ...formatarUsuario({ ...u, presenca: online.has(Number(u.id)) ? 'online' : 'offline' }),
+      ativas: ativasPor[u.id] || 0,
+    }));
     const membros = await sql.membros.all();
     const equipes = (await sql.equipes.all()).map((e) => ({
       ...e,
@@ -446,9 +542,12 @@ function criarRotasApi(db, opcoes = {}) {
       .filter((t) => t.pc != null && t.pa != null && t.pa >= t.pc)
       .map((t) => t.pa - t.pc);
     const media = tempos.length ? tempos.reduce((a, b) => a + b, 0) / tempos.length : null;
+    const usuarioAtual = formatarUsuario({ ...req.usuario, presenca: online.has(Number(req.usuario.id)) ? 'online' : 'offline' });
+    const contaAtual = formatarUsuario({ ...req.conta, presenca: online.has(Number(req.conta.id)) ? 'online' : 'offline' });
 
     res.json({
-      usuario: formatarUsuario(req.usuario),
+      usuario: usuarioAtual,
+      conta: contaAtual,
       caixas: {
         todas: abertas.length,
         minhas: abertas.filter((c) => c.atendente?.id === req.usuario.id).length,
@@ -460,6 +559,7 @@ function criarRotasApi(db, opcoes = {}) {
       porCanal: Object.fromEntries([...CANAIS_FILTRO].map((canal) => [canal, abertas.filter((c) => c.canal === canal).length])),
       equipes,
       atendentes,
+      cadastroAtendenteAtivo,
       primeiraResposta: formatarPrimeiraResposta(media),
       canais: await resumoCanais(req),
       saldoAtivo: Boolean(saldo && saldo.configurado),
@@ -595,7 +695,7 @@ function criarRotasApi(db, opcoes = {}) {
 
     const nome = nomeDoCabecalho(req.get('x-nome-arquivo'));
     const mime = String(req.get('content-type') || 'application/octet-stream').split(';')[0].trim();
-    const legenda = nomeDoCabecalho(req.get('x-legenda'), '').slice(0, 1024);
+    const legenda = textoDoCabecalho(req.get('x-legenda'));
     const tipo = tipoDoArquivo(mime, nome);
 
     let guardado;
@@ -650,6 +750,56 @@ function criarRotasApi(db, opcoes = {}) {
     const mensagem = formatarMensagem(await sql.mensagemPorId.get(mensagemId));
     avisos?.avisar({ origem: 'atendente', conversaId: c.id, contatoId: c.contato.id });
     res.status(201).json({ mensagem, conversa: await buscarConversa(c.id), erroEnvio });
+  });
+
+  // Só mensagens enviadas pela equipe no Chat do site podem ser apagadas. Nos
+  // canais externos, retirar apenas do CRM faria o histórico divergir do WhatsApp
+  // ou Telegram. O autor pode apagar a própria mensagem; administradores podem
+  // corrigir qualquer envio da equipe.
+  r.delete('/conversas/:id/mensagens/:mensagemId', comConversa, async (req, res) => {
+    const c = req.conversa;
+    const mensagemId = Number(req.params.mensagemId);
+    if (!Number.isInteger(mensagemId) || mensagemId < 1) {
+      return res.status(404).json({ erro: 'Mensagem não encontrada.' });
+    }
+    const mensagem = await sql.mensagemPorId.get(mensagemId);
+    if (!mensagem || Number(mensagem.conversa_id) !== Number(c.id)) {
+      return res.status(404).json({ erro: 'Mensagem não encontrada.' });
+    }
+    if (c.canal !== 'widget') {
+      return res.status(400).json({ erro: 'Só é possível excluir mensagens enviadas pelo Chat do site.' });
+    }
+    if (mensagem.tipo !== 'atendente') {
+      return res.status(400).json({ erro: 'Só é possível excluir mensagens enviadas pela equipe.' });
+    }
+    const ehAutor = Number(mensagem.autor_id) === Number(req.usuario.id);
+    if (!ehAutor && req.conta?.papel !== 'admin') {
+      return res.status(403).json({ erro: 'Só quem enviou a mensagem (ou um administrador) pode excluí-la.' });
+    }
+
+    await db.transacao(async () => {
+      await db.prepare('DELETE FROM mensagens WHERE id = ? AND conversa_id = ?').run(mensagemId, c.id);
+      const ultima = await db.prepare("SELECT MAX(criada_em) AS em FROM mensagens WHERE conversa_id = ? AND tipo != 'nota'").get(c.id);
+      await db.prepare('UPDATE conversas SET atualizada_em = ? WHERE id = ?').run(Number(ultima?.em) || c.criadaEm, c.id);
+      await db.prepare(`INSERT INTO auditoria_eventos
+        (acao, usuario_id, usuario_nome, usuario_email, conta_id, conta_email, conversa_id, protocolo, canal,
+         contato_id, contato_nome, criado_em, origem_mensagem_id, detalhe)
+        VALUES ('mensagem_excluir', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(req.usuario.id, req.usuario.nome, req.usuario.email, req.conta.id, req.conta.email, c.id, c.protocolo,
+          c.canal, c.contato.id, c.contato.nome, Date.now(), mensagemId, `Excluiu a mensagem #${mensagemId} enviada no Chat do site.`);
+    });
+    // A mensagem já saiu do banco e do alcance do cliente. Se a limpeza externa
+    // falhar, o arquivo privado fica órfão, mas a exclusão visual não é desfeita.
+    if (mensagem.midia_chave && arquivos?.configurado) {
+      try {
+        const apagado = await arquivos.apagar(mensagem.midia_chave);
+        if (!apagado) throw new Error('o armazenamento recusou a exclusão');
+      } catch (erro) {
+        console.error('Não foi possível limpar o anexo excluído do S3:', erro.message);
+      }
+    }
+    avisos?.avisar({ origem: 'exclusao', conversaId: c.id, contatoId: c.contato.id, mensagemId });
+    res.json({ ok: true, id: mensagemId });
   });
 
   // Notas internas: só quem escreveu (ou um administrador) pode alterar ou apagar.
@@ -709,7 +859,9 @@ function criarRotasApi(db, opcoes = {}) {
     campos.push('atualizada_em = ?');
     valores.push(Date.now(), req.conversa.id);
     await db.prepare(`UPDATE conversas SET ${campos.join(', ')} WHERE id = ?`).run(...valores);
-    res.json({ conversa: await buscarConversa(req.conversa.id) });
+    const conversa = await buscarConversa(req.conversa.id);
+    avisos?.avisar({ origem: 'atribuicao', conversaId: req.conversa.id, contatoId: req.conversa.contato.id });
+    res.json({ conversa });
   });
 
   r.post('/conversas/:id/status', comConversa, async (req, res) => {
@@ -733,14 +885,14 @@ function criarRotasApi(db, opcoes = {}) {
     try {
       const r2 = await abrirConta.pedirLink({
         clienteId: ct.site_id,
-        atendente: { id: req.usuario.id, nome: req.usuario.nome, email: req.usuario.email },
+        atendente: { id: req.usuario.id, nome: req.usuario.nome, email: req.usuario.email || req.conta.email },
         motivo,
       });
       await db.prepare(`INSERT INTO auditoria_eventos
-        (acao, usuario_id, usuario_nome, usuario_email, conversa_id, protocolo, canal,
+        (acao, usuario_id, usuario_nome, usuario_email, conta_id, conta_email, conversa_id, protocolo, canal,
          contato_id, contato_nome, criado_em, origem_mensagem_id)
-        VALUES ('abrir_conta', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`)
-        .run(req.usuario.id, req.usuario.nome, req.usuario.email, c.id, c.protocolo,
+        VALUES ('abrir_conta', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`)
+        .run(req.usuario.id, req.usuario.nome, req.usuario.email, req.conta.id, req.conta.email, c.id, c.protocolo,
           c.canal, ct.id, ct.nome, Date.now());
       res.json(r2);
     } catch (erro) {
@@ -783,7 +935,7 @@ function criarRotasApi(db, opcoes = {}) {
 
     const parar = avisos?.assinar((evento) => {
       try {
-        res.write(`data: ${JSON.stringify({ origem: evento.origem, conversaId: evento.conversaId })}\n\n`);
+        res.write(`data: ${JSON.stringify({ origem: evento.origem, conversaId: evento.conversaId, mensagemId: evento.mensagemId })}\n\n`);
       } catch { /* conexão caiu; o fechamento abaixo limpa */ }
     });
     // Batida de tempos em tempos para o proxy não considerar a conexão parada.
@@ -975,7 +1127,7 @@ function criarRotasApi(db, opcoes = {}) {
   /* -------------------- consulta de saldo pelo PIN -------------------- */
 
   // A chave do agente fica só aqui no servidor. O navegador manda apenas o PIN.
-  // Limite por atendente para evitar consulta em massa (tudo fica registrado do outro lado).
+  // Limite por conta autenticada para trocar de perfil não contornar a proteção.
   const limitadorSaldo = new LimitadorTentativas({ maximo: 60, janelaMs: 5 * 60 * 1000 });
 
   // Compras e extrato do cliente. Mesma chave e mesmo limitador da consulta de
@@ -989,7 +1141,7 @@ function criarRotasApi(db, opcoes = {}) {
       const pin = normalizarPin(req.body?.pin);
       if (pin === null) return res.status(400).json({ erro: 'Digite o PIN do cliente (só números).' });
 
-      const chave = `saldo:${req.usuario.id}`;
+      const chave = chaveDeLimite('saldo', req);
       const bloqueio = limitadorSaldo.bloqueadoPor(chave);
       if (bloqueio > 0) {
         return res.status(429).json({ erro: `Muitas consultas seguidas. Tente de novo em ${Math.ceil(bloqueio / 60000)} minuto(s).` });
@@ -1026,7 +1178,7 @@ function criarRotasApi(db, opcoes = {}) {
       return res.status(400).json({ erro: 'Ações de saldo não configuradas no servidor. Avise o administrador.' });
     }
 
-    const chave = `acao-saldo:${req.usuario.id}`;
+    const chave = chaveDeLimite('acao-saldo', req);
     const bloqueio = limitadorAcaoSaldo.bloqueadoPor(chave);
     if (bloqueio > 0) {
       return res.status(429).json({ erro: `Muitas operações seguidas. Tente de novo em ${Math.ceil(bloqueio / 60000)} minuto(s).` });
@@ -1041,7 +1193,7 @@ function criarRotasApi(db, opcoes = {}) {
         activationId: req.body?.activationId,
         motivo: req.body?.motivo,
         chaveIdempotencia: req.body?.chaveIdempotencia,
-        atendente: { id: req.usuario.id, nome: req.usuario.nome, email: req.usuario.email },
+        atendente: { id: req.usuario.id, nome: req.usuario.nome, email: req.usuario.email || req.conta.email },
       });
 
       // Fica registrado também na auditoria do CRM: o administrador vê quem
@@ -1049,10 +1201,10 @@ function criarRotasApi(db, opcoes = {}) {
       const motivo = String(req.body?.motivo || '').trim();
       const detalhe = `${ROTULO_ACAO[acao]} ${r2.valor}${acao === 'reembolsar' ? ` (compra #${r2.activationId})` : ''}${motivo ? ` — ${motivo}` : ''}`;
       await db.prepare(`INSERT INTO auditoria_eventos
-        (acao, usuario_id, usuario_nome, usuario_email, conversa_id, protocolo, canal,
+        (acao, usuario_id, usuario_nome, usuario_email, conta_id, conta_email, conversa_id, protocolo, canal,
          contato_id, contato_nome, criado_em, origem_mensagem_id, detalhe)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`)
-        .run(`saldo_${acao}`, req.usuario.id, req.usuario.nome, req.usuario.email, c.id, c.protocolo,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`)
+        .run(`saldo_${acao}`, req.usuario.id, req.usuario.nome, req.usuario.email, req.conta.id, req.conta.email, c.id, c.protocolo,
           c.canal, c.contato.id, c.contato.nome, Date.now(), detalhe.slice(0, 500));
 
       res.json(r2);
@@ -1091,7 +1243,7 @@ function criarRotasApi(db, opcoes = {}) {
     // Mesmo teto das ações de saldo, e contado junto: são as operações que
     // mexem na vida do cliente, e o limite existe para o caso de algo disparar
     // em sequência sem ninguém perceber.
-    const chave = `acao-saldo:${req.usuario.id}`;
+    const chave = chaveDeLimite('acao-saldo', req);
     const bloqueio = limitadorAcaoSaldo.bloqueadoPor(chave);
     if (bloqueio > 0) {
       return res.status(429).json({ erro: `Muitas operações seguidas. Tente de novo em ${Math.ceil(bloqueio / 60000)} minuto(s).` });
@@ -1104,16 +1256,16 @@ function criarRotasApi(db, opcoes = {}) {
         pin: req.body?.pin,
         motivo: req.body?.motivo,
         chaveIdempotencia: req.body?.chaveIdempotencia,
-        atendente: { id: req.usuario.id, nome: req.usuario.nome, email: req.usuario.email },
+        atendente: { id: req.usuario.id, nome: req.usuario.nome, email: req.usuario.email || req.conta.email },
       });
 
       const nada = r2.semMudanca ? ' (já estava assim)' : '';
       const detalhe = `${ROTULO_CONTA[acao]}${nada} — ${String(req.body?.motivo || '').trim()}`;
       await db.prepare(`INSERT INTO auditoria_eventos
-        (acao, usuario_id, usuario_nome, usuario_email, conversa_id, protocolo, canal,
+        (acao, usuario_id, usuario_nome, usuario_email, conta_id, conta_email, conversa_id, protocolo, canal,
          contato_id, contato_nome, criado_em, origem_mensagem_id, detalhe)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`)
-        .run(`conta_${acao}`, req.usuario.id, req.usuario.nome, req.usuario.email, c.id, c.protocolo,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`)
+        .run(`conta_${acao}`, req.usuario.id, req.usuario.nome, req.usuario.email, req.conta.id, req.conta.email, c.id, c.protocolo,
           c.canal, c.contato.id, c.contato.nome, Date.now(), detalhe.slice(0, 500));
 
       res.json(r2);
@@ -1128,7 +1280,15 @@ function criarRotasApi(db, opcoes = {}) {
 
   rotaDeLeitura('/suporte/compras', (pin, opcoes) => saldo.listarCompras(pin, opcoes));
   rotaDeLeitura('/suporte/transacoes', async (pin, opcoes) => {
-    const resultado = await saldo.listarTransacoes(pin, opcoes);
+    let resultado = await saldo.listarTransacoes(pin, opcoes);
+    if (resultado.transacoes.some((t) => t.ativacaoId && (!t.option || !t.numero))) {
+      try {
+        const comprasRecentes = await saldo.listarCompras(pin, { limite: 100 });
+        resultado = { ...resultado, transacoes: aplicarOpcoesConhecidas(resultado.transacoes, comprasRecentes.compras) };
+      } catch {
+        // O extrato continua disponível mesmo se a consulta auxiliar de compras falhar.
+      }
+    }
     const compras = [...new Set(resultado.transacoes
       .filter((t) => ehReembolsoDoAtendimento(t)
         && Number.isSafeInteger(Number(t.ativacaoId)) && Number(t.ativacaoId) > 0)
@@ -1152,7 +1312,7 @@ function criarRotasApi(db, opcoes = {}) {
     const pin = normalizarPin(req.body?.pin);
     if (pin === null) return res.status(400).json({ erro: 'Digite o PIN do cliente (só números).' });
 
-    const chave = `saldo:${req.usuario.id}`;
+    const chave = chaveDeLimite('saldo', req);
     const bloqueio = limitadorSaldo.bloqueadoPor(chave);
     if (bloqueio > 0) {
       return res.status(429).json({ erro: `Muitas consultas seguidas. Tente de novo em ${Math.ceil(bloqueio / 60000)} minuto(s).` });
@@ -1444,4 +1604,4 @@ function criarRotasApi(db, opcoes = {}) {
   return r;
 }
 
-module.exports = { criarRotasApi };
+module.exports = { criarRotasApi, chaveDeLimite };

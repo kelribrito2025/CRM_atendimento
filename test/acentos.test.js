@@ -80,3 +80,19 @@ test('acentos: corrige o texto inteiro sem mexer na pontuação', async () => {
   assert.equal(corrigirTexto('Ola, quero agua e cafe.'), 'Olá, quero água e café.');
   assert.equal(corrigirTexto(''), '');
 });
+
+test('acentos: não altera URLs, domínios nem e-mails', async () => {
+  const { corrigirTexto, ehEnderecoInternet } = await carregar();
+  const url = 'https://app.numero-virtual.com/historico?opcao=nao&confirmacao=sim';
+  const dominio = 'app.numero-virtual.com/historico/opcao';
+  const email = 'suporte@numero-virtual.com';
+
+  assert.equal(
+    corrigirTexto(`Ola, acesse ${url}, depois ${dominio} e envie para ${email}. Nao altere.`),
+    `Olá, acesse ${url}, depois ${dominio} e envie para ${email}. Não altere.`,
+  );
+  assert.equal(ehEnderecoInternet(url), true);
+  assert.equal(ehEnderecoInternet(dominio), true);
+  assert.equal(ehEnderecoInternet(email), true);
+  assert.equal(ehEnderecoInternet('confirmacao'), false);
+});

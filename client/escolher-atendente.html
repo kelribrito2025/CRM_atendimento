@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<title>Quem está atendendo? · CRM Atendimento</title>
+<link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/css/app.css">
+<link rel="stylesheet" href="/assets/css/acesso.css">
+</head>
+<body data-pagina="escolher-atendente">
+<div class="acesso">
+  <aside class="hero">
+    <div class="hero-glow"></div>
+    <span class="marca">
+      <span class="logo"><svg width="27" height="27" viewBox="0 0 24 24" fill="none" role="img" aria-label="Bigteck Atendimento"><path d="M4.5 14v-2a7.5 7.5 0 0115 0v2" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"></path><rect x="2.6" y="13.4" width="4.4" height="6.2" rx="1.4" stroke="#FFFFFF" stroke-width="2.2"></rect><rect x="17" y="13.4" width="4.4" height="6.2" rx="1.4" stroke="#FFFFFF" stroke-width="2.2"></rect><path d="M19.2 19.6v.7a2.2 2.2 0 01-2.2 2.2H13" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"></path></svg></span>
+      <span><span class="nome">Bigteck</span><span class="sub">Atendimento</span></span>
+    </span>
+    <div class="hero-conteudo">
+      <span class="hero-badge">Equipe dos Elóia</span>
+      <h1>Quem está atendendo agora?</h1>
+      <p>Escolha seu nome para que mensagens, conversas e ações de auditoria fiquem registradas corretamente.</p>
+    </div>
+    <span class="hero-rodape">Acesso restrito à equipe de atendimento.</span>
+  </aside>
+  <main class="formulario">
+    <div class="formulario-miolo escolher-atendente">
+      <div class="titulo"><h2>Escolha seu atendente</h2><p>Esta escolha vale para a sessão atual.</p></div>
+      <div class="aviso erro" id="erro" hidden role="alert"></div>
+      <div class="conta-logada">
+        <span class="avatar-conta" id="conta-iniciais">…</span>
+        <span><strong id="conta-nome">Carregando…</strong><small id="conta-email"></small></span>
+        <form method="post" action="/logout"><button type="submit" class="sair-conta">Sair</button></form>
+      </div>
+      <span class="rotulo-escolha">Atendentes disponíveis</span>
+      <form id="form-atendente" class="campos">
+        <div class="lista-atendentes" id="lista-atendentes" aria-live="polite"></div>
+        <button type="submit" class="btn-acesso" id="btn" disabled>Entrar no atendimento</button>
+      </form>
+    </div>
+    <span class="rodape-form">© 2026 Bigteck</span>
+  </main>
+</div>
+<script type="module" src="/assets/js/acesso.js"></script>
+</body>
+</html>

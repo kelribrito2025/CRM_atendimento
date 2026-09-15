@@ -147,3 +147,41 @@ test('saldo: e-mail confirmado pelo PIN é guardado na conversa do Chat do site'
     await s.fechar();
   }
 });
+
+test('transações: endpoint associa a opção da compra pelo ID exato da ativação', async () => {
+  const db = await abrirBancoDeTeste();
+  await semear(db, { adminEmail: ADMIN.email, adminSenha: ADMIN.senha, adminNome: 'Admin Teste', comDadosExemplo: false });
+  let consultaCompras;
+  const saldo = {
+    configurado: true,
+    async listarTransacoes() {
+      return {
+        transacoes: [{ id: 1, tipo: 'reembolso', tipoTexto: 'Reembolso', descricao: 'Reembolso de ativação cancelada #77', ativacaoId: 77, option: null }],
+        total: 1,
+        proximoCursor: null,
+      };
+    },
+    async listarCompras(pin, opcoes) {
+      consultaCompras = { pin, opcoes };
+      return { compras: [{ id: 77, numero: '5588999467585', option: { id: 1, name: 'Opção 1' } }] };
+    },
+  };
+  const app = criarApp(db, { enviador: criarEnviador({ modo: 'silencioso' }), saldo });
+  const servidor = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
+  const base = `http://127.0.0.1:${servidor.address().port}`;
+  try {
+    const login = await fetch(`${base}/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ADMIN) });
+    const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+    const resposta = await fetch(`${base}/api/suporte/transacoes`, {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: 5446 }),
+    });
+    const dados = await resposta.json();
+    assert.equal(resposta.status, 200, JSON.stringify(dados));
+    assert.deepEqual(dados.transacoes[0].option, { id: 1, name: 'Opção 1' });
+    assert.equal(dados.transacoes[0].numero, '5588999467585');
+    assert.deepEqual(consultaCompras, { pin: 5446, opcoes: { limite: 100 } });
+  } finally {
+    await new Promise((resolve) => servidor.close(resolve));
+    await db.fechar();
+  }
+});

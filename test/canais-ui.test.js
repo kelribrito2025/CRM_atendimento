@@ -10,14 +10,16 @@ const path = require('node:path');
 
 const javascript = fs.readFileSync(path.join(__dirname, '../client/assets/js/atendimento.js'), 'utf8');
 const css = fs.readFileSync(path.join(__dirname, '../client/assets/css/app.css'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '../client/atendimento.html'), 'utf8');
 
 test('canais: é página de configurações, sem janela flutuante', () => {
   assert.doesNotMatch(javascript, /modalCanais/);
   assert.doesNotMatch(javascript, /abrirModalCanais|fecharModalCanais/);
   assert.match(javascript, /if \(id === 'canais'\) carregarCanais\(\);/);
   assert.match(javascript, /if \(config\.secao === 'canais'\) carregarCanais\(\);/);
-  // O botão "Conectar canal" do menu do usuário leva para a página, não abre modal.
-  assert.match(javascript, /abrirConfiguracoes\('canais'\)/);
+  assert.match(javascript, /\{ id: 'canais', nome: 'Canais', icone: 'elo', soAdmin: true \}/);
+  assert.doesNotMatch(html, /Conectar canal|menu-whatsapp|menu-telegram|btn-conectar/);
+  assert.doesNotMatch(javascript, /\$\('#btn-conectar'\)|\$\('#menu-whatsapp'\)|\$\('#menu-telegram'\)/);
 });
 
 test('canais: lista WhatsApp, Telegram e o chat do site em cartões', () => {

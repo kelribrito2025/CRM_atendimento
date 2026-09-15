@@ -1,6 +1,6 @@
 import { icone, montarIcones } from './icones.js';
 import { detectarNovasMensagens } from './alerta-mensagem.mjs';
-import { corrigirPalavra, corrigirTexto } from './acentos.mjs';
+import { corrigirPalavra, corrigirTexto, ehEnderecoInternet } from './acentos.mjs';
 import { capturarCompositor, restaurarCompositor } from './foco-compositor.mjs';
 import { deveTocarNotificacao, gravarSomAtivo, lerSomAtivo } from './som-notificacoes.mjs';
 import { deveSalvarNota } from './nota-editor.mjs';
@@ -8,6 +8,7 @@ import { centavosDoValorFormatado, formatarValorEmCentavos } from './valor-monet
 import { estiloAvatarDoCanal } from './cor-avatar.mjs';
 import { formatarDataHoraCompra } from './data-compra.mjs';
 import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
+import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
 
 (() => {
   'use strict';
@@ -26,6 +27,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     conversa: null,
     modo: 'resposta',        // resposta | nota
     enviando: false,
+    anexoPendente: null,
   };
 
   const $ = (sel, raiz = document) => raiz.querySelector(sel);
@@ -209,6 +211,10 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
       throw new Error('Sessão expirada.');
     }
     const dados = await resposta.json().catch(() => ({}));
+    if (resposta.status === 409 && dados.escolherAtendente) {
+      location.href = `/escolher-atendente?next=${encodeURIComponent(location.pathname)}`;
+      throw new Error('Escolha quem está atendendo.');
+    }
     if (!resposta.ok) {
       const erro = new Error(dados.erro || `Erro ${resposta.status}`);
       // Detalhes que a tela usa para decidir o que oferecer (ver ações de saldo).
@@ -218,6 +224,25 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
       throw erro;
     }
     return dados;
+  }
+
+  // Presença real: cada aba aberta envia um sinal próprio. A sessão pode durar
+  // 30 dias, mas o atendente só aparece online enquanto esta tela estiver viva.
+  const abaPresencaId = globalThis.crypto?.randomUUID?.()
+    || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  async function sinalizarPresenca() {
+    return api('/presenca', { method: 'POST', body: { abaId: abaPresencaId } });
+  }
+
+  function encerrarPresenca() {
+    fetch('/api/presenca', {
+      method: 'DELETE',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ abaId: abaPresencaId }),
+      keepalive: true,
+    }).catch(() => {});
   }
 
   /* ================================================================
@@ -260,8 +285,13 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
   function juntarHistorico(atual, conversa) {
     if (!atual) return conversa;
     const porId = new Map(conversa.mensagens.map((m) => [m.id, m]));
+    const primeiraDaPagina = conversa.mensagens[0] || null;
+    const anteriorAPagina = (m) => conversa.temMaisMensagens && primeiraDaPagina && (
+      m.criadaEm < primeiraDaPagina.criadaEm
+      || (m.criadaEm === primeiraDaPagina.criadaEm && m.id < primeiraDaPagina.id)
+    );
     const antigas = atual.mensagens
-      .filter((m) => !m.provisoria && !conversa.mensagens.some((n) => n.id === m.id))
+      .filter((m) => !m.provisoria && !porId.has(m.id) && anteriorAPagina(m))
       .map((m) => porId.get(m.id) || m);
     const atualizadas = atual.mensagens
       .filter((m) => !m.provisoria && porId.has(m.id))
@@ -274,6 +304,10 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
   }
 
   async function abrirConversa(id) {
+    if (Number(id) !== Number(estado.conversaId) && estado.anexoPendente?.enviando) {
+      return toast('Aguarde o arquivo terminar de enviar antes de trocar de conversa.');
+    }
+    if (Number(id) !== Number(estado.conversaId)) descartarAnexoPendente({ redesenhar: false });
     estado.conversaId = id;
     // O saldo consultado vale só para a conversa em que foi pedido.
     if (id !== saldo.conversaId) limparSaldo(id);
@@ -313,8 +347,11 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
       const atual = estado.conversa?.id === conversa.id ? estado.conversa : null;
       const ultimaNova = conversa.mensagens.at(-1)?.id ?? null;
       const ultimaAtual = atual?.mensagens.filter((m) => !m.provisoria).at(-1)?.id ?? null;
+      const idsNovos = conversa.mensagens.map((m) => m.id).join(',');
+      const idsAtuais = atual?.mensagens.filter((m) => !m.provisoria).slice(-conversa.mensagens.length).map((m) => m.id).join(',') ?? '';
       const mudou = !atual
         || ultimaNova !== ultimaAtual
+        || idsNovos !== idsAtuais
         || conversa.status !== atual.status
         || conversa.atendente?.id !== atual.atendente?.id
         || conversa.equipe?.id !== atual.equipe?.id
@@ -613,6 +650,38 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     }
   }
 
+  function podeApagarMensagem(m, conversa = estado.conversa) {
+    const usuario = estado.resumo?.usuario;
+    const conta = estado.resumo?.conta || usuario;
+    return Boolean(conversa?.canal === 'widget'
+      && m?.tipo === 'atendente'
+      && !m.provisoria
+      && usuario
+      && (m.autor?.id === usuario.id || conta?.papel === 'admin'));
+  }
+
+  async function apagarMensagemEnviada(m) {
+    const conversaId = estado.conversa?.id;
+    if (!conversaId || !podeApagarMensagem(m)) return;
+    const confirmado = await confirmarNoSite({
+      titulo: 'Excluir mensagem?',
+      texto: 'A mensagem será apagada do CRM e do chat do cliente. Essa ação não pode ser desfeita.',
+      rotuloConfirmar: 'Excluir mensagem',
+    });
+    if (!confirmado) return;
+    try {
+      await api(`/conversas/${conversaId}/mensagens/${m.id}`, { method: 'DELETE' });
+      if (estado.conversa?.id === conversaId) {
+        estado.conversa.mensagens = estado.conversa.mensagens.filter((item) => item.id !== m.id);
+        aplicarConversa(estado.conversa);
+      }
+      await Promise.all([carregarResumo(), carregarConversas()]);
+      toast('Mensagem excluída do chat do cliente.');
+    } catch (e) {
+      toast(e.message, 5000);
+    }
+  }
+
   // Os dois botõezinhos (lápis e lixeira) que aparecem em cada nota.
   function acoesDaNota(m, onde, classe = 'nota-acoes') {
     if (!podeMexerNaNota(m)) return null;
@@ -641,8 +710,36 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     return 'documento';
   }
 
+  function imagemDoClipboard(evento) {
+    const itens = Array.from(evento.clipboardData?.items || []);
+    const item = itens.find((i) => i.kind === 'file' && String(i.type || '').toLowerCase().startsWith('image/'));
+    return item?.getAsFile?.() || Array.from(evento.clipboardData?.files || [])
+      .find((arquivo) => String(arquivo.type || '').toLowerCase().startsWith('image/')) || null;
+  }
+
+  function nomearImagemColada(arquivo) {
+    const extensoes = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/bmp': 'bmp' };
+    const mime = String(arquivo.type || 'image/png').toLowerCase();
+    const extensao = extensoes[mime] || 'png';
+    return new File([arquivo], `imagem-colada-${Date.now()}.${extensao}`, { type: mime, lastModified: Date.now() });
+  }
+
+  function colarNoCompositor(evento, textarea, modoNota) {
+    const imagem = modoNota ? null : imagemDoClipboard(evento);
+    if (imagem) {
+      evento.preventDefault();
+      prepararAnexo(nomearImagemColada(imagem));
+      return;
+    }
+    setTimeout(() => {
+      if (acentosLigados) textarea.value = corrigirTexto(textarea.value);
+      ajustarAltura(textarea);
+    }, 0);
+  }
+
   function escolherAnexo() {
     if (!estado.conversa) return;
+    if (estado.modo === 'nota') return toast('Volte ao modo de resposta para anexar um arquivo ao cliente.');
     if (!estado.resumo?.anexosAtivos) {
       return toast('Envio de anexos indisponível: peça ao responsável para configurar o armazenamento de arquivos no servidor.', 6000);
     }
@@ -650,32 +747,73 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     seletor.addEventListener('change', () => {
       const arquivo = seletor.files?.[0];
       seletor.remove();
-      if (arquivo) enviarAnexo(arquivo);
+      if (arquivo) prepararAnexo(arquivo);
     });
     document.body.append(seletor);
     seletor.click();
   }
 
-  // O arquivo aparece na hora no chat, marcado como "enviando", e vai para o cliente.
-  async function enviarAnexo(arquivo) {
-    const c = estado.conversa;
-    if (!c || estado.enviando) return;
-    if (arquivo.size > TAMANHO_MAXIMO_ANEXO) return toast('Arquivo muito grande: o limite é 20 MB.', 5000);
-    estado.enviando = true;
+  function descartarAnexoPendente({ redesenhar = true } = {}) {
+    const pendente = estado.anexoPendente;
+    if (!pendente || pendente.enviando) return false;
+    if (pendente.previa) URL.revokeObjectURL(pendente.previa);
+    estado.anexoPendente = null;
+    if (redesenhar && estado.conversa) aplicarConversa(estado.conversa);
+    return true;
+  }
 
+  function prepararAnexo(arquivo) {
+    const c = estado.conversa;
+    if (!c) return;
+    if (estado.modo === 'nota') return toast('Volte ao modo de resposta para anexar um arquivo ao cliente.');
+    if (!estado.resumo?.anexosAtivos) {
+      return toast('Envio de anexos indisponível: peça ao responsável para configurar o armazenamento de arquivos no servidor.', 6000);
+    }
+    if (estado.enviando) return toast('Aguarde o envio atual terminar antes de enviar outro arquivo.');
+    if (!arquivo.size) return toast('O arquivo está vazio. Escolha outro arquivo.', 5000);
+    if (arquivo.size > TAMANHO_MAXIMO_ANEXO) return toast('Arquivo muito grande: o limite é 20 MB.', 5000);
+    descartarAnexoPendente({ redesenhar: false });
     const tipo = tipoDoArquivo(arquivo);
     const previa = tipo === 'imagem' || tipo === 'video' ? URL.createObjectURL(arquivo) : null;
-    const provisoria = {
-      id: `tmp-${Date.now()}`,
-      tipo: 'atendente',
-      texto: '',
-      entrega: 'enviando',
-      criadaEm: Date.now(),
-      autor: { id: estado.resumo?.usuario?.id, nome: estado.resumo?.usuario?.nome, nomeCurto: estado.resumo?.usuario?.nomeCurto || 'Você' },
-      midia: { tipo, nome: arquivo.name, mime: arquivo.type || null, url: previa },
-      provisoria: true,
-    };
-    c.mensagens.push(provisoria);
+    estado.anexoPendente = { arquivo, tipo, previa, conversaId: c.id, enviando: false };
+    aplicarConversa(c);
+    $('#texto-msg')?.focus();
+  }
+
+  function anexoPendenteDoCompositor() {
+    const p = estado.anexoPendente;
+    if (!p || Number(p.conversaId) !== Number(estado.conversa?.id)) return null;
+    const visual = p.tipo === 'imagem'
+      ? el('img', { src: p.previa, alt: '' })
+      : (p.tipo === 'video'
+        ? el('video', { src: p.previa, muted: true, preload: 'metadata' })
+        : el('span', { class: 'anexo-pendente-icone' }, svg(ICONE.clipe)));
+    return el('div', { class: `anexo-pendente${p.enviando ? ' enviando' : ''}` },
+      el('div', { class: 'anexo-pendente-visual' },
+        visual,
+        p.enviando
+          ? el('span', { class: 'anexo-pendente-loading', role: 'status', 'aria-label': 'Enviando arquivo' },
+            el('span', { class: 'spinner-anexo' }), el('span', {}, 'Enviando'))
+          : null,
+        el('button', {
+          type: 'button', class: 'anexo-pendente-remover', title: 'Remover anexo', 'aria-label': 'Remover anexo',
+          disabled: p.enviando, onclick: () => descartarAnexoPendente(),
+        }, svg(ICONE.fechar))),
+      el('span', { class: 'anexo-pendente-nome', title: p.arquivo.name }, p.arquivo.name));
+  }
+
+  // O upload começa somente depois de Enviar/Enter. Enquanto o S3 e o canal
+  // confirmam o recebimento, a prévia permanece no compositor com loading.
+  async function enviarAnexoPendente(legenda, campo) {
+    const c = estado.conversa;
+    const pendente = estado.anexoPendente;
+    if (!c || !pendente || Number(pendente.conversaId) !== Number(c.id)) return;
+    if (estado.enviando || pendente.enviando) return;
+    const textoAnterior = String(legenda || '').trim();
+    if (textoAnterior.length > 1024) return toast('A legenda do anexo pode ter no máximo 1024 caracteres.', 5000);
+    estado.enviando = true;
+    pendente.enviando = true;
+    if (campo) { campo.value = ''; ajustarAltura(campo); }
     aplicarConversa(c);
 
     try {
@@ -684,42 +822,59 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
         credentials: 'same-origin',
         headers: {
           Accept: 'application/json',
-          'Content-Type': arquivo.type || 'application/octet-stream',
-          'x-nome-arquivo': encodeURIComponent(arquivo.name || 'arquivo'),
+          'Content-Type': pendente.arquivo.type || 'application/octet-stream',
+          'x-nome-arquivo': encodeURIComponent(pendente.arquivo.name || 'arquivo'),
+          ...(textoAnterior ? { 'x-legenda': encodeURIComponent(textoAnterior) } : {}),
         },
-        body: arquivo,
+        body: pendente.arquivo,
       });
-      if (resposta.status === 401) { location.href = `/login?next=${encodeURIComponent(location.pathname)}`; return; }
+      if (resposta.status === 401) {
+        pendente.enviando = false;
+        location.href = `/login?next=${encodeURIComponent(location.pathname)}`;
+        return;
+      }
       const r = await resposta.json().catch(() => ({}));
       if (!resposta.ok) throw new Error(r.erro || `Erro ${resposta.status}`);
       if (r.erroEnvio) toast(`Não foi possível enviar pelo ${NOME_CANAL[c.canal] || c.canal}: ${r.erroEnvio}`, 5000);
-      const posicao = c.mensagens.findIndex((m) => m.id === provisoria.id);
-      if (posicao >= 0) c.mensagens[posicao] = r.mensagem; else c.mensagens.push(r.mensagem);
+      if (!c.mensagens.some((m) => m.id === r.mensagem.id)) c.mensagens.push(r.mensagem);
       Object.assign(c, { status: r.conversa.status, atendente: r.conversa.atendente, atualizadaEm: r.conversa.atualizadaEm });
-      aplicarConversa(c);
-      await Promise.all([carregarResumo(), carregarConversas()]);
+      if (estado.anexoPendente === pendente) {
+        pendente.enviando = false;
+        descartarAnexoPendente({ redesenhar: false });
+      }
+      if (estado.conversa?.id === c.id) aplicarConversa(c);
+      await Promise.all([carregarResumo(), carregarConversas()]).catch(() => {});
     } catch (e) {
-      const posicao = c.mensagens.findIndex((m) => m.id === provisoria.id);
-      if (posicao >= 0) c.mensagens.splice(posicao, 1);
-      aplicarConversa(c);
+      pendente.enviando = false;
+      if (estado.conversa?.id === c.id) {
+        const textoDuranteEnvio = $('#texto-msg')?.value.trim() || '';
+        aplicarConversa(c);
+        const novoCampo = $('#texto-msg');
+        if (novoCampo) {
+          novoCampo.value = [textoAnterior, textoDuranteEnvio].filter(Boolean).join(' ');
+          ajustarAltura(novoCampo);
+          novoCampo.focus();
+        }
+      }
       toast(e.message, 5000);
     } finally {
-      if (previa) URL.revokeObjectURL(previa);
       estado.enviando = false;
     }
   }
 
   async function atualizarConversa(corpo) {
     const c = estado.conversa;
-    if (!c) return;
+    if (!c) return null;
     try {
       const r = await api(`/conversas/${c.id}`, { method: 'PATCH', body: corpo });
       Object.assign(c, { atendente: r.conversa.atendente, equipe: r.conversa.equipe });
       aplicarConversa(c);
       await Promise.all([carregarResumo(), carregarConversas()]);
+      return r.conversa;
     } catch (e) {
       toast(e.message);
       renderChat();
+      return null;
     }
   }
 
@@ -795,23 +950,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     $('#rail-badge').hidden = r.caixas.semResposta === 0;
     $('#btn-usuario').textContent = r.usuario.iniciais;
     $('#menu-nome').textContent = r.usuario.nome;
-    $('#menu-email').textContent = r.usuario.email;
-    const admin = r.usuario.papel === 'admin';
-    $('#btn-conectar').hidden = !admin;
-    const wa = (r.canais || []).find((c) => c.id === 'whatsapp');
-    const status = $('#menu-whatsapp');
-    status.hidden = !(admin && wa);
-    if (admin && wa) {
-      const conectados = wa.canais.filter((c) => c.status === 'connected').map((c) => c.numeroFormatado || c.nome);
-      status.textContent = wa.conectado ? `WhatsApp conectado: ${conectados.join(', ')}` : (wa.configurado ? 'WhatsApp não conectado' : 'WhatsApp não configurado no servidor');
-    }
-    const tg = (r.canais || []).find((c) => c.id === 'telegram');
-    const statusTg = $('#menu-telegram');
-    statusTg.hidden = !(admin && tg);
-    if (admin && tg) {
-      const bots = tg.canais.filter((c) => c.status === 'connected').map((c) => c.numeroFormatado || c.nome);
-      statusTg.textContent = tg.conectado ? `Telegram conectado: ${bots.join(', ')}` : 'Telegram não conectado';
-    }
+    $('#menu-email').textContent = r.conta?.email || r.usuario.email;
   }
 
   /* ================================================================
@@ -844,7 +983,12 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
       el('span', { class: 'separador' }),
       el('div', { class: 'linha-rotulo' },
         el('span', { class: 'rotulo' }, 'Inbox da equipe'),
-        desligar(el('button', { type: 'button', class: 'btn-mini' }, icone('mais', ICONE.mais)), 'Cadastro de equipes: em breve')),
+        (r.conta || r.usuario).papel === 'admin'
+          ? el('button', {
+            type: 'button', class: 'btn-mini hov', title: 'Criar inbox da equipe',
+            'aria-label': 'Criar inbox da equipe', onclick: abrirCriacaoInbox,
+          }, icone('mais', ICONE.mais))
+          : null),
       el('div', { class: 'lista-nav' },
         ...r.equipes
           .filter((e) => e.nome.trim().toLocaleLowerCase('pt-BR') !== 'admin')
@@ -852,14 +996,101 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
       el('span', { class: 'separador' }),
       el('span', { class: 'rotulo' }, equipeSel ? `Equipe de ${equipeSel.nome}` : 'Atendentes'),
       el('div', { class: 'membros' },
-        ...membros.map((m) => el('div', { class: 'membro hov', title: m.email || '' },
-          el('span', { class: 'avatar p' }, m.iniciais),
-          el('div', { class: 'membro-info' },
-            el('span', { class: 'membro-nome' }, m.nomeCurto),
-            el('span', { class: `membro-status${m.presenca === 'online' ? ' online' : ''}` }, `${m.presenca} · ${m.ativas ? `${m.ativas} ativa${m.ativas === 1 ? '' : 's'}` : 'livre'}`)))),
+        ...membros.map((m) => {
+          const estaOnline = m.presenca === 'online';
+          const status = estaOnline
+            ? `online · ${m.ativas ? `${m.ativas} ativa${m.ativas === 1 ? '' : 's'}` : 'livre'}`
+            : 'offline';
+          return el('div', { class: 'membro hov', title: m.email || '' },
+            el('span', { class: 'avatar p' }, m.iniciais),
+            el('div', { class: 'membro-info' },
+              el('span', { class: 'membro-nome' }, m.nomeCurto),
+              el('span', { class: `membro-status ${estaOnline ? 'online' : 'offline'}` }, status)));
+        }),
         membros.length ? null : el('div', { class: 'vazio' }, 'Nenhum atendente nesta equipe.')),
-      desligar(el('button', { type: 'button', class: 'btn-tracejado' }, icone('mais', ICONE.mais), 'Adicionar à equipe'), 'Gestão de membros: em breve'),
+      (r.conta || r.usuario).papel === 'admin'
+        ? (r.cadastroAtendenteAtivo
+          ? el('button', { type: 'button', class: 'btn-tracejado', onclick: adicionarAtendente }, icone('mais', ICONE.mais), equipeSel ? 'Adicionar à equipe' : 'Adicionar atendente')
+          : desligar(el('button', { type: 'button', class: 'btn-tracejado' }, icone('mais', ICONE.mais), equipeSel ? 'Adicionar à equipe' : 'Adicionar atendente'), 'Cadastro de atendentes temporariamente bloqueado'))
+        : null,
     );
+  }
+
+  function abrirCriacaoInbox() {
+    if ((estado.resumo?.conta || estado.resumo?.usuario)?.papel !== 'admin') {
+      return toast('Só um administrador pode criar inboxes da equipe.');
+    }
+    const erro = el('span', { class: 'dica erro-texto', 'aria-live': 'polite' });
+    const nome = el('input', {
+      type: 'text', maxlength: '60', autocomplete: 'off', placeholder: 'Ex.: Financeiro',
+      'aria-label': 'Nome da nova inbox',
+    });
+    const cor = el('input', {
+      type: 'color', value: '#12B85C', 'aria-label': 'Cor da nova inbox', title: 'Escolher cor da inbox',
+    });
+    let salvando = false;
+    const fundo = el('div', { class: 'modal-fundo' });
+    const cancelar = el('button', { type: 'button', class: 'btn-suave hov' }, 'Cancelar');
+    const salvar = el('button', { type: 'button', class: 'btn-primario' }, 'Criar inbox');
+
+    function fechar() {
+      if (salvando) return;
+      document.removeEventListener('keydown', aoTeclado);
+      fundo.remove();
+    }
+    const aoTeclado = (ev) => { if (ev.key === 'Escape') fechar(); };
+    fundo.addEventListener('click', (ev) => { if (ev.target === fundo) fechar(); });
+    cancelar.addEventListener('click', fechar);
+
+    async function concluir() {
+      if (salvando) return;
+      const nomeLimpo = nome.value.trim().replace(/\s+/g, ' ');
+      if (nomeLimpo.length < 2) {
+        erro.textContent = 'Digite um nome com pelo menos 2 caracteres.';
+        nome.focus();
+        return;
+      }
+      if (nomeLimpo.toLocaleLowerCase('pt-BR') === 'admin') {
+        erro.textContent = 'O nome Admin é reservado pelo sistema.';
+        nome.focus();
+        return;
+      }
+      salvando = true;
+      salvar.disabled = true;
+      cancelar.disabled = true;
+      erro.textContent = '';
+      try {
+        const { equipe } = await api('/equipe/inboxes', { method: 'POST', body: { nome: nomeLimpo, cor: cor.value } });
+        document.removeEventListener('keydown', aoTeclado);
+        fundo.remove();
+        await carregarResumo();
+        toast(`Inbox ${equipe.nome} criada.`);
+      } catch (e) {
+        salvando = false;
+        salvar.disabled = false;
+        cancelar.disabled = false;
+        erro.textContent = e.message;
+        nome.focus();
+      }
+    }
+
+    nome.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' && !ev.isComposing) { ev.preventDefault(); concluir(); }
+    });
+    salvar.addEventListener('click', concluir);
+    fundo.append(el('div', { class: 'modal criar-inbox', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'criar-inbox-titulo' },
+      el('div', { class: 'modal-corpo' },
+        el('div', { class: 'modal-cab' },
+          el('div', {}, el('h2', { id: 'criar-inbox-titulo' }, 'Criar inbox da equipe'), el('p', {}, 'Separe os atendimentos por assunto ou responsabilidade.')),
+          el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', 'aria-label': 'Fechar', onclick: fechar }, svg(ICONE.fechar))),
+        el('div', { class: 'criar-inbox-campos' },
+          el('label', { class: 'config-campo' }, el('span', {}, 'Nome da inbox'), nome),
+          el('label', { class: 'config-campo criar-inbox-cor' }, el('span', {}, 'Cor'), cor)),
+        erro,
+        el('div', { class: 'modal-acoes' }, cancelar, salvar))));
+    document.body.append(fundo);
+    document.addEventListener('keydown', aoTeclado);
+    nome.focus();
   }
 
   /* ================================================================
@@ -895,6 +1126,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     const linhaPrevia = c.semResposta && tag
       ? el('span', { class: 'conversa-previa-linha' },
         el('span', { class: 'conversa-previa' }, previa),
+        el('span', { class: 'conversa-reticencias', 'aria-hidden': 'true' }, '...'),
         el('span', { class: 'sem-resposta-texto' }, tag[0]))
       : [
         el('span', { class: 'conversa-previa' }, previa),
@@ -1343,6 +1575,8 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     if (!separador) return;
     const m = /(\p{L}+)([\s.,;:!?)\]}"'…])$/u.exec(antes);
     if (!m) return;
+    const trechoAtual = antes.slice(0, -m[2].length).split(/\s/u).at(-1) || '';
+    if (ehEnderecoInternet(trechoAtual)) return;
     const corrigida = corrigirPalavra(m[1]);
     if (!corrigida) return;
     const inicio = fim - m[0].length;
@@ -1440,7 +1674,14 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
           editandoAqui(m, 'chat') ? null : acoesDaNota(m, 'chat')));
       } else if (m.tipo === 'atendente') {
         nos.push(el('div', { class: 'msg saida' },
-          balaoMensagem(m),
+          el('div', { class: 'mensagem-linha' },
+            podeApagarMensagem(m, c)
+              ? el('button', {
+                type: 'button', class: 'btn-excluir-mensagem hov', title: 'Excluir mensagem', 'aria-label': 'Excluir mensagem',
+                onclick: () => apagarMensagemEnviada(m),
+              }, svg(ICONE.lixeira))
+              : null,
+            balaoMensagem(m)),
           el('span', { class: `msg-meta${m.provisoria ? ' enviando' : ''}` }, [
             horaCurta(m.criadaEm),
             m.autor?.nomeCurto || (m.tipo === 'atendente' ? 'pelo celular' : null),
@@ -1493,14 +1734,80 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     botaoMenu.parentElement.append(el('div', { class: 'menu-flutuante menu-notificacoes', role: 'menu' }, botaoSom));
   }
 
+  function abrirAtribuicaoEquipe() {
+    fecharMenus();
+    const conversa = estado.conversa;
+    const equipes = (estado.resumo?.equipes || [])
+      .filter((e) => e.nome.trim().toLocaleLowerCase('pt-BR') !== 'admin');
+    if (!conversa || !equipes.length) return toast('Nenhuma inbox da equipe está disponível.');
+
+    const focoAnterior = document.activeElement;
+    const tituloId = `atribuir-inbox-${Date.now()}`;
+    let salvando = false;
+    const encerrar = () => {
+      if (salvando) return;
+      document.removeEventListener('keydown', aoTeclado);
+      fundo.remove();
+      focoAnterior?.focus?.();
+    };
+    const aoTeclado = (e) => { if (e.key === 'Escape') encerrar(); };
+
+    const opcoes = equipes.map((equipe) => {
+      const atual = Number(conversa.equipe?.id) === Number(equipe.id);
+      const botao = el('button', {
+        type: 'button',
+        class: `atribuir-inbox-opcao${atual ? ' atual' : ''}`,
+        disabled: atual ? 'disabled' : null,
+        'aria-label': atual ? `${equipe.nome}, inbox atual` : `Atribuir a ${equipe.nome}`,
+        onclick: async () => {
+          if (salvando) return;
+          salvando = true;
+          fundo.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+          const atualizada = await atualizarConversa({ equipeId: equipe.id });
+          salvando = false;
+          if (!atualizada) {
+            fundo.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+            botao.disabled = atual;
+            return;
+          }
+          document.removeEventListener('keydown', aoTeclado);
+          fundo.remove();
+          toast(`${conversa.contato.nome} foi para a inbox ${equipe.nome}.`);
+        },
+      },
+      el('span', { class: 'atribuir-inbox-cor', style: `background:${equipe.cor}` }),
+      el('span', { class: 'atribuir-inbox-texto' },
+        el('strong', {}, equipe.nome),
+        el('span', {}, atual ? 'Inbox atual' : `${equipe.abertas} conversa${equipe.abertas === 1 ? '' : 's'}`)),
+      atual ? el('span', { class: 'atribuir-inbox-atual' }, 'Atual') : null);
+      return botao;
+    });
+
+    const fundo = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === fundo) encerrar(); } },
+      el('div', { class: 'modal atribuir-inbox', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': tituloId },
+        el('div', { class: 'modal-corpo' },
+          el('div', { class: 'modal-cab' },
+            el('div', {},
+              el('h2', { id: tituloId }, 'Atribuir aos canais existentes'),
+              el('p', {}, `Escolha em qual inbox da equipe ${conversa.contato.nome} deve aparecer.`)),
+            el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', 'aria-label': 'Fechar', onclick: encerrar }, svg(ICONE.fechar))),
+          el('div', { class: 'atribuir-inbox-lista' }, ...opcoes),
+          el('div', { class: 'modal-acoes' },
+            el('button', { type: 'button', class: 'btn-suave hov', onclick: encerrar }, 'Cancelar')))));
+    document.body.append(fundo);
+    document.addEventListener('keydown', aoTeclado);
+    fundo.querySelector('.atribuir-inbox-opcao:not(:disabled), .btn-suave')?.focus();
+  }
+
   function abrirMenuAcoes(botao) {
     if ($('.menu-flutuante')) return fecharMenus();
     const c = estado.conversa;
     const menu = el('div', { class: 'menu-flutuante' },
-      el('button', { type: 'button', onclick: () => { fecharMenus(); mudarStatus(c.status === 'resolvida' ? 'aberta' : 'resolvida'); } },
-        c.status === 'resolvida' ? 'Reabrir conversa' : 'Marcar como resolvida'),
+      c.status === 'resolvida'
+        ? el('button', { type: 'button', onclick: () => { fecharMenus(); mudarStatus('aberta'); } }, 'Reabrir conversa')
+        : null,
       el('button', { type: 'button', onclick: () => { fecharMenus(); atualizarConversa({ atendenteId: estado.resumo.usuario.id }); } }, 'Assumir esta conversa'),
-      desligar(el('button', { type: 'button' }, 'Transferir canal'), 'Transferência entre canais: em breve'));
+      el('button', { type: 'button', onclick: abrirAtribuicaoEquipe }, 'Atribuir aos canais existentes'));
     botao.parentElement.append(menu);
   }
 
@@ -1508,6 +1815,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     const chat = $('#chat');
     const c = estado.conversa;
     if (!c) {
+      descartarAnexoPendente({ redesenhar: false });
       chat.replaceChildren(chatVazio());
       return;
     }
@@ -1521,7 +1829,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
         avatarCliente(c, 'avatar g verde'),
         el('div', { class: 'chat-info' },
           el('span', { class: 'chat-nome' }, c.contato.nome),
-          el('span', { class: 'chat-sub' }, [c.contato.empresa, `protocolo #${c.protocolo}`, textoAberto(c.criadaEm, c.status)].filter(Boolean).join(' · '))),
+          el('span', { class: 'chat-sub' }, [c.contato.empresa, textoAberto(c.criadaEm, c.status)].filter(Boolean).join(' · '))),
         comDica(el('button', { type: 'button', class: 'btn-icone btn-info hov', onclick: () => $('#painel').classList.toggle('aberto') }, icone('info', ICONE.info)), 'ficha', 'Ficha do cliente'),
         comDica(el('button', { type: 'button', class: 'btn-icone hov', onclick: (e) => { e.stopPropagation(); abrirMenuAcoes(e.currentTarget); } }, icone('acoes', ICONE.pontos)), 'acoes', 'Mais ações')));
 
@@ -1542,16 +1850,21 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
         else enviar();
       },
       oninput: () => { maiuscularInicio(textarea); corrigirEnquantoDigita(textarea); ajustarAltura(textarea); atalhoBarra(textarea); },
-      onpaste: () => setTimeout(() => { if (acentosLigados) textarea.value = corrigirTexto(textarea.value); ajustarAltura(textarea); }, 0),
+      onpaste: (e) => colarNoCompositor(e, textarea, modoNota),
     });
-    const enviar = () => enviarMensagem(acentosLigados ? corrigirTexto(textarea.value) : textarea.value, modoNota ? 'nota' : 'resposta', textarea);
+    const enviar = () => {
+      const texto = acentosLigados ? corrigirTexto(textarea.value) : textarea.value;
+      if (!modoNota && estado.anexoPendente) return enviarAnexoPendente(texto, textarea);
+      return enviarMensagem(texto, modoNota ? 'nota' : 'resposta', textarea);
+    };
 
     const compositor = el('div', { class: 'compositor' },
       el('div', { class: `caixa-texto${modoNota ? ' modo-nota' : ''}` },
+        modoNota ? null : anexoPendenteDoCompositor(),
         textarea,
         el('div', { class: 'compositor-acoes' },
           comDica(el('button', { type: 'button', class: 'btn-icone hov', onclick: escolherAnexo }, icone('anexo', ICONE.clipe)),
-            'anexo', 'Enviar arquivo'),
+            'anexo', 'Anexar arquivo ou colar imagem com Ctrl+V'),
           comDica(el('button', {
             type: 'button', class: `btn-icone hov${rapidas.aberto ? ' ativo' : ''}`,
             onclick: () => (rapidas.aberto ? fecharRapidas() : abrirRapidas()),
@@ -1564,11 +1877,14 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
           comDica(el('button', {
             type: 'button', class: `btn-icone hov nota-toggle${modoNota ? ' ativo' : ''}`,
             'aria-pressed': modoNota ? 'true' : 'false',
-            onclick: () => mudarModo(modoNota ? 'resposta' : 'nota'),
+            onclick: () => {
+              if (!modoNota && estado.anexoPendente) return toast('Envie ou remova o anexo antes de criar uma nota interna.');
+              mudarModo(modoNota ? 'resposta' : 'nota');
+            },
           }, icone('nota', ICONE.lapis)), 'nota', modoNota ? 'Voltar a responder o cliente' : 'Nota interna'),
           modoNota ? el('span', { class: 'aviso-nota' }, 'Nota interna: só a equipe vê') : null,
           el('span', { class: 'empurrar' }),
-          el('button', { type: 'button', class: 'btn-primario', id: 'btn-enviar', onclick: enviar }, modoNota ? 'Salvar nota' : 'Enviar', modoNota ? null : icone('enviar', ICONE.enviar, { animado: true, classe: 'branco' })))));
+          el('button', { type: 'button', class: 'btn-primario', id: 'btn-enviar', disabled: estado.enviando, onclick: enviar }, modoNota ? 'Salvar nota' : 'Enviar', modoNota ? null : icone('enviar', ICONE.enviar, { animado: true, classe: 'branco' })))));
 
     chat.replaceChildren(cabecalho, mensagens, compositor);
     ajustarAltura(textarea);
@@ -1928,7 +2244,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 
   function zonaDeRisco(c) {
     const cli = saldo.conversaId === c.id ? saldo.cliente : null;
-    const admin = estado.resumo?.usuario?.papel === 'admin';
+    const admin = (estado.resumo?.conta || estado.resumo?.usuario)?.papel === 'admin';
     const pin = pinDaFicha(c);
     const ligado = Boolean(estado.resumo?.saldoAtivo);
 
@@ -2036,9 +2352,10 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     const cancelada = compra.status === 'cancelled' || String(compra.statusTexto || '').toLowerCase() === 'cancelada';
     const selo = cancelada ? 'cancelada' : (compra.reembolsada ? 'reembolsada' : (compra.status === 'completed' || compra.status === 'active' ? 'ok' : 'neutro'));
     const dataHora = formatarDataHoraCompra(compra.data);
+    const titulo = compra.option?.name ? `${compra.descricao} - ${compra.option.name}` : compra.descricao;
     return el('div', { class: 'compra-item' },
       el('div', { class: 'linha' },
-        el('span', { class: 'nome' }, compra.descricao),
+        el('span', { class: 'nome', title: titulo }, titulo),
         el('span', { class: 'valor' }, compra.valor)),
       el('div', { class: 'linha' },
         compra.numero
@@ -2062,11 +2379,16 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
   }
 
   function itemTransacao(t) {
+    const titulo = t.option?.name ? `${t.tipoTexto} - ${t.option.name}` : t.tipoTexto;
+    const { descricao, numero, complemento } = apresentarDescricaoTransacao(t);
+    const partesDescricao = numero
+      ? [el('span', { class: 'numero-transacao' }, numero), complemento || '']
+      : (descricao ? [descricao] : []);
     return el('div', { class: 'transacao-item' },
       el('span', { class: `transacao-ic ${t.entrada ? 'entrada' : 'saida'}` }, icone(t.tipo, t.entrada ? ICONE.maisGrande : ICONE.menos)),
       el('div', { class: 'transacao-texto' },
-        el('span', { class: 'tipo' }, t.tipoTexto),
-        el('span', { class: 'desc' }, t.descricao)),
+        el('span', { class: 'tipo', title: titulo }, titulo),
+        partesDescricao.length ? el('span', { class: 'desc', title: descricao }, ...partesDescricao) : null),
       el('div', { class: 'transacao-valores' },
         el('span', { class: `valor ${t.entrada ? 'entrada' : 'saida'}` }, `${t.entrada ? '+' : ''}${t.valor}`),
         t.saldoDepois ? el('span', { class: 'depois' }, `→ ${t.saldoDepois}`) : null));
@@ -2080,6 +2402,11 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     adicionar: ['Adicionar saldo', 'Crédito manual para a conta'],
     debitar: ['Debitar saldo', 'Ajuste manual para menos'],
     reembolsar: ['Reembolsar', 'Selecione a compra a devolver'],
+  };
+  const ICONES_FOLHA_SALDO = {
+    adicionar: ['adicionar', ICONE.maisGrande],
+    debitar: ['debitar', ICONE.menos],
+    reembolsar: ['reembolsar', ICONE.voltar],
   };
   const ATALHOS_VALOR = ['10,00', '20,00', '50,00', '100,00'];
   // Na tela é "Adicionar"; na API do site a ação chama "creditar".
@@ -2112,6 +2439,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 
   function abrirFolhaSaldo(tipo, c) {
     const [titulo, subtitulo] = TITULOS_FOLHA[tipo];
+    const [nomeIcone, fallbackIcone] = ICONES_FOLHA_SALDO[tipo];
     const cli = saldo.conversaId === c.id ? saldo.cliente : null;
     const nome = cli?.nome || c.contato.nome;
     const pin = String(saldo.pin || c.contato.pin || '').trim();
@@ -2251,6 +2579,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     const fundo = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === fundo) fundo.remove(); } },
       el('div', { class: 'folha', role: 'dialog', 'aria-modal': 'true', 'aria-label': titulo },
         el('div', { class: 'folha-cab' },
+          el('span', { class: `folha-titulo-icone ${tipo}`, 'aria-hidden': 'true' }, icone(nomeIcone, fallbackIcone)),
           el('div', { class: 'folha-titulo' },
             el('strong', {}, titulo),
             el('span', {}, `${nome}${pin ? ` · PIN ${pin}` : ''}`)),
@@ -2673,7 +3002,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 
   function renderConfig() {
     if (!config.aberto) return;
-    const admin = estado.resumo?.usuario?.papel === 'admin';
+    const admin = (estado.resumo?.conta || estado.resumo?.usuario)?.papel === 'admin';
 
     $('#config-menu').replaceChildren(
       el('h2', {}, 'Configurações'),
@@ -2730,14 +3059,17 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     if (!d) return [el('div', { class: 'config-vazio' }, 'Nada por aqui.')];
 
     return [el('div', { class: 'config-bloco' },
-      el('div', { class: 'cabeca' },
-        el('span', { class: 'rotulo' }, 'Atendentes'),
-        el('span', { class: 'dica' }, 'Cada pessoa vê as caixas das equipes em que está.')),
+      el('div', { class: 'cabeca cabeca-com-acao' },
+        el('div', {}, el('span', { class: 'rotulo' }, 'Atendentes'), el('span', { class: 'dica' }, 'Cada pessoa vê as caixas das equipes em que está.')),
+        estado.resumo?.cadastroAtendenteAtivo
+          ? el('button', { type: 'button', class: 'btn-primario pequeno', onclick: adicionarAtendente }, icone('mais', ICONE.mais), 'Adicionar atendente')
+          : desligar(el('button', { type: 'button', class: 'btn-primario pequeno' }, icone('mais', ICONE.mais), 'Adicionar atendente'), 'Cadastro de atendentes temporariamente bloqueado')),
       el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, ...d.usuarios.map((u) => linhaPessoa(u, d.equipes))))];
   }
 
   function linhaPessoa(u, equipes) {
     const eu = u.id === estado.resumo?.usuario?.id;
+    const ehConta = u.id === estado.resumo?.conta?.id;
     const presenca = u.ativo ? (u.presenca || 'offline') : 'bloqueado';
     const classePresenca = !u.ativo ? 'aviso' : (u.presenca === 'online' ? '' : 'cinza');
     return el('div', { class: `pessoa${u.ativo ? '' : ' inativa'}` },
@@ -2749,21 +3081,79 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
             type: 'button', class: 'btn-editar-nome hov', title: `Editar nome de ${u.nome}`,
             'aria-label': `Editar nome de ${u.nome}`, onclick: () => editarNomeDe(u),
           }, svg(ICONE.lapisPequeno))),
-        el('span', { class: 'email' }, u.email)),
+        el('span', { class: 'email' }, u.email || 'Perfil de atendimento · usa o login da equipe')),
       el('div', { class: 'equipes' }, ...(u.equipes.length
         ? u.equipes.map((e) => el('span', { class: 'selo-equipe' }, el('span', { class: 'ponto', style: `background:${e.cor}` }), e.nome))
         : [el('span', { class: 'dica' }, 'sem equipe')])),
-      el('select', {
-        class: 'papel', 'aria-label': `Papel de ${u.nome}`, disabled: eu ? 'disabled' : null,
-        onchange: (ev) => salvarPessoa(u.id, { papel: ev.target.value }),
-      }, ...['atendente', 'admin'].map((v) => el('option', { value: v, selected: u.papel === v ? 'selected' : null }, v === 'admin' ? 'Administrador' : 'Atendente'))),
+      u.podeLogar
+        ? el('select', {
+          class: 'papel', 'aria-label': `Papel de ${u.nome}`, disabled: ehConta ? 'disabled' : null,
+          onchange: (ev) => salvarPessoa(u.id, { papel: ev.target.value }),
+        }, ...['atendente', 'admin'].map((v) => el('option', { value: v, selected: u.papel === v ? 'selected' : null }, v === 'admin' ? 'Administrador' : 'Atendente')))
+        : el('span', { class: 'selo-equipe' }, 'Atendente'),
       el('span', { class: `selo-presenca ${classePresenca}`.trim() }, presenca),
       el('button', {
         type: 'button', class: 'btn-icone hov', title: u.ativo ? 'Bloquear o acesso' : 'Liberar o acesso',
-        disabled: eu ? 'disabled' : null,
+        disabled: eu || ehConta ? 'disabled' : null,
         onclick: () => salvarPessoa(u.id, { ativo: !u.ativo }),
       }, svg(u.ativo ? ICONE.cadeado : ICONE.check)),
       el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => editarEquipesDe(u, equipes) }, 'Equipes'));
+  }
+
+  function adicionarAtendente() {
+    const erro = el('span', { class: 'dica erro-texto', 'aria-live': 'polite' });
+    const campo = el('input', {
+      type: 'text', maxlength: '120', autocomplete: 'name', placeholder: 'Nome completo',
+      'aria-label': 'Nome do novo atendente',
+    });
+    const fundo = el('div', { class: 'modal-fundo', onclick: (ev) => { if (ev.target === fundo) fundo.remove(); } });
+    let salvando = false;
+    const cancelar = el('button', { type: 'button', class: 'btn-suave hov', onclick: () => fundo.remove() }, 'Cancelar');
+    const salvar = el('button', { type: 'button', class: 'btn-primario' }, 'Adicionar atendente');
+
+    async function concluir() {
+      if (salvando) return;
+      const nome = campo.value.trim().replace(/\s+/g, ' ');
+      if (nome.length < 2) {
+        erro.textContent = 'Digite um nome com pelo menos 2 caracteres.';
+        campo.focus();
+        return;
+      }
+      salvando = true;
+      salvar.disabled = true;
+      cancelar.disabled = true;
+      erro.textContent = '';
+      try {
+        await api('/equipe/usuarios', {
+          method: 'POST', body: { nome, equipeIds: estado.equipeId ? [estado.equipeId] : [] },
+        });
+        fundo.remove();
+        if (config.aberto && config.secao === 'equipe') await carregarEquipe();
+        await carregarResumo();
+        toast(`${nome} foi adicionado à equipe.`);
+      } catch (e) {
+        salvando = false;
+        salvar.disabled = false;
+        cancelar.disabled = false;
+        erro.textContent = e.message;
+        campo.focus();
+      }
+    }
+
+    campo.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') fundo.remove();
+      if (ev.key === 'Enter' && !ev.isComposing) { ev.preventDefault(); concluir(); }
+    });
+    salvar.addEventListener('click', concluir);
+    fundo.append(el('div', { class: 'modal editar-nome', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'adicionar-atendente-titulo' },
+      el('div', { class: 'modal-corpo' },
+        el('div', { class: 'modal-cab' },
+          el('div', {}, el('h2', { id: 'adicionar-atendente-titulo' }, 'Adicionar atendente'), el('p', {}, 'A pessoa aparecerá na escolha após o próximo login. Não é necessário criar outra senha.')),
+          el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: () => fundo.remove() }, svg(ICONE.fechar))),
+        el('label', { class: 'config-campo' }, el('span', {}, 'Nome do atendente'), campo, erro),
+        el('div', { class: 'modal-acoes' }, cancelar, salvar))));
+    document.body.append(fundo);
+    campo.focus();
   }
 
   function editarNomeDe(u) {
@@ -2815,7 +3205,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     fundo.append(el('div', { class: 'modal editar-nome', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': `editar-nome-${u.id}` },
       el('div', { class: 'modal-corpo' },
         el('div', { class: 'modal-cab' },
-          el('div', {}, el('h2', { id: `editar-nome-${u.id}` }, 'Editar nome'), el('p', {}, `Altere como ${u.email} aparece no atendimento.`)),
+          el('div', {}, el('h2', { id: `editar-nome-${u.id}` }, 'Editar nome'), el('p', {}, 'Altere como este atendente aparece no atendimento.')),
           el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: () => fundo.remove() }, svg(ICONE.fechar))),
         el('label', { class: 'config-campo' }, el('span', {}, 'Nome do atendente'), campo, erro),
         el('div', { class: 'modal-acoes' }, cancelar, salvar))));
@@ -3477,11 +3867,6 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     document.querySelector('.rail-btn[title="Atendimento"]')?.addEventListener('click', fecharConfiguracoes);
 
     const menuUsuario = $('#menu-usuario');
-    $('#btn-conectar').addEventListener('click', () => {
-      menuUsuario.hidden = true;
-      if (estado.resumo?.usuario?.papel !== 'admin') return toast('Peça a um administrador para conectar os canais.');
-      abrirConfiguracoes('canais');
-    });
     $('#btn-usuario').addEventListener('click', (e) => {
       e.stopPropagation();
       menuUsuario.hidden = !menuUsuario.hidden;
@@ -3493,12 +3878,15 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { fecharVisor(); fecharRapidas(); menuUsuario.hidden = true; fecharMenus(); $('#painel').classList.remove('aberto'); }
     });
+    window.addEventListener('pagehide', encerrarPresenca);
+    window.addEventListener('pageshow', (e) => { if (e.persisted) sinalizarPresenca().then(carregarResumo).catch(() => {}); });
   }
 
   async function iniciar() {
     montarIcones();
     ligarEventos();
     try {
+      await sinalizarPresenca();
       await carregarResumo();
       await carregarConversas({ selecionarPrimeira: true });
       alertasAtivos = true;
@@ -3514,6 +3902,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
       if (Date.now() - ultimaAtualizacao < espera) return;
       atualizarSilencioso();
     }, 2000);
+    setInterval(() => sinalizarPresenca().catch(() => {}), 20_000);
     ouvirAvisos();
     // Voltou para a aba: mostra o que chegou enquanto ela estava escondida.
     document.addEventListener('visibilitychange', () => { if (!document.hidden) atualizarSilencioso(); });
@@ -3529,7 +3918,15 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     let pendente = null;
     const fluxo = new EventSource('/api/eventos');
     fluxoAvisos = fluxo;
-    fluxo.onmessage = () => {
+    fluxo.onmessage = (mensagemEvento) => {
+      let evento = null;
+      try { evento = JSON.parse(mensagemEvento.data); } catch { /* aviso antigo */ }
+      if (evento?.origem === 'exclusao'
+        && Number(evento.conversaId) === Number(estado.conversa?.id)
+        && Number.isInteger(Number(evento.mensagemId))) {
+        estado.conversa.mensagens = estado.conversa.mensagens.filter((m) => Number(m.id) !== Number(evento.mensagemId));
+        aplicarConversa(estado.conversa);
+      }
       // Várias mensagens seguidas viram uma única atualização.
       clearTimeout(pendente);
       pendente = setTimeout(atualizarSilencioso, 120);

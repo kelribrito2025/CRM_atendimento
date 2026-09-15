@@ -48,6 +48,7 @@ test('abreviações: corrige espaço e pontuação sem alterar trechos de outras
   assert.equal(corrigirTexto('nuvem trabalho quinta'), 'nuvem trabalho quinta');
   assert.equal(corrigirTexto('pq'), 'pq', 'pq ficou fora por ser ambíguo');
   assert.match(interfaceChat, /\(\\p\{L\}\+\)\(\[\\s\.,;:!/);
+  assert.match(interfaceChat, /ehEnderecoInternet\(trechoAtual\)/, 'durante a digitação, URLs e e-mails ficam intactos');
   assert.match(interfaceChat, /Correção automática ligada \(acentos e abreviações\)/);
 });
 

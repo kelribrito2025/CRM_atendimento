@@ -25,3 +25,19 @@ test('ficha: consultar saldo fica à direita do título na mesma linha', () => {
   assert.match(css, /\.saldo-cabecalho-texto \{[^}]*flex-direction: column;[^}]*gap: 3px;/);
   assert.match(css, /\.saldo-acao \{\s*flex-shrink: 0;/);
 });
+
+test('ações de saldo: cada modal mostra um ícone à esquerda do título', () => {
+  const inicio = javascript.indexOf('const ICONES_FOLHA_SALDO');
+  const fim = javascript.indexOf('// ===== Ações que mudam a situação da conta', inicio);
+  const folhas = javascript.slice(inicio, fim);
+
+  assert.match(folhas, /adicionar: \['adicionar', ICONE\.maisGrande\]/);
+  assert.match(folhas, /debitar: \['debitar', ICONE\.menos\]/);
+  assert.match(folhas, /reembolsar: \['reembolsar', ICONE\.voltar\]/);
+  assert.match(folhas, /class: `folha-titulo-icone \$\{tipo\}`[^\n]+icone\(nomeIcone, fallbackIcone\)/);
+  assert.ok(folhas.indexOf('folha-titulo-icone') < folhas.indexOf("class: 'folha-titulo'"), 'o ícone deve ficar à esquerda do título');
+
+  assert.match(css, /\.folha-titulo-icone \{[^}]*display: flex;[^}]*justify-content: center;/s);
+  assert.match(css, /\.folha-titulo-icone\.debitar \{[^}]*var\(--vermelho\)/);
+  assert.match(css, /\.folha-titulo-icone\.reembolsar \{[^}]*var\(--nota-fundo\)/);
+});

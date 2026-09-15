@@ -142,6 +142,88 @@ import { montarIcones } from './icones.js';
       });
     },
 
+    'escolher-atendente'() {
+      const lista = $('#lista-atendentes');
+      const erro = $('#erro');
+      const form = $('#form-atendente');
+      const botao = $('#btn');
+      let selecionadoId = null;
+
+      const iniciais = (nome) => {
+        const partes = String(nome || '').trim().split(/\s+/).filter(Boolean);
+        return partes.length > 1
+          ? `${partes[0][0]}${partes[1][0]}`.toUpperCase()
+          : String(partes[0] || '?').slice(0, 2).toUpperCase();
+      };
+
+      const selecionar = (id) => {
+        selecionadoId = Number(id);
+        lista.querySelectorAll('.opcao-atendente').forEach((item) => {
+          const ativo = Number(item.dataset.id) === selecionadoId;
+          item.classList.toggle('selecionado', ativo);
+          item.setAttribute('aria-pressed', String(ativo));
+        });
+        botao.disabled = false;
+      };
+
+      (async () => {
+        try {
+          const dados = await chamar('/acesso/atendentes');
+          $('#conta-iniciais').textContent = iniciais(dados.conta.nome);
+          $('#conta-nome').textContent = dados.conta.nome;
+          $('#conta-email').textContent = dados.conta.email;
+          lista.replaceChildren(...dados.atendentes.map((atendente) => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'opcao-atendente';
+            item.dataset.id = atendente.id;
+            item.setAttribute('aria-pressed', 'false');
+
+            const avatar = document.createElement('span');
+            avatar.className = 'avatar-escolha';
+            avatar.textContent = iniciais(atendente.nome);
+            const informacoes = document.createElement('span');
+            informacoes.className = 'dados';
+            const nome = document.createElement('strong');
+            nome.textContent = atendente.nome;
+            const status = document.createElement('small');
+            status.textContent = atendente.presenca === 'online' ? 'Disponível para atendimento' : 'Atendente';
+            informacoes.append(nome, status);
+            const marcador = document.createElement('span');
+            marcador.className = 'marcador-atendente';
+            marcador.setAttribute('aria-hidden', 'true');
+            item.append(avatar, informacoes, marcador);
+            item.addEventListener('click', () => selecionar(atendente.id));
+            return item;
+          }));
+          if (!dados.atendentes.length) {
+            mostrar(erro, 'Nenhum atendente está disponível. Peça ajuda a um administrador.');
+          } else if (dados.selecionadoId) {
+            selecionar(dados.selecionadoId);
+          }
+        } catch (e) {
+          mostrar(erro, e.message);
+        }
+      })();
+
+      form.addEventListener('submit', async (evento) => {
+        evento.preventDefault();
+        mostrar(erro);
+        if (!selecionadoId) return mostrar(erro, 'Escolha seu nome para continuar.');
+        carregando(botao, true);
+        try {
+          const dados = await chamar('/acesso/atendente', {
+            method: 'POST',
+            body: { atendenteId: selecionadoId, next: destinoSeguro(params.get('next')) },
+          });
+          location.href = dados.redirect || '/';
+        } catch (e) {
+          mostrar(erro, e.message);
+          carregando(botao, false);
+        }
+      });
+    },
+
     verificar() {
       const inputs = [...document.querySelectorAll('#codigo input')];
       const erro = $('#erro');
