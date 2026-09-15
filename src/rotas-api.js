@@ -102,6 +102,7 @@ function criarRotasApi(db, opcoes = {}) {
   const enviador = opcoes.enviador || { modo: 'silencioso', async enviar() {} };
   const abrirConta = opcoes.abrirConta || null;
   const avisos = opcoes.avisos || null;
+  const cadastroAtendenteAtivo = opcoes.cadastroAtendenteAtivo === true;
   const r = express.Router();
 
   r.use((req, res, next) => {
@@ -309,6 +310,9 @@ function criarRotasApi(db, opcoes = {}) {
   // Perfil interno: não recebe senha nem pode entrar sozinho. Depois do login,
   // a conta escolhe qual pessoa está atendendo e toda autoria usa esse perfil.
   r.post('/equipe/usuarios', soAdmin, async (req, res) => {
+    if (!cadastroAtendenteAtivo) {
+      return res.status(403).json({ erro: 'O cadastro de atendentes está temporariamente bloqueado.' });
+    }
     const nome = String(req.body?.nome || '').trim().replace(/\s+/g, ' ');
     const equipeIds = Array.isArray(req.body?.equipeIds)
       ? [...new Set(req.body.equipeIds.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
@@ -500,6 +504,7 @@ function criarRotasApi(db, opcoes = {}) {
       porCanal: Object.fromEntries([...CANAIS_FILTRO].map((canal) => [canal, abertas.filter((c) => c.canal === canal).length])),
       equipes,
       atendentes,
+      cadastroAtendenteAtivo,
       primeiraResposta: formatarPrimeiraResposta(media),
       canais: await resumoCanais(req),
       saldoAtivo: Boolean(saldo && saldo.configurado),

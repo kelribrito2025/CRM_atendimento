@@ -30,6 +30,7 @@ async function subirServidor(opcoes = {}) {
   const app = criarApp(db, {
     paginasDir: path.join(__dirname, '..', 'client'),
     enviador: criarEnviador({ modo: 'silencioso' }),
+    cadastroAtendenteAtivo: true,
     ...opcoes,
   });
   const servidor = await new Promise((resolve) => {
@@ -62,6 +63,22 @@ async function json(base, caminho, cookie, metodo = 'GET', corpo) {
   });
   return { resposta, dados: await resposta.json().catch(() => ({})) };
 }
+
+test('perfis: cadastro fica bloqueado por padrão sem afetar os perfis existentes', async () => {
+  const s = await subirServidor({ cadastroAtendenteAtivo: false });
+  try {
+    const login = await entrar(s.base);
+    const resumo = await json(s.base, '/api/resumo', login.cookie);
+    assert.equal(resumo.dados.cadastroAtendenteAtivo, false);
+
+    const criado = await json(s.base, '/api/equipe/usuarios', login.cookie, 'POST', { nome: 'Novo atendente' });
+    assert.equal(criado.resposta.status, 403);
+    assert.match(criado.dados.erro, /temporariamente bloqueado/);
+
+    const perfis = await s.db.prepare('SELECT COUNT(*) AS n FROM usuarios WHERE pode_logar = 0').get();
+    assert.equal(Number(perfis.n), 0);
+  } finally { await s.fechar(); }
+});
 
 test('perfis: admin adiciona atendente sem criar nova senha ou conta de login', async () => {
   const s = await subirServidor();

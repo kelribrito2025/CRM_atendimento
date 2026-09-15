@@ -25,11 +25,12 @@ test('perfis UI: escolha identifica conta, lista atendentes e exige seleção', 
   assert.match(vite, /'escolher-atendente'/);
 });
 
-test('perfis UI: atendente pode ser adicionado e trocado sem criar senha', () => {
+test('perfis UI: cadastro fica bloqueado e atendentes existentes ainda podem ser trocados', () => {
   assert.match(tela, /function adicionarAtendente\(\)/);
   assert.match(tela, /api\('\/equipe\/usuarios'/);
   assert.match(tela, /Não é necessário criar outra senha/);
-  assert.match(tela, /onclick: adicionarAtendente/);
+  assert.match(tela, /r\.cadastroAtendenteAtivo[\s\S]*onclick: adicionarAtendente[\s\S]*Cadastro de atendentes temporariamente bloqueado/);
+  assert.match(tela, /estado\.resumo\?\.cadastroAtendenteAtivo[\s\S]*onclick: adicionarAtendente[\s\S]*Cadastro de atendentes temporariamente bloqueado/);
   assert.match(atendimento, /href="\/escolher-atendente">Trocar atendente/);
 });
 

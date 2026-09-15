@@ -864,7 +864,9 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
             el('span', { class: `membro-status${m.presenca === 'online' ? ' online' : ''}` }, `${m.presenca} · ${m.ativas ? `${m.ativas} ativa${m.ativas === 1 ? '' : 's'}` : 'livre'}`)))),
         membros.length ? null : el('div', { class: 'vazio' }, 'Nenhum atendente nesta equipe.')),
       (r.conta || r.usuario).papel === 'admin'
-        ? el('button', { type: 'button', class: 'btn-tracejado', onclick: adicionarAtendente }, icone('mais', ICONE.mais), equipeSel ? 'Adicionar à equipe' : 'Adicionar atendente')
+        ? (r.cadastroAtendenteAtivo
+          ? el('button', { type: 'button', class: 'btn-tracejado', onclick: adicionarAtendente }, icone('mais', ICONE.mais), equipeSel ? 'Adicionar à equipe' : 'Adicionar atendente')
+          : desligar(el('button', { type: 'button', class: 'btn-tracejado' }, icone('mais', ICONE.mais), equipeSel ? 'Adicionar à equipe' : 'Adicionar atendente'), 'Cadastro de atendentes temporariamente bloqueado'))
         : null,
     );
   }
@@ -2700,7 +2702,9 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     return [el('div', { class: 'config-bloco' },
       el('div', { class: 'cabeca cabeca-com-acao' },
         el('div', {}, el('span', { class: 'rotulo' }, 'Atendentes'), el('span', { class: 'dica' }, 'Cada pessoa vê as caixas das equipes em que está.')),
-        el('button', { type: 'button', class: 'btn-primario pequeno', onclick: adicionarAtendente }, icone('mais', ICONE.mais), 'Adicionar atendente')),
+        estado.resumo?.cadastroAtendenteAtivo
+          ? el('button', { type: 'button', class: 'btn-primario pequeno', onclick: adicionarAtendente }, icone('mais', ICONE.mais), 'Adicionar atendente')
+          : desligar(el('button', { type: 'button', class: 'btn-primario pequeno' }, icone('mais', ICONE.mais), 'Adicionar atendente'), 'Cadastro de atendentes temporariamente bloqueado')),
       el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, ...d.usuarios.map((u) => linhaPessoa(u, d.equipes))))];
   }
 

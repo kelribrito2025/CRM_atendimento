@@ -239,7 +239,7 @@ A lista completa de nomes esperados está em `client/public/icones/LEIA-ME.md`. 
 
 ## Contas de login e perfis de atendimento
 
-O botão **Adicionar atendente**, na barra lateral ou em **Configurações › Equipe**, cria um perfil interno sem e-mail nem senha. Quando existir pelo menos um desses perfis, cada novo login na conta da equipe passa por **Escolha seu atendente**. Mensagens, conversas e auditoria usam o nome escolhido; as permissões, credenciais de integração e limites antiabuso continuam sendo os da conta autenticada. A auditoria registra perfil e conta separadamente. Também é possível trocar o atendente pelo menu da conta.
+A função **Adicionar atendente** está temporariamente bloqueada na barra lateral e em **Configurações › Equipe**. Os perfis já existentes continuam disponíveis em **Escolha seu atendente** após cada novo login. Mensagens, conversas e auditoria usam o nome escolhido; as permissões, credenciais de integração e limites antiabuso continuam sendo os da conta autenticada. A auditoria registra perfil e conta separadamente. Também é possível trocar o atendente pelo menu da conta.
 
 Os comandos abaixo continuam reservados a contas individuais que precisam de e-mail e senha próprios:
 
