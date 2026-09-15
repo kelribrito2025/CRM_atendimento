@@ -9,11 +9,13 @@ const raiz = path.join(__dirname, '..');
 const javascript = fs.readFileSync(path.join(raiz, 'client', 'assets', 'js', 'atendimento.js'), 'utf8');
 const css = fs.readFileSync(path.join(raiz, 'client', 'assets', 'css', 'app.css'), 'utf8');
 
-test('lista: Sem resposta fica como texto vermelho no final da última mensagem', () => {
-  assert.match(javascript, /c\.semResposta && tag[\s\S]*class: 'conversa-previa-linha'[\s\S]*class: 'conversa-previa'[\s\S]*class: 'sem-resposta-texto'/);
+test('lista: prévia termina com três pontos antes do texto Sem resposta', () => {
+  assert.match(javascript, /c\.semResposta && tag[\s\S]*class: 'conversa-previa-linha'[\s\S]*class: 'conversa-previa'[\s\S]*class: 'conversa-reticencias'[\s\S]*'\.\.\.'[\s\S]*class: 'sem-resposta-texto'/);
   assert.doesNotMatch(javascript, /class: 'tag vermelho tag-sem-resposta'/);
-  assert.match(css, /\.conversa-previa-linha\s*\{[^}]*position:\s*relative;[^}]*overflow:\s*hidden;/);
-  assert.match(css, /\.sem-resposta-texto\s*\{[^}]*position:\s*absolute;[^}]*right:\s*0;[^}]*top:\s*50%;[^}]*translateY\(-50%\)/);
+  assert.match(css, /\.conversa-previa-linha\s*\{[^}]*display:\s*flex;[^}]*overflow:\s*hidden;/);
+  assert.match(css, /\.conversa-previa-linha \.conversa-previa\s*\{[^}]*flex:\s*1;[^}]*min-width:\s*0;[^}]*text-overflow:\s*clip;/);
+  assert.match(css, /\.conversa-reticencias\s*\{[^}]*flex-shrink:\s*0;/);
+  assert.doesNotMatch(css, /\.sem-resposta-texto\s*\{[^}]*position:\s*absolute/);
   assert.match(css, /\.sem-resposta-texto\s*\{[^}]*color:\s*var\(--vermelho\);[^}]*background:\s*none;[^}]*border:\s*0;[^}]*box-shadow:\s*none;/);
   assert.doesNotMatch(css, /\.conversa-previa[^\n]*padding-right/);
 });

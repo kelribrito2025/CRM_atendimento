@@ -902,6 +902,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     const linhaPrevia = c.semResposta && tag
       ? el('span', { class: 'conversa-previa-linha' },
         el('span', { class: 'conversa-previa' }, previa),
+        el('span', { class: 'conversa-reticencias', 'aria-hidden': 'true' }, '...'),
         el('span', { class: 'sem-resposta-texto' }, tag[0]))
       : [
         el('span', { class: 'conversa-previa' }, previa),
