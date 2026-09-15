@@ -22,7 +22,7 @@ test('PIN do WhatsApp: aceita de 1 a 99999 e consulta pela rota de saldo existen
   assert.match(bloco, /if \(r\.conversa\) c\.contato = r\.conversa\.contato/);
 });
 
-test('PIN do WhatsApp: Alterar PIN aparece só nesse canal e limpa dados financeiros antigos', () => {
+test('PIN do WhatsApp: Alterar aparece como texto dentro do card só nesse canal', () => {
   const inicioAlterar = javascript.indexOf('function alterarPinDoWhatsapp');
   const fimAlterar = javascript.indexOf('function guardarSaldoNoCache', inicioAlterar);
   const alterar = javascript.slice(inicioAlterar, fimAlterar);
@@ -36,8 +36,10 @@ test('PIN do WhatsApp: Alterar PIN aparece só nesse canal e limpa dados finance
   assert.match(alterar, /limparSaldo\(c\.id\)/);
   assert.match(alterar, /ficha\.compras\.conversaId = null/);
   assert.match(alterar, /ficha\.transacoes\.conversaId = null/);
-  assert.match(blocoPin, /c\.canal === 'whatsapp'[\s\S]*class: 'btn-alterar-pin'[\s\S]*'Alterar PIN'/);
+  assert.match(blocoPin, /el\('span', \{ class: 'pin-valor' \}, valorInicial\)[\s\S]*c\.canal === 'whatsapp'[\s\S]*class: 'link-alterar-pin'[\s\S]*'Alterar'/);
+  assert.doesNotMatch(blocoPin, /icone\('editar-pin'/);
+  assert.doesNotMatch(blocoPin, /'Alterar PIN'/);
   assert.match(blocoPin, /editandoWhatsapp \? '' : String\(saldo\.pin \|\| ct\.pin \|\| doCanal \|\| ''\)/);
   assert.match(blocoPin, /Digite o novo PIN informado pelo cliente/);
-  assert.match(css, /\.btn-alterar-pin \{[^}]*white-space: nowrap;/);
+  assert.match(css, /\.link-alterar-pin \{[^}]*border: 0;[^}]*background: none;[^}]*white-space: nowrap;/);
 });

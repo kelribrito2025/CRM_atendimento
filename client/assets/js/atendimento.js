@@ -2076,33 +2076,32 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
       const confirmado = Boolean(ct.pin) || validado;
       const copiar = () => copiarPin(valorInicial);
       return el('div', { class: `bloco-pin${confirmado ? '' : ' pendente'} compacto` },
-        el('div', { class: 'pin-pronto-linha' },
-          el('div', {
-            class: 'pin-pronto copiavel', title: 'Clique para copiar o PIN',
-            role: 'button', tabindex: '0', 'aria-label': `Copiar PIN ${valorInicial}`,
-            onclick: copiar,
-            onkeydown: (e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                copiar();
-              }
-            },
+        el('div', {
+          class: 'pin-pronto copiavel', title: 'Clique para copiar o PIN',
+          role: 'button', tabindex: '0', 'aria-label': `Copiar PIN ${valorInicial}`,
+          onclick: copiar,
+          onkeydown: (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              copiar();
+            }
           },
-            icone('pin', ICONE.cadeado),
-            el('span', { class: 'pin-valor' }, valorInicial),
-            el('span', {
-              class: `ok${confirmado ? '' : ' pendente'}`,
-              title: validado
-                ? `Conferido às ${horaCurta(ct.pinValidadoEm)} por ${ct.pinValidadoPor || 'equipe'}`
-                : (confirmado ? 'PIN informado pelo cliente' : 'Ainda não conferido'),
-              html: ICONE.check,
-            })),
+        },
+          icone('pin', ICONE.cadeado),
+          el('span', { class: 'pin-valor' }, valorInicial),
           c.canal === 'whatsapp'
             ? el('button', {
-              type: 'button', class: 'btn-alterar-pin', title: 'Alterar o PIN informado pelo cliente',
-              onclick: () => alterarPinDoWhatsapp(c),
-            }, icone('editar-pin', ICONE.lapisPequeno), 'Alterar PIN')
-            : null),
+              type: 'button', class: 'link-alterar-pin', title: 'Alterar o PIN informado pelo cliente',
+              onclick: (e) => { e.stopPropagation(); alterarPinDoWhatsapp(c); },
+            }, 'Alterar')
+            : null,
+          el('span', {
+            class: `ok${confirmado ? '' : ' pendente'}`,
+            title: validado
+              ? `Conferido às ${horaCurta(ct.pinValidadoEm)} por ${ct.pinValidadoPor || 'equipe'}`
+              : (confirmado ? 'PIN informado pelo cliente' : 'Ainda não conferido'),
+            html: ICONE.check,
+          })),
       );
     }
 

@@ -640,7 +640,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 }
 .aviso-construcao .ic { color: var(--nota-suave); flex-shrink: 0; }
 .bloco-pin.compacto { gap: 9px; padding: 0; border: 0; border-radius: 0; background: transparent; }
-.pin-pronto-linha { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pin-pronto.copiavel { cursor: pointer; user-select: none; }
 .pin-pronto.copiavel:hover { border-color: var(--verde); background: var(--verde-fundo); }
 .pin-pronto { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border-radius: 12px; background: var(--superficie); border: 1px solid var(--verde-borda); flex: 1; min-width: 0; }
@@ -648,8 +647,8 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .pin-valor { flex: 1; min-width: 0; font-family: "Courier New", monospace; font-size: 18px; font-weight: 700; letter-spacing: .14em; color: var(--texto); }
 .pin-pronto .ok { width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; background: var(--verde); color: #fff; display: flex; align-items: center; justify-content: center; }
 .pin-pronto .ok.pendente { background: var(--cinza); color: var(--texto-suave); }
-.btn-alterar-pin { height: 44px; padding: 0 10px; border: 1px solid var(--borda); border-radius: 12px; background: var(--fundo-suave); color: var(--texto-suave); display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; font-size: 10.5px; font-weight: 700; white-space: nowrap; }
-.btn-alterar-pin:hover { border-color: var(--verde-borda); color: var(--verde-texto); background: var(--verde-fundo); }
+.link-alterar-pin { padding: 4px 0; border: 0; background: none; color: var(--verde-texto); flex-shrink: 0; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.link-alterar-pin:hover { text-decoration: underline; }
 .pin-digitos { display: flex; gap: 6px; }
 input.pin-digito { width: 0; padding: 0; text-align: center; outline: none; }
 input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(--verde-fundo); }
