@@ -665,6 +665,33 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     return 'documento';
   }
 
+  function imagemDoClipboard(evento) {
+    const itens = Array.from(evento.clipboardData?.items || []);
+    const item = itens.find((i) => i.kind === 'file' && String(i.type || '').toLowerCase().startsWith('image/'));
+    return item?.getAsFile?.() || Array.from(evento.clipboardData?.files || [])
+      .find((arquivo) => String(arquivo.type || '').toLowerCase().startsWith('image/')) || null;
+  }
+
+  function nomearImagemColada(arquivo) {
+    const extensoes = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/bmp': 'bmp' };
+    const mime = String(arquivo.type || 'image/png').toLowerCase();
+    const extensao = extensoes[mime] || 'png';
+    return new File([arquivo], `imagem-colada-${Date.now()}.${extensao}`, { type: mime, lastModified: Date.now() });
+  }
+
+  function colarNoCompositor(evento, textarea, modoNota) {
+    const imagem = modoNota ? null : imagemDoClipboard(evento);
+    if (imagem) {
+      evento.preventDefault();
+      enviarAnexo(nomearImagemColada(imagem));
+      return;
+    }
+    setTimeout(() => {
+      if (acentosLigados) textarea.value = corrigirTexto(textarea.value);
+      ajustarAltura(textarea);
+    }, 0);
+  }
+
   function escolherAnexo() {
     if (!estado.conversa) return;
     if (!estado.resumo?.anexosAtivos) {
@@ -683,7 +710,11 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
   // O arquivo aparece na hora no chat, marcado como "enviando", e vai para o cliente.
   async function enviarAnexo(arquivo) {
     const c = estado.conversa;
-    if (!c || estado.enviando) return;
+    if (!c) return;
+    if (!estado.resumo?.anexosAtivos) {
+      return toast('Envio de anexos indisponível: peça ao responsável para configurar o armazenamento de arquivos no servidor.', 6000);
+    }
+    if (estado.enviando) return toast('Aguarde o envio atual terminar antes de enviar outro arquivo.');
     if (arquivo.size > TAMANHO_MAXIMO_ANEXO) return toast('Arquivo muito grande: o limite é 20 MB.', 5000);
     estado.enviando = true;
 
@@ -1604,7 +1635,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
         else enviar();
       },
       oninput: () => { maiuscularInicio(textarea); corrigirEnquantoDigita(textarea); ajustarAltura(textarea); atalhoBarra(textarea); },
-      onpaste: () => setTimeout(() => { if (acentosLigados) textarea.value = corrigirTexto(textarea.value); ajustarAltura(textarea); }, 0),
+      onpaste: (e) => colarNoCompositor(e, textarea, modoNota),
     });
     const enviar = () => enviarMensagem(acentosLigados ? corrigirTexto(textarea.value) : textarea.value, modoNota ? 'nota' : 'resposta', textarea);
 
@@ -1613,7 +1644,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
         textarea,
         el('div', { class: 'compositor-acoes' },
           comDica(el('button', { type: 'button', class: 'btn-icone hov', onclick: escolherAnexo }, icone('anexo', ICONE.clipe)),
-            'anexo', 'Enviar arquivo'),
+            'anexo', 'Enviar arquivo ou colar imagem com Ctrl+V'),
           comDica(el('button', {
             type: 'button', class: `btn-icone hov${rapidas.aberto ? ' ativo' : ''}`,
             onclick: () => (rapidas.aberto ? fecharRapidas() : abrirRapidas()),

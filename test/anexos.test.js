@@ -5,6 +5,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { semear } = require('../src/db');
 const { abrirBancoDeTeste } = require('./apoio');
 const { criarApp } = require('../src/app');
@@ -13,6 +15,17 @@ const canais = require('../src/canais');
 
 const ADMIN = { email: 'admin@teste.com', senha: 'segredo123' };
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6360000002000100ffff03000006000557bfabd40000000049454e44ae426082', 'hex');
+
+test('anexo: colar imagem no campo prepara o arquivo e preserva a colagem de texto', () => {
+  const tela = fs.readFileSync(path.join(__dirname, '..', 'client/assets/js/atendimento.js'), 'utf8');
+  assert.match(tela, /evento\.clipboardData\?\.items/);
+  assert.match(tela, /i\.kind === 'file'.*startsWith\('image\/'\)/);
+  assert.match(tela, /evento\.preventDefault\(\);\s*enviarAnexo\(nomearImagemColada\(imagem\)\)/);
+  assert.match(tela, /`imagem-colada-\$\{Date\.now\(\)\}\.\$\{extensao\}`/);
+  assert.match(tela, /onpaste: \(e\) => colarNoCompositor\(e, textarea, modoNota\)/);
+  assert.match(tela, /Enviar arquivo ou colar imagem com Ctrl\+V/);
+  assert.match(tela, /setTimeout\(\(\) => \{\s*if \(acentosLigados\)/, 'sem imagem, a colagem de texto continua sendo tratada');
+});
 
 // Armazenamento de arquivos de mentira, no lugar do S3.
 function arquivosFalsos() {
