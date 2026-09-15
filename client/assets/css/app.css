@@ -1065,6 +1065,7 @@ input.pin-digito:focus { border-color: var(--verde); box-shadow: 0 0 0 2px var(-
 .jornada-tempo { margin: 26px 0 24px; padding: 20px 0; border-top: 1px solid var(--borda); border-bottom: 1px solid var(--borda); }
 .jornada-contagem { display: block; font-size: 58px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .02em; color: var(--verde-texto); line-height: 1.15; }
 .jornada-tempo > span { display: block; margin-top: 6px; text-transform: uppercase; letter-spacing: .09em; font-size: 15px; font-weight: 700; color: var(--texto-suave); }
+.jornada-proximo { display: block; margin-top: 9px; font-size: 22px; color: var(--verde-texto); line-height: 1.4; }
 .jornada-resumo { display: flex; flex-direction: column; gap: 12px; margin: 24px 0; padding: 20px; border-radius: 18px; background: var(--fundo-suave); text-align: left; font-size: 15px; line-height: 1.4; }
 .jornada-resumo > div { display: flex; align-items: flex-start; gap: 12px; }
 .jornada-resumo svg { width: 22px; height: 22px; color: var(--verde-texto); flex-shrink: 0; }

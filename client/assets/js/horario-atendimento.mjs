@@ -6,6 +6,12 @@ export function contagemRegressiva(destino, agora) {
   return `${String(Math.floor(segundos / 60)).padStart(2, '0')}:${String(segundos % 60).padStart(2, '0')}`;
 }
 
+export function faseDoModal(horario) {
+  if (!horario?.configurado) return null;
+  if (['pausa', 'retorno'].includes(horario.fase)) return horario.fase;
+  return horario.fase === 'fora' && Number(horario.encerrouEm) > 0 ? 'fim' : null;
+}
+
 const CAFE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h12v8a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM16 10h2a3 3 0 0 1 0 6h-2M7 5l1-2M12 5l1-2"/></svg>';
 const PLAY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 4 12 8-12 8z"/></svg>';
 const RELOGIO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
@@ -59,24 +65,27 @@ export function criarAvisosHorario({ api, recarregar }) {
   function abrir(horario, chave) {
     fechar();
     const pausa = horario.fase === 'pausa';
+    const fim = faseDoModal(horario) === 'fim';
+    const informativo = pausa || fim;
     const fundo = criar('div', 'modal-fundo fundo-jornada');
-    const caixa = criar('section', `modal jornada-modal${pausa ? '' : ' retorno'}`);
+    const caixa = criar('section', `modal jornada-modal${fim ? ' fim' : pausa ? '' : ' retorno'}`);
     caixa.setAttribute('role', 'dialog');
     caixa.setAttribute('aria-modal', 'true');
     caixa.setAttribute('aria-labelledby', 'jornada-titulo');
     caixa.setAttribute('aria-describedby', 'jornada-descricao');
-    const titulo = criar('h2', '', pausa ? 'Hora da pausa' : 'Volta ao trabalho');
+    const titulo = criar('h2', '', fim ? 'Fim do atendimento' : pausa ? 'Hora da pausa' : 'Volta ao trabalho');
     titulo.id = 'jornada-titulo';
     const descricao = criar('p', 'jornada-descricao', pausa
       ? 'Suas conversas continuam na fila da equipe até você voltar.'
-      : `Sua pausa terminou às ${horario.horario.pausaFim}. Seu status volta para disponível ao confirmar.`);
+      : fim ? `Seu expediente terminou às ${horario.horario.fim}. Suas conversas continuam na fila da equipe.`
+        : `Sua pausa terminou às ${horario.horario.pausaFim}. Seu status volta para disponível ao confirmar.`);
     descricao.id = 'jornada-descricao';
-    const botao = criar('button', 'btn-primario jornada-acao', pausa ? 'Entendi' : 'Voltar a atender');
+    const botao = criar('button', 'btn-primario jornada-acao', informativo ? 'Entendi' : 'Voltar a atender');
     botao.type = 'button';
     const erro = criar('p', 'jornada-erro');
     erro.setAttribute('role', 'alert');
     erro.hidden = true;
-    caixa.append(icone(pausa ? CAFE : PLAY, 'jornada-icone'), titulo, descricao);
+    caixa.append(icone(fim ? RELOGIO : pausa ? CAFE : PLAY, 'jornada-icone'), titulo, descricao);
     let numeros = null;
     if (pausa) {
       const contador = criar('div', 'jornada-tempo');
@@ -88,12 +97,17 @@ export function criarAvisosHorario({ api, recarregar }) {
       intervalo = setInterval(atualizarTempo, 1000);
       contador.append(tempo, criar('span', '', `Volta às ${horario.horario.pausaFim}`));
       caixa.append(contador);
+    } else if (fim) {
+      const proximo = criar('div', 'jornada-tempo');
+      proximo.append(criar('span', '', 'Próximo atendimento'),
+        criar('strong', 'jornada-proximo', horario.proximoInicioTexto || `às ${horario.horario.inicio}`));
+      caixa.append(proximo);
     } else {
       numeros = criar('div', 'jornada-resumo');
       caixa.append(numeros);
     }
     botao.addEventListener('click', async () => {
-      if (pausa) {
+      if (informativo) {
         reconhecidas.add(chave);
         try { localStorage.setItem(chave, '1'); } catch { /* modo privado */ }
         fechar();
@@ -118,7 +132,7 @@ export function criarAvisosHorario({ api, recarregar }) {
     const foco = document.activeElement;
     const teclado = (ev) => {
       if (ev.key === 'Tab') { ev.preventDefault(); botao.focus(); }
-      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopImmediatePropagation(); if (pausa) botao.click(); }
+      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopImmediatePropagation(); if (informativo) botao.click(); }
     };
     modal = { chave, fundo, foco, teclado, numeros };
     document.body.append(fundo);
@@ -151,11 +165,12 @@ export function criarAvisosHorario({ api, recarregar }) {
     if (h?.proximaMudancaEm) {
       transicao = setTimeout(sincronizar, Math.min(2_147_000_000, Math.max(250, h.proximaMudancaEm - agora() + 100)));
     }
-    if (!h?.configurado || !['pausa', 'retorno'].includes(h.fase)) { fechar(); return; }
-    const chave = `crm-pausa:${resumo.usuario.id}:${h.fase}:${h.retornaEm || h.retornoDaPausaEm}`;
+    const fase = faseDoModal(h);
+    if (!fase) { fechar(); return; }
+    const chave = `crm-pausa:${resumo.usuario.id}:${fase}:${h.encerrouEm || h.retornaEm || h.retornoDaPausaEm}`;
     let jaViu = reconhecidas.has(chave);
     try { jaViu ||= localStorage.getItem(chave) === '1'; } catch { /* modo privado */ }
-    if (h.fase === 'pausa' && jaViu) { fechar(); return; }
+    if (fase !== 'retorno' && jaViu) { fechar(); return; }
     if (modal?.chave !== chave) abrir(h, chave);
     else atualizarNumeros();
   }

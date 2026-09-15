@@ -67,7 +67,10 @@ function estadoDoHorario(horario, agora = Date.now()) {
   const base = { configurado: true, horario: h, fuso: FUSO_ATENDIMENTO };
   const em = (minuto, dias = 0) => instanteDoHorario(agoraMs, p, minuto, dias);
   if ([0, 6].includes(p.diaSemana) || p.minutoDoDia >= fim) {
-    return { ...base, fase: 'fora', trabalhando: false, proximaMudancaEm: em(inicio, proximoDiaUtil(p.diaSemana)) };
+    const proximaMudancaEm = em(inicio, proximoDiaUtil(p.diaSemana));
+    return { ...base, fase: 'fora', trabalhando: false, proximaMudancaEm,
+      encerrouEm: [0, 6].includes(p.diaSemana) ? null : em(fim),
+      proximoInicioTexto: retornoTexto(proximaMudancaEm, agoraMs) };
   }
   if (p.minutoDoDia < inicio) return { ...base, fase: 'fora', trabalhando: false, proximaMudancaEm: em(inicio) };
   if (p.minutoDoDia < pausaInicio) return { ...base, fase: 'trabalho', trabalhando: true, proximaMudancaEm: em(pausaInicio) };

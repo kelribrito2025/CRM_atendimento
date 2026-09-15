@@ -88,3 +88,23 @@ test('horários: migração idempotente, equipe com horários diferentes, bloque
     assert.doesNotMatch(publico, /@teste|senha|usuarios|atendenteId/);
   } finally { await db.fechar(); }
 });
+
+test('horários: três modais seguem a agenda individual, sem fim antecipado ou no sábado', async () => {
+  const { faseDoModal } = await import('../client/assets/js/horario-atendimento.mjs');
+  const avaliar = (hora, pessoa = u, dia = '2026-09-15') => estadoDoAtendente(pessoa, instante(hora, dia));
+  assert.equal(faseDoModal(avaliar('08:00:00')), null);
+  assert.equal(faseDoModal(avaliar('12:00:00')), 'pausa');
+  assert.equal(faseDoModal(avaliar('13:00:00')), 'retorno');
+  const voltou = { ...u, retorno_confirmado_em: instante('13:00:00') };
+  assert.equal(faseDoModal(avaliar('17:59:59', voltou)), null);
+  const fim = avaliar('18:00:00', voltou);
+  assert.equal(fim.encerrouEm, instante('18:00:00'));
+  assert.equal(fim.proximoInicioTexto, 'amanhã às 09:00');
+  assert.equal(faseDoModal(fim), 'fim');
+  assert.equal(faseDoModal(avaliar('18:00:00', { ...voltou, horario_fim: '19:00' })), null);
+  assert.equal(faseDoModal(avaliar('19:00:00', { ...voltou, horario_fim: '19:00' })), 'fim');
+  assert.equal(faseDoModal(avaliar('18:00:00', voltou, '2026-09-19')), null);
+  assert.equal(avaliar('18:00:00', voltou, '2026-09-18').proximoInicioTexto, 'segunda-feira às 09:00');
+  assert.equal(faseDoModal(null), null);
+  assert.equal(faseDoModal(estadoDoAtendente({}, instante('18:00:00'))), null);
+});
