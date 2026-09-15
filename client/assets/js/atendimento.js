@@ -1675,6 +1675,10 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
             el('span', { class: 'nota-meta' }, `${m.autor?.nomeCurto || 'Equipe'} · ${horaCurta(m.criadaEm)}${m.editadaEm ? ' · editada' : ''} · visível só para a equipe`)),
           editandoAqui(m, 'chat') ? null : acoesDaNota(m, 'chat')));
       } else if (m.tipo === 'atendente') {
+        const autor = m.autor?.nomeCurto || 'pelo celular';
+        const entrega = m.entrega === 'falhou'
+          ? el('span', { class: 'msg-entrega-falhou' }, 'não enviada')
+          : (m.entrega === 'enviando' ? 'enviando…' : m.entrega);
         nos.push(el('div', { class: 'msg saida' },
           el('div', { class: 'mensagem-linha' },
             podeApagarMensagem(m, c)
@@ -1684,11 +1688,10 @@ import { textoDaRespostaRapida } from './saudacao.mjs';
               }, svg(ICONE.lixeira))
               : null,
             balaoMensagem(m)),
-          el('span', { class: `msg-meta${m.provisoria ? ' enviando' : ''}` }, [
-            horaCurta(m.criadaEm),
-            m.autor?.nomeCurto || (m.tipo === 'atendente' ? 'pelo celular' : null),
-            m.entrega === 'falhou' ? 'não enviada ⚠' : (m.entrega === 'enviando' ? 'enviando…' : m.entrega),
-          ].filter(Boolean).join(' · '))));
+          el('span', { class: `msg-meta${m.provisoria ? ' enviando' : ''}` },
+            `${horaCurta(m.criadaEm)} · ${autor}`,
+            entrega ? ' · ' : null,
+            entrega)));
       } else {
         nos.push(el('div', { class: 'msg' },
           balaoMensagem(m),

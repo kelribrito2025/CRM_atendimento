@@ -233,6 +233,10 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .tag.verde { background: var(--verde-claro); color: var(--verde-texto); }
 .tag.atendente { align-self: center; flex-shrink: 0; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .msg-meta.enviando { opacity: .7; }
+.msg-entrega-falhou {
+  display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 999px;
+  background: var(--vermelho-claro); color: var(--vermelho); font-weight: 700; line-height: 1.35;
+}
 .tag.vermelho { background: var(--vermelho-claro); color: var(--vermelho); }
 .sem-resposta-texto {
   flex-shrink: 0;
