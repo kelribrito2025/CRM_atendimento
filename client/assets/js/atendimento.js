@@ -716,15 +716,17 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 
   async function atualizarConversa(corpo) {
     const c = estado.conversa;
-    if (!c) return;
+    if (!c) return null;
     try {
       const r = await api(`/conversas/${c.id}`, { method: 'PATCH', body: corpo });
       Object.assign(c, { atendente: r.conversa.atendente, equipe: r.conversa.equipe });
       aplicarConversa(c);
       await Promise.all([carregarResumo(), carregarConversas()]);
+      return r.conversa;
     } catch (e) {
       toast(e.message);
       renderChat();
+      return null;
     }
   }
 
@@ -1463,6 +1465,71 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
     botaoMenu.parentElement.append(el('div', { class: 'menu-flutuante menu-notificacoes', role: 'menu' }, botaoSom));
   }
 
+  function abrirAtribuicaoEquipe() {
+    fecharMenus();
+    const conversa = estado.conversa;
+    const equipes = (estado.resumo?.equipes || [])
+      .filter((e) => e.nome.trim().toLocaleLowerCase('pt-BR') !== 'admin');
+    if (!conversa || !equipes.length) return toast('Nenhuma inbox da equipe está disponível.');
+
+    const focoAnterior = document.activeElement;
+    const tituloId = `atribuir-inbox-${Date.now()}`;
+    let salvando = false;
+    const encerrar = () => {
+      if (salvando) return;
+      document.removeEventListener('keydown', aoTeclado);
+      fundo.remove();
+      focoAnterior?.focus?.();
+    };
+    const aoTeclado = (e) => { if (e.key === 'Escape') encerrar(); };
+
+    const opcoes = equipes.map((equipe) => {
+      const atual = Number(conversa.equipe?.id) === Number(equipe.id);
+      const botao = el('button', {
+        type: 'button',
+        class: `atribuir-inbox-opcao${atual ? ' atual' : ''}`,
+        disabled: atual ? 'disabled' : null,
+        'aria-label': atual ? `${equipe.nome}, inbox atual` : `Atribuir a ${equipe.nome}`,
+        onclick: async () => {
+          if (salvando) return;
+          salvando = true;
+          fundo.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+          const atualizada = await atualizarConversa({ equipeId: equipe.id });
+          salvando = false;
+          if (!atualizada) {
+            fundo.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+            botao.disabled = atual;
+            return;
+          }
+          document.removeEventListener('keydown', aoTeclado);
+          fundo.remove();
+          toast(`${conversa.contato.nome} foi para a inbox ${equipe.nome}.`);
+        },
+      },
+      el('span', { class: 'atribuir-inbox-cor', style: `background:${equipe.cor}` }),
+      el('span', { class: 'atribuir-inbox-texto' },
+        el('strong', {}, equipe.nome),
+        el('span', {}, atual ? 'Inbox atual' : `${equipe.abertas} conversa${equipe.abertas === 1 ? '' : 's'}`)),
+      atual ? el('span', { class: 'atribuir-inbox-atual' }, 'Atual') : null);
+      return botao;
+    });
+
+    const fundo = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === fundo) encerrar(); } },
+      el('div', { class: 'modal atribuir-inbox', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': tituloId },
+        el('div', { class: 'modal-corpo' },
+          el('div', { class: 'modal-cab' },
+            el('div', {},
+              el('h2', { id: tituloId }, 'Atribuir aos canais existentes'),
+              el('p', {}, `Escolha em qual inbox da equipe ${conversa.contato.nome} deve aparecer.`)),
+            el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', 'aria-label': 'Fechar', onclick: encerrar }, svg(ICONE.fechar))),
+          el('div', { class: 'atribuir-inbox-lista' }, ...opcoes),
+          el('div', { class: 'modal-acoes' },
+            el('button', { type: 'button', class: 'btn-suave hov', onclick: encerrar }, 'Cancelar')))));
+    document.body.append(fundo);
+    document.addEventListener('keydown', aoTeclado);
+    fundo.querySelector('.atribuir-inbox-opcao:not(:disabled), .btn-suave')?.focus();
+  }
+
   function abrirMenuAcoes(botao) {
     if ($('.menu-flutuante')) return fecharMenus();
     const c = estado.conversa;
@@ -1470,7 +1537,7 @@ import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
       el('button', { type: 'button', onclick: () => { fecharMenus(); mudarStatus(c.status === 'resolvida' ? 'aberta' : 'resolvida'); } },
         c.status === 'resolvida' ? 'Reabrir conversa' : 'Marcar como resolvida'),
       el('button', { type: 'button', onclick: () => { fecharMenus(); atualizarConversa({ atendenteId: estado.resumo.usuario.id }); } }, 'Assumir esta conversa'),
-      desligar(el('button', { type: 'button' }, 'Transferir canal'), 'Transferência entre canais: em breve'));
+      el('button', { type: 'button', onclick: abrirAtribuicaoEquipe }, 'Atribuir aos canais existentes'));
     botao.parentElement.append(menu);
   }
 

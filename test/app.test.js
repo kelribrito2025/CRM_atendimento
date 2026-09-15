@@ -101,7 +101,8 @@ test('proteção: páginas e API exigem login', async () => {
 });
 
 test('fluxo: resumo, conversas, envio de mensagem, nota e logout', async () => {
-  const s = await subirServidor();
+  const eventos = [];
+  const s = await subirServidor({ avisos: { avisar: (evento) => eventos.push(evento) } });
   try {
     const { cookie } = await logar(s.base);
     const h = { Cookie: cookie, 'Content-Type': 'application/json' };
@@ -154,14 +155,21 @@ test('fluxo: resumo, conversas, envio de mensagem, nota e logout', async () => {
     const inexistente = await fetch(`${s.base}/api/conversas/99999`, { headers: h });
     assert.equal(inexistente.status, 404);
 
-    // Reatribuição e status
-    const equipe = resumo.equipes.find((e) => e.nome === 'Admin');
+    // Atribuição à inbox da equipe: a conversa entra no filtro e o badge aumenta.
+    const equipe = resumo.equipes.find((e) => e.nome === 'Prioridade' && e.id !== semResp.equipe?.id)
+      || resumo.equipes.find((e) => e.id !== semResp.equipe?.id);
+    const abertasAntes = equipe.abertas;
     const patch = await fetch(`${s.base}/api/conversas/${semResp.id}`, {
-      method: 'PATCH', headers: h, body: JSON.stringify({ equipeId: equipe.id, atendenteId: null }),
+      method: 'PATCH', headers: h, body: JSON.stringify({ equipeId: equipe.id }),
     });
     const patched = await patch.json();
     assert.equal(patched.conversa.equipe.id, equipe.id);
-    assert.equal(patched.conversa.atendente, null);
+    assert.equal(patched.conversa.atendente.id, me.usuario.id);
+    const resumoAtribuido = await (await fetch(`${s.base}/api/resumo`, { headers: h })).json();
+    assert.equal(resumoAtribuido.equipes.find((e) => e.id === equipe.id).abertas, abertasAntes + 1);
+    const inbox = await (await fetch(`${s.base}/api/conversas?equipe=${equipe.id}`, { headers: h })).json();
+    assert.ok(inbox.conversas.some((c) => c.id === semResp.id));
+    assert.ok(eventos.some((evento) => evento.origem === 'atribuicao' && evento.conversaId === semResp.id));
 
     const resolver = await fetch(`${s.base}/api/conversas/${semResp.id}/status`, {
       method: 'POST', headers: h, body: JSON.stringify({ status: 'resolvida' }),

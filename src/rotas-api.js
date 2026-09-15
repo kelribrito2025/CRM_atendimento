@@ -754,7 +754,9 @@ function criarRotasApi(db, opcoes = {}) {
     campos.push('atualizada_em = ?');
     valores.push(Date.now(), req.conversa.id);
     await db.prepare(`UPDATE conversas SET ${campos.join(', ')} WHERE id = ?`).run(...valores);
-    res.json({ conversa: await buscarConversa(req.conversa.id) });
+    const conversa = await buscarConversa(req.conversa.id);
+    avisos?.avisar({ origem: 'atribuicao', conversaId: req.conversa.id, contatoId: req.conversa.contato.id });
+    res.json({ conversa });
   });
 
   r.post('/conversas/:id/status', comConversa, async (req, res) => {
