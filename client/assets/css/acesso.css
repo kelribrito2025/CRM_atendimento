@@ -8,7 +8,7 @@
 .marca:hover { text-decoration: none; }
 .marca .logo { width: 44px; height: 44px; border-radius: 14px; background: var(--verde); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .marca .nome { display: block; font-size: 17px; font-weight: 700; color: #fff; letter-spacing: -.02em; }
-.marca .sub { display: block; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #7EE2A8; }
+.marca .sub { display: block; font-size: 11px; font-weight: 700; letter-spacing: .12em; color: #7EE2A8; }
 .hero-conteudo { position: relative; margin-top: auto; display: flex; flex-direction: column; gap: 18px; max-width: 560px; padding-top: 40px; }
 .hero-badge { align-self: flex-start; display: flex; align-items: center; gap: 9px; padding: 8px 16px; border-radius: 999px; background: #12291D; font-size: 12.5px; font-weight: 700; color: #7EE2A8; }
 .hero-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--verde); }
