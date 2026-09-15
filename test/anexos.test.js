@@ -43,6 +43,7 @@ function arquivosFalsos() {
       if (!g) throw new Error('não existe');
       return { bytes: g.bytes, tipo: g.tipo };
     },
+    async apagar(chave) { return guardados.delete(chave); },
     urlAssinada: (chave) => `https://exemplo-s3/${encodeURIComponent(chave)}?assinatura=abc`,
   };
 }

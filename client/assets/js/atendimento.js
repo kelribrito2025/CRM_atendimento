@@ -285,8 +285,13 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
   function juntarHistorico(atual, conversa) {
     if (!atual) return conversa;
     const porId = new Map(conversa.mensagens.map((m) => [m.id, m]));
+    const primeiraDaPagina = conversa.mensagens[0] || null;
+    const anteriorAPagina = (m) => conversa.temMaisMensagens && primeiraDaPagina && (
+      m.criadaEm < primeiraDaPagina.criadaEm
+      || (m.criadaEm === primeiraDaPagina.criadaEm && m.id < primeiraDaPagina.id)
+    );
     const antigas = atual.mensagens
-      .filter((m) => !m.provisoria && !conversa.mensagens.some((n) => n.id === m.id))
+      .filter((m) => !m.provisoria && !porId.has(m.id) && anteriorAPagina(m))
       .map((m) => porId.get(m.id) || m);
     const atualizadas = atual.mensagens
       .filter((m) => !m.provisoria && porId.has(m.id))
@@ -338,8 +343,11 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
       const atual = estado.conversa?.id === conversa.id ? estado.conversa : null;
       const ultimaNova = conversa.mensagens.at(-1)?.id ?? null;
       const ultimaAtual = atual?.mensagens.filter((m) => !m.provisoria).at(-1)?.id ?? null;
+      const idsNovos = conversa.mensagens.map((m) => m.id).join(',');
+      const idsAtuais = atual?.mensagens.filter((m) => !m.provisoria).slice(-conversa.mensagens.length).map((m) => m.id).join(',') ?? '';
       const mudou = !atual
         || ultimaNova !== ultimaAtual
+        || idsNovos !== idsAtuais
         || conversa.status !== atual.status
         || conversa.atendente?.id !== atual.atendente?.id
         || conversa.equipe?.id !== atual.equipe?.id
@@ -633,6 +641,38 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
       if (nota.editando === id) { nota.editando = null; nota.onde = null; }
       aplicarConversa(c);
       toast('Nota apagada.');
+    } catch (e) {
+      toast(e.message, 5000);
+    }
+  }
+
+  function podeApagarMensagem(m, conversa = estado.conversa) {
+    const usuario = estado.resumo?.usuario;
+    const conta = estado.resumo?.conta || usuario;
+    return Boolean(conversa?.canal === 'widget'
+      && m?.tipo === 'atendente'
+      && !m.provisoria
+      && usuario
+      && (m.autor?.id === usuario.id || conta?.papel === 'admin'));
+  }
+
+  async function apagarMensagemEnviada(m) {
+    const conversaId = estado.conversa?.id;
+    if (!conversaId || !podeApagarMensagem(m)) return;
+    const confirmado = await confirmarNoSite({
+      titulo: 'Excluir mensagem?',
+      texto: 'A mensagem será apagada do CRM e do chat do cliente. Essa ação não pode ser desfeita.',
+      rotuloConfirmar: 'Excluir mensagem',
+    });
+    if (!confirmado) return;
+    try {
+      await api(`/conversas/${conversaId}/mensagens/${m.id}`, { method: 'DELETE' });
+      if (estado.conversa?.id === conversaId) {
+        estado.conversa.mensagens = estado.conversa.mensagens.filter((item) => item.id !== m.id);
+        aplicarConversa(estado.conversa);
+      }
+      await Promise.all([carregarResumo(), carregarConversas()]);
+      toast('Mensagem excluída do chat do cliente.');
     } catch (e) {
       toast(e.message, 5000);
     }
@@ -1469,7 +1509,14 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
           editandoAqui(m, 'chat') ? null : acoesDaNota(m, 'chat')));
       } else if (m.tipo === 'atendente') {
         nos.push(el('div', { class: 'msg saida' },
-          balaoMensagem(m),
+          el('div', { class: 'mensagem-linha' },
+            podeApagarMensagem(m, c)
+              ? el('button', {
+                type: 'button', class: 'btn-excluir-mensagem hov', title: 'Excluir mensagem', 'aria-label': 'Excluir mensagem',
+                onclick: () => apagarMensagemEnviada(m),
+              }, svg(ICONE.lixeira))
+              : null,
+            balaoMensagem(m)),
           el('span', { class: `msg-meta${m.provisoria ? ' enviando' : ''}` }, [
             horaCurta(m.criadaEm),
             m.autor?.nomeCurto || (m.tipo === 'atendente' ? 'pelo celular' : null),
@@ -3701,7 +3748,15 @@ import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
     let pendente = null;
     const fluxo = new EventSource('/api/eventos');
     fluxoAvisos = fluxo;
-    fluxo.onmessage = () => {
+    fluxo.onmessage = (mensagemEvento) => {
+      let evento = null;
+      try { evento = JSON.parse(mensagemEvento.data); } catch { /* aviso antigo */ }
+      if (evento?.origem === 'exclusao'
+        && Number(evento.conversaId) === Number(estado.conversa?.id)
+        && Number.isInteger(Number(evento.mensagemId))) {
+        estado.conversa.mensagens = estado.conversa.mensagens.filter((m) => Number(m.id) !== Number(evento.mensagemId));
+        aplicarConversa(estado.conversa);
+      }
       // Várias mensagens seguidas viram uma única atualização.
       clearTimeout(pendente);
       pendente = setTimeout(atualizarSilencioso, 120);

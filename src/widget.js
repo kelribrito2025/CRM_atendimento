@@ -124,14 +124,15 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null,
   // O arquivo vai como um endereço do próprio CRM (/widget/midia/123): assim o
   // link do S3 nunca aparece no navegador do cliente.
   async function listarMensagens(sessao, desde = 0) {
-    if (!sessao.conversa_id) return [];
+    if (!sessao.conversa_id) return { mensagens: [], total: 0 };
     const linhas = await db.prepare(`
       SELECT m.id, m.tipo, m.texto, m.criada_em, m.entrega, m.midia_tipo, m.midia_nome, m.midia_mime, m.midia_chave, m.midia_id,
              u.nome AS autor_nome
       FROM mensagens m LEFT JOIN usuarios u ON u.id = m.autor_id
       WHERE m.conversa_id = ? AND m.tipo != 'nota' AND m.id > ?
       ORDER BY m.id`).all(sessao.conversa_id, Number(desde) || 0);
-    return linhas.map((m) => ({
+    const total = await db.prepare("SELECT COUNT(*) AS n FROM mensagens WHERE conversa_id = ? AND tipo != 'nota'").get(sessao.conversa_id);
+    const mensagens = linhas.map((m) => ({
       id: m.id,
       de: m.tipo === 'cliente' ? 'voce' : 'atendimento',
       texto: m.texto,
@@ -141,6 +142,7 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null,
         ? { tipo: m.midia_tipo || 'documento', nome: m.midia_nome || null, mime: m.midia_mime || null, url: `/widget/midia/${m.id}` }
         : null,
     }));
+    return { mensagens, total: Number(total?.n) || 0 };
   }
 
   // O arquivo que o cliente anexa no chat do site. Ele vai direto do navegador

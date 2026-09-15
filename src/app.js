@@ -444,7 +444,7 @@ function criarApp(db, opcoes = {}) {
 
     app.get('/widget/mensagens', comSessaoWidget, async (req, res) => {
       res.set('Cache-Control', 'no-store');
-      res.json({ mensagens: await widget.listarMensagens(req.sessaoWidget, req.query.desde) });
+      res.json(await widget.listarMensagens(req.sessaoWidget, req.query.desde));
     });
 
     app.post('/widget/mensagens', comSessaoWidget, async (req, res) => {
@@ -484,8 +484,8 @@ function criarApp(db, opcoes = {}) {
       const meuContato = Number(req.sessaoWidget.contato_id);
       const parar = widget.assinarAvisos?.((evento) => {
         // Nota interna e mensagem do próprio cliente não interessam ao chat.
-        if (evento.origem !== 'atendente' || Number(evento.contatoId) !== meuContato) return;
-        try { res.write('data: {"novidade":1}\n\n'); } catch { /* conexão caiu */ }
+        if (!['atendente', 'exclusao'].includes(evento.origem) || Number(evento.contatoId) !== meuContato) return;
+        try { res.write(`data: ${JSON.stringify({ novidade: 1, origem: evento.origem })}\n\n`); } catch { /* conexão caiu */ }
       });
       const batida = setInterval(() => { try { res.write(': batida\n\n'); } catch { /* idem */ } }, 25_000);
       const encerrar = () => { clearInterval(batida); parar?.(); };

@@ -730,6 +730,56 @@ function criarRotasApi(db, opcoes = {}) {
     res.status(201).json({ mensagem, conversa: await buscarConversa(c.id), erroEnvio });
   });
 
+  // Só mensagens enviadas pela equipe no Chat do site podem ser apagadas. Nos
+  // canais externos, retirar apenas do CRM faria o histórico divergir do WhatsApp
+  // ou Telegram. O autor pode apagar a própria mensagem; administradores podem
+  // corrigir qualquer envio da equipe.
+  r.delete('/conversas/:id/mensagens/:mensagemId', comConversa, async (req, res) => {
+    const c = req.conversa;
+    const mensagemId = Number(req.params.mensagemId);
+    if (!Number.isInteger(mensagemId) || mensagemId < 1) {
+      return res.status(404).json({ erro: 'Mensagem não encontrada.' });
+    }
+    const mensagem = await sql.mensagemPorId.get(mensagemId);
+    if (!mensagem || Number(mensagem.conversa_id) !== Number(c.id)) {
+      return res.status(404).json({ erro: 'Mensagem não encontrada.' });
+    }
+    if (c.canal !== 'widget') {
+      return res.status(400).json({ erro: 'Só é possível excluir mensagens enviadas pelo Chat do site.' });
+    }
+    if (mensagem.tipo !== 'atendente') {
+      return res.status(400).json({ erro: 'Só é possível excluir mensagens enviadas pela equipe.' });
+    }
+    const ehAutor = Number(mensagem.autor_id) === Number(req.usuario.id);
+    if (!ehAutor && req.conta?.papel !== 'admin') {
+      return res.status(403).json({ erro: 'Só quem enviou a mensagem (ou um administrador) pode excluí-la.' });
+    }
+
+    await db.transacao(async () => {
+      await db.prepare('DELETE FROM mensagens WHERE id = ? AND conversa_id = ?').run(mensagemId, c.id);
+      const ultima = await db.prepare("SELECT MAX(criada_em) AS em FROM mensagens WHERE conversa_id = ? AND tipo != 'nota'").get(c.id);
+      await db.prepare('UPDATE conversas SET atualizada_em = ? WHERE id = ?').run(Number(ultima?.em) || c.criadaEm, c.id);
+      await db.prepare(`INSERT INTO auditoria_eventos
+        (acao, usuario_id, usuario_nome, usuario_email, conta_id, conta_email, conversa_id, protocolo, canal,
+         contato_id, contato_nome, criado_em, origem_mensagem_id, detalhe)
+        VALUES ('mensagem_excluir', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(req.usuario.id, req.usuario.nome, req.usuario.email, req.conta.id, req.conta.email, c.id, c.protocolo,
+          c.canal, c.contato.id, c.contato.nome, Date.now(), mensagemId, `Excluiu a mensagem #${mensagemId} enviada no Chat do site.`);
+    });
+    // A mensagem já saiu do banco e do alcance do cliente. Se a limpeza externa
+    // falhar, o arquivo privado fica órfão, mas a exclusão visual não é desfeita.
+    if (mensagem.midia_chave && arquivos?.configurado) {
+      try {
+        const apagado = await arquivos.apagar(mensagem.midia_chave);
+        if (!apagado) throw new Error('o armazenamento recusou a exclusão');
+      } catch (erro) {
+        console.error('Não foi possível limpar o anexo excluído do S3:', erro.message);
+      }
+    }
+    avisos?.avisar({ origem: 'exclusao', conversaId: c.id, contatoId: c.contato.id, mensagemId });
+    res.json({ ok: true, id: mensagemId });
+  });
+
   // Notas internas: só quem escreveu (ou um administrador) pode alterar ou apagar.
   async function comNota(req, res, next) {
     try {
@@ -863,7 +913,7 @@ function criarRotasApi(db, opcoes = {}) {
 
     const parar = avisos?.assinar((evento) => {
       try {
-        res.write(`data: ${JSON.stringify({ origem: evento.origem, conversaId: evento.conversaId })}\n\n`);
+        res.write(`data: ${JSON.stringify({ origem: evento.origem, conversaId: evento.conversaId, mensagemId: evento.mensagemId })}\n\n`);
       } catch { /* conexão caiu; o fechamento abaixo limpa */ }
     });
     // Batida de tempos em tempos para o proxy não considerar a conexão parada.

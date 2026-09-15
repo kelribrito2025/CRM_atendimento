@@ -288,6 +288,12 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .data-sep { align-self: center; font-size: 11px; font-weight: 700; color: var(--texto-suave); background: var(--cinza); padding: 5px 12px; border-radius: 999px; }
 .msg { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; gap: 5px; max-width: 78%; }
 .msg.saida { align-self: flex-end; align-items: flex-end; }
+.mensagem-linha { display: flex; align-items: flex-end; justify-content: flex-end; gap: 6px; max-width: 100%; }
+.btn-excluir-mensagem { width: 28px; height: 28px; border: 0; border-radius: 9px; background: var(--superficie); color: var(--texto-suave); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer; opacity: 0; box-shadow: 0 2px 8px rgba(11, 31, 20, .08); transition: opacity .14s ease-out, color .14s ease-out, background .14s ease-out; }
+.btn-excluir-mensagem svg { width: 15px; height: 15px; }
+.msg.saida:hover .btn-excluir-mensagem, .btn-excluir-mensagem:focus-visible { opacity: 1; }
+.btn-excluir-mensagem:hover { color: var(--vermelho); background: var(--vermelho-claro); }
+@media (hover: none) { .btn-excluir-mensagem { opacity: 1; } }
 .balao { width: fit-content; max-width: 100%; background: var(--verde); border: 1px solid var(--verde); border-radius: 16px 16px 16px 6px; padding: 12px 14px; font-size: 13.5px; line-height: 1.55; color: #fff; white-space: pre-wrap; word-break: break-word; }
 .msg.saida .balao { background: var(--rail); color: #fff; border: 0; border-radius: 16px 16px 6px 16px; }
 .balao.midia { padding: 4px; display: inline-flex; flex-direction: column; gap: 4px; }

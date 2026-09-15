@@ -7,7 +7,7 @@ import { partesDoTextoComLinks } from './link-texto.mjs';
 const $ = (s) => document.querySelector(s);
 const CHAVE_TOKEN = 'chat_atendimento_token';
 
-const estado = { token: null, ultimaId: 0, sondagem: null, enviando: false, naoLidas: 0, ouvindo: null, fluxoVivo: false, ultimaBusca: 0 };
+const estado = { token: null, ultimaId: 0, totalMensagens: 0, sondagem: null, enviando: false, naoLidas: 0, ouvindo: null, fluxoVivo: false, ultimaBusca: 0 };
 
 function guardarToken(token) {
   estado.token = token;
@@ -115,6 +115,7 @@ function rolarParaFim() {
 function desenharMensagem(m) {
   const linha = document.createElement('div');
   linha.className = `msg ${m.de === 'voce' ? 'saida' : 'entrada'}`;
+  linha.dataset.mensagemId = String(m.id);
   const balao = document.createElement('div');
   balao.className = 'balao';
   if (m.midia) desenharArquivo(balao, m);
@@ -143,6 +144,7 @@ async function identificar(dados) {
     const r = await chamar('/widget/sessao', { method: 'POST', body: dados });
     guardarToken(r.token);
     estado.ultimaId = 0;
+    estado.totalMensagens = 0;
     $('#mensagens').replaceChildren();
     mostrarEstado('Carregando a conversa…');
     liberarEnvio(true);
@@ -160,11 +162,22 @@ function liberarEnvio(pode) {
   $('#btn-anexar').disabled = !pode;
 }
 
-async function buscarMensagens(primeira = false) {
+async function buscarMensagens(primeira = false, recarregar = false) {
   if (!estado.token) return;
   estado.ultimaBusca = Date.now();
   try {
-    const { mensagens } = await chamar(`/widget/mensagens?desde=${estado.ultimaId}`);
+    const totalAnterior = estado.totalMensagens;
+    const { mensagens, total } = await chamar(`/widget/mensagens?desde=${recarregar ? 0 : estado.ultimaId}`);
+    const totalAtual = Number(total);
+    // Sem o SSE, a exclusão é percebida pela quantidade: mensagens novas só
+    // aumentam o total; se a conta não fechar, recarrega a conversa inteira.
+    if (!recarregar && Number.isFinite(totalAtual) && totalAtual < totalAnterior + mensagens.length) {
+      return buscarMensagens(primeira, true);
+    }
+    if (recarregar) {
+      $('#mensagens').replaceChildren();
+      estado.ultimaId = 0;
+    }
     if (mensagens.length) {
       limparEstado();
       for (const m of mensagens) {
@@ -178,6 +191,7 @@ async function buscarMensagens(primeira = false) {
     } else if (primeira) {
       mostrarEstado('Oi! 👋\nEscreva sua dúvida que a gente responde por aqui.');
     }
+    estado.totalMensagens = Number.isFinite(totalAtual) ? totalAtual : totalAnterior + mensagens.length;
   } catch (e) {
     if (/expirou/i.test(e.message)) { guardarToken(null); liberarEnvio(false); mostrarEstado(e.message); pararSondagem(); }
   }
@@ -235,8 +249,15 @@ async function ouvirAvisos() {
         sobra += decodificador.decode(value, { stream: true });
         const blocos = sobra.split('\n\n');
         sobra = blocos.pop() || '';
-        // Qualquer aviso quer dizer "olha de novo": o conteúdo vem pelo caminho normal.
-        if (blocos.some((b) => b.startsWith('data:'))) buscarMensagens();
+        // Exclusão recarrega a conversa inteira para remover o balão já visível;
+        // respostas novas continuam usando a busca incremental.
+        for (const bloco of blocos) {
+          const linha = bloco.split('\n').find((item) => item.startsWith('data:'));
+          if (!linha) continue;
+          let evento = null;
+          try { evento = JSON.parse(linha.slice(5).trim()); } catch { /* aviso antigo */ }
+          buscarMensagens(false, evento?.origem === 'exclusao');
+        }
       }
     } catch {
       /* conexão caiu: espera um pouco e tenta de novo */
@@ -260,6 +281,7 @@ async function enviar() {
     limparEstado();
     desenharMensagem(mensagem);
     estado.ultimaId = Math.max(estado.ultimaId, mensagem.id);
+    estado.totalMensagens += 1;
   } catch (e) {
     campo.value = texto;
     mostrarEstado(e.message);
@@ -294,6 +316,7 @@ async function enviarArquivo(arquivo) {
     limparEstado();
     desenharMensagem(dados.mensagem);
     estado.ultimaId = Math.max(estado.ultimaId, dados.mensagem.id);
+    estado.totalMensagens += 1;
   } catch (e) {
     mostrarEstado(e.message);
   } finally {
@@ -320,7 +343,7 @@ window.addEventListener('message', (evento) => {
     buscarMensagens().then(rolarParaFim);
     $('#texto')?.focus();
   }
-  else if (dados.tipo === 'sair') { guardarToken(null); pararSondagem(); $('#mensagens').replaceChildren(); liberarEnvio(false); }
+  else if (dados.tipo === 'sair') { guardarToken(null); pararSondagem(); estado.ultimaId = 0; estado.totalMensagens = 0; $('#mensagens').replaceChildren(); liberarEnvio(false); }
 });
 
 $('#form').addEventListener('submit', (e) => { e.preventDefault(); enviar(); });
