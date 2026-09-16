@@ -36,7 +36,7 @@ test('saudação: gera a frase completa somente para a resposta dinâmica', asyn
 
 test('saudação: o chat usa o texto calculado ao clicar e a exibe como fixa', () => {
   const tela = fs.readFileSync(path.join(raiz, 'client/assets/js/atendimento.js'), 'utf8');
-  assert.match(tela, /import \{ textoDaRespostaRapida \} from '\.\/saudacao\.mjs'/);
+  assert.match(tela, /import \{ textoDaRespostaRapida, expandirAtalhoSaudacao \} from '\.\/saudacao\.mjs'/);
   assert.match(tela, /const textoResposta = textoDaRespostaRapida\(r\)/);
   assert.match(tela, /r\.dinamica \? 'automática por horário'/);
   assert.match(tela, /rr\.dinamica[\s\S]*'fixa'/);

@@ -9,7 +9,7 @@ import { estiloAvatarDoCanal } from './cor-avatar.mjs';
 import { formatarDataHoraCompra } from './data-compra.mjs';
 import { cacheSaldoValido, criarEntradaCacheSaldo } from './cache-saldo.mjs';
 import { apresentarDescricaoTransacao } from './descricao-transacao.mjs';
-import { textoDaRespostaRapida } from './saudacao.mjs';
+import { textoDaRespostaRapida, expandirAtalhoSaudacao } from './saudacao.mjs';
 import { criarAvisosHorario } from './horario-atendimento.mjs';
 import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
 
@@ -1548,7 +1548,7 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
         el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: fecharRapidas }, svg(ICONE.fechar))),
       f ? null : el('div', { class: 'rapidas-busca' }, busca),
       corpo,
-      f ? null : el('div', { class: 'rapidas-dica' }, 'Digite ', el('strong', {}, '/'), ' no campo de resposta para abrir este painel já filtrado.'),
+      f ? null : el('div', { class: 'rapidas-dica' }, 'Digite ', el('strong', {}, '/'), ' para buscar respostas ou ', el('strong', {}, '//'), ' para inserir a Saudação.'),
       rodape);
 
     // Sobe de dentro do chat, na largura toda, parando acima do campo de escrever.
@@ -1653,6 +1653,20 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
     return el('div', { class: 'midia-com-legenda' },
       midia,
       el('div', { class: 'balao midia-legenda-balao' }, legenda));
+  }
+
+  // A segunda barra insere a saudação imediatamente, sem aguardar a lista
+  // de respostas rápidas, sem enviar e sem alterar texto que foi colado.
+  function inserirSaudacaoAoDigitar(evento, campo) {
+    if (estado.modo !== 'resposta' || evento.isComposing
+        || evento.inputType !== 'insertText' || !/^\/{1,2}$/.test(evento.data || '')) return false;
+    const expansao = expandirAtalhoSaudacao(campo.value, campo.selectionStart, campo.selectionEnd);
+    if (!expansao) return false;
+    campo.value = expansao.texto;
+    campo.setSelectionRange(expansao.cursor, expansao.cursor);
+    ajustarAltura(campo);
+    fecharRapidas();
+    return true;
   }
 
   // "/" no começo de uma palavra abre as respostas rápidas já filtradas.
@@ -1877,7 +1891,10 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
         if (escolhidas.length) usarResposta(escolhidas[0]);
         else enviar();
       },
-      oninput: () => { maiuscularInicio(textarea); corrigirEnquantoDigita(textarea); ajustarAltura(textarea); atalhoBarra(textarea); },
+      oninput: (e) => {
+        if (inserirSaudacaoAoDigitar(e, textarea)) return;
+        maiuscularInicio(textarea); corrigirEnquantoDigita(textarea); ajustarAltura(textarea); atalhoBarra(textarea);
+      },
       onpaste: (e) => colarNoCompositor(e, textarea, modoNota),
     });
     const enviar = () => {
