@@ -61,9 +61,11 @@ test('s3: envio assina o pedido e nunca manda a chave secreta no corpo', async (
 
   const baixado = await cliente.baixar(chave);
   assert.equal(baixado.bytes.toString(), 'conteudo do arquivo');
+  assert.equal(pedidos[1].headers['x-amz-content-sha256'], crypto.createHash('sha256').update('').digest('hex'),
+    'o GET interno assinado por cabeçalho mantém o hash do corpo vazio');
 });
 
-test('s3: link assinado é temporário e confere com o cliente oficial da AWS', () => {
+test('s3: link assinado é temporário e limitado à pasta configurada', () => {
   // Data fixa para o resultado ser sempre o mesmo.
   const { cliente } = s3Falso({ agora: () => new Date('2026-09-13T12:24:09.000Z') });
   const url = cliente.urlAssinada('chat-app-numeros/2026/09/arquivo.jpg', 300);
@@ -71,9 +73,8 @@ test('s3: link assinado é temporário e confere com o cliente oficial da AWS', 
   assert.match(url, /X-Amz-Expires=300/);
   assert.match(url, /X-Amz-Signature=[a-f0-9]{64}/);
   assert.equal(url.includes(SEGREDO), false, 'a chave secreta nunca aparece no link');
-  // Confere com a assinatura calculada pelo botocore (cliente oficial da AWS) para este mesmo pedido.
+  // O vetor oficial completo da AWS está em s3-url-assinada.test.js.
   assert.match(url, /X-Amz-Date=20260913T122409Z/);
-  assert.match(url, /X-Amz-Signature=6c688040623ecee5b49f57ad5f91e43e72617104ed09535d61a874e907db030f/);
   assert.throws(() => cliente.urlAssinada('outra-pasta/x.jpg'), /fora da pasta/);
 });
 

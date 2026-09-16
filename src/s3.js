@@ -168,8 +168,10 @@ function criarS3({
         ['X-Amz-SignedHeaders', 'host'],
       ].map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).sort().join('&');
 
-      // Sem corpo no GET: usa o hash do conteúdo vazio, igual ao cliente oficial da AWS.
-      const pedidoCanonico = ['GET', caminho, consulta, `host:${host}`, '', 'host', SEM_CORPO].join('\n');
+      // URLs pré-assinadas usam UNSIGNED-PAYLOAD, não o hash do corpo vazio.
+      // O Telegram/WhatsApp baixa só pela URL, sem x-amz-content-sha256.
+      // A assinatura por cabeçalho de chamar() continua usando o hash real.
+      const pedidoCanonico = ['GET', caminho, consulta, `host:${host}`, '', 'host', 'UNSIGNED-PAYLOAD'].join('\n');
       const paraAssinar = ['AWS4-HMAC-SHA256', completa, escopo, sha256(pedidoCanonico)].join('\n');
       const assinatura = hmac(chaveDeAssinatura(segredo, curta, reg), paraAssinar).toString('hex');
       return `https://${host}${caminho}?${consulta}&X-Amz-Signature=${assinatura}`;
