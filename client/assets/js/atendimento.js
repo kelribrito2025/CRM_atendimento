@@ -1865,12 +1865,32 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
   function abrirMenuAcoes(botao) {
     if ($('.menu-flutuante')) return fecharMenus();
     const c = estado.conversa;
+    const temInbox = Boolean(c?.equipe?.id)
+      && String(c.equipe.nome || '').trim().toLocaleLowerCase('pt-BR') !== 'admin';
     const menu = el('div', { class: 'menu-flutuante' },
       statusNaInbox(c, estado.equipeId) === 'resolvida'
         ? el('button', { type: 'button', onclick: () => { fecharMenus(); mudarStatus('aberta'); } }, 'Reabrir conversa')
         : null,
       el('button', { type: 'button', onclick: () => { fecharMenus(); atualizarConversa({ atendenteId: estado.resumo.usuario.id }); } }, 'Assumir esta conversa'),
-      el('button', { type: 'button', onclick: abrirAtribuicaoEquipe }, 'Atribuir aos canais existentes'));
+      el('button', { type: 'button', onclick: abrirAtribuicaoEquipe }, 'Atribuir aos canais existentes'),
+      temInbox ? el('button', {
+        type: 'button', id: 'menu-retirar-inbox',
+        title: 'Devolver para Todas as conversas',
+        onclick: async (evento) => {
+          const item = evento.currentTarget;
+          if (item.disabled) return;
+          item.disabled = true;
+          item.textContent = 'Retirando…';
+          const atualizada = await atualizarConversa({ equipeId: null });
+          if (atualizada) {
+            fecharMenus();
+            toast('Conversa devolvida para Todas as conversas.');
+          } else {
+            item.disabled = false;
+            item.textContent = 'Retirar da inbox';
+          }
+        },
+      }, 'Retirar da inbox') : null);
     botao.parentElement.append(menu);
   }
 

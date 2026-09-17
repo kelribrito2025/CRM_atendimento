@@ -32,3 +32,17 @@ test('atribuição: atualiza resumo, lista e informa o destino', () => {
 test('atribuição: avisa outras telas abertas em tempo real', () => {
   assert.match(api, /avisos\?\.avisar\(\{ origem: 'atribuicao', conversaId: req\.conversa\.id/);
 });
+
+test('menu da conversa: permite retirar diretamente da inbox sem abrir o modal', () => {
+  const menu = javascript.slice(javascript.indexOf('  function abrirMenuAcoes('), javascript.indexOf('  function renderChat('));
+  assert.match(menu, /const temInbox = Boolean\(c\?\.equipe\?\.id\)/);
+  assert.match(menu, /toLocaleLowerCase\('pt-BR'\) !== 'admin'/);
+  assert.match(menu, /temInbox \? el\('button'/);
+  assert.match(menu, /id: 'menu-retirar-inbox'/);
+  assert.match(menu, /Devolver para Todas as conversas/);
+  assert.match(menu, /if \(item\.disabled\) return/);
+  assert.match(menu, /item\.disabled = true/);
+  assert.match(menu, /item\.textContent = 'Retirando…'/);
+  assert.match(menu, /await atualizarConversa\(\{ equipeId: null \}\)/);
+  assert.match(menu, /Conversa devolvida para Todas as conversas/);
+});
