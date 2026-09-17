@@ -4,6 +4,7 @@
 // dos eventos recebidos em contatos, conversas e mensagens do CRM.
 
 const crypto = require('node:crypto');
+const { REABRIR_INBOX_DO_CLIENTE } = require('./inbox-equipe');
 
 function somenteDigitos(valor) {
   return String(valor || '').replace(/\D/g, '');
@@ -226,10 +227,6 @@ async function guardarMensagem(db, canal, contato, m, tipoCanal) {
   let conversa = await db.prepare('SELECT id, status FROM conversas WHERE contato_id = ? AND canal_id = ? ORDER BY id DESC LIMIT 1')
     .get(contato.id, canal.id);
   let nova = false;
-  if (conversa && conversa.status !== 'aberta' && !m.fromMe) {
-    await db.prepare("UPDATE conversas SET status = 'aberta' WHERE id = ?").run(conversa.id);
-    conversa.status = 'aberta';
-  }
   if (!conversa) {
     const id = Number((await db.prepare(`
       INSERT INTO conversas (protocolo, contato_id, equipe_id, atendente_id, canal, status, nao_lidas, criada_em, atualizada_em, canal_id, wa_chatid)
@@ -245,7 +242,8 @@ async function guardarMensagem(db, canal, contato, m, tipoCanal) {
     .run(conversa.id, fromMe ? 'atendente' : 'cliente', m.texto, fromMe ? 'enviada' : null, m.criadaEm, m.messageid,
       arq?.tipo || null, arq?.id || null, arq?.nome || null, arq?.mime || null);
   const mensagemId = Number(inserida.lastInsertRowid);
-  await db.prepare('UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + ?, wa_chatid = COALESCE(wa_chatid, ?) WHERE id = ?')
+  await db.prepare(`UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + ?, wa_chatid = COALESCE(wa_chatid, ?)
+    ${fromMe ? '' : `, ${REABRIR_INBOX_DO_CLIENTE}`} WHERE id = ?`)
     .run(Math.max(m.criadaEm, agora), fromMe ? 0 : 1, m.chatid, conversa.id);
   return { resultado: 'mensagem', conversaId: conversa.id, contatoId: contato.id, nova, fromMe, mensagemId, midia: arq };
 }

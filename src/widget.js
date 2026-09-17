@@ -13,6 +13,7 @@ const crypto = require('node:crypto');
 const { proximoProtocolo } = require('./canais');
 const { TAMANHO_MAXIMO_ANEXO, ROTULO_MIDIA, tipoDoArquivo } = require('./util');
 const { disponibilidadeDaEquipe } = require('./horarios');
+const { REABRIR_INBOX_DO_CLIENTE } = require('./inbox-equipe');
 
 const VALIDADE_SESSAO_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
 const TAMANHO_MAXIMO_MENSAGEM = 4000;
@@ -166,7 +167,7 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null,
       INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, criada_em, midia_tipo, midia_nome, midia_mime, midia_chave, midia_tamanho)
       VALUES (?, 'cliente', NULL, ?, ?, ?, ?, ?, ?, ?)`)
       .run(conversaId, texto, agora, tipo, nome, mime, guardado.chave, guardado.tamanho);
-    await db.prepare("UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + 1, status = 'aberta' WHERE id = ?")
+    await db.prepare(`UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + 1, ${REABRIR_INBOX_DO_CLIENTE} WHERE id = ?`)
       .run(agora, conversaId);
 
     const id = Number(info.lastInsertRowid);
@@ -192,7 +193,7 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null,
     const agora = Date.now();
     const info = await db.prepare('INSERT INTO mensagens (conversa_id, tipo, autor_id, texto, criada_em) VALUES (?, ?, NULL, ?, ?)')
       .run(conversaId, 'cliente', conteudo, agora);
-    await db.prepare("UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + 1, status = 'aberta' WHERE id = ?")
+    await db.prepare(`UPDATE conversas SET atualizada_em = ?, nao_lidas = nao_lidas + 1, ${REABRIR_INBOX_DO_CLIENTE} WHERE id = ?`)
       .run(agora, conversaId);
     canal?.avisar({ origem: 'cliente', conversaId, contatoId: Number(sessao.contato_id) });
     return { id: Number(info.lastInsertRowid), de: 'voce', texto: conteudo, criadaEm: agora, autor: null };

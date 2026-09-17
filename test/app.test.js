@@ -111,7 +111,7 @@ test('fluxo: resumo, conversas, envio de mensagem, nota e logout', async () => {
     assert.equal(me.usuario.email, ADMIN.email);
 
     const resumo = await (await fetch(`${s.base}/api/resumo`, { headers: h })).json();
-    assert.equal(resumo.caixas.todas, 18);
+    assert.equal(resumo.caixas.todas, 4); // As demais 14 já pertencem a inboxes operacionais.
     assert.equal(resumo.caixas.minhas, 5);
     assert.equal(resumo.caixas.semResposta, 3);
     assert.equal(resumo.equipes.length, 5); // 2 padrão + Prioridade + 2 dos dados de exemplo

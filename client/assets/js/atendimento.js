@@ -254,6 +254,7 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
   const avisosHorario = criarAvisosHorario({ api, recarregar: carregarResumo });
   async function carregarResumo() {
     estado.resumo = await api('/resumo');
+    if (!alertasAtivos) observarMensagens(estado.resumo.notificacoes, false);
     renderRail();
     renderSidebar();
     avisosHorario.atualizar(estado.resumo);
@@ -341,10 +342,7 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
     try {
       await carregarResumo();
       const { conversas } = await api(`/conversas?${paramsLista()}`);
-      const listaCompleta = estado.caixa === 'todas' && !estado.equipeId && !estado.busca
-        ? conversas
-        : (await api('/conversas?caixa=todas')).conversas;
-      observarMensagens(listaCompleta, true);
+      observarMensagens(estado.resumo.notificacoes, true);
       estado.conversas = conversas;
       renderLista();
       if (!estado.conversaId) return;
@@ -874,8 +872,8 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
     if (!c) return null;
     try {
       const r = await api(`/conversas/${c.id}`, { method: 'PATCH', body: corpo });
-      Object.assign(c, { atendente: r.conversa.atendente, equipe: r.conversa.equipe, statusEquipe: r.conversa.statusEquipe });
-      aplicarConversa(c);
+      Object.assign(c, { atendente: r.conversa.atendente, equipe: r.conversa.equipe, status: r.conversa.status, statusEquipe: r.conversa.statusEquipe });
+      if (estado.conversaId === c.id) aplicarConversa(c);
       await Promise.all([carregarResumo(), carregarConversas()]);
       return r.conversa;
     } catch (e) {
@@ -1808,12 +1806,10 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
           const atualizada = await atualizarConversa({ equipeId: equipe.id });
           salvando = false;
           if (!atualizada) {
-            fundo.querySelectorAll('button').forEach((b) => { b.disabled = false; });
-            botao.disabled = atual;
+            fundo.querySelectorAll('button').forEach((b) => { b.disabled = b.classList.contains('atual'); });
             return;
           }
-          document.removeEventListener('keydown', aoTeclado);
-          fundo.remove();
+          encerrar();
           toast(`${conversa.contato.nome} foi para a inbox ${equipe.nome}.`);
         },
       },
@@ -1825,16 +1821,41 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
       return botao;
     });
 
+    const temInboxAtual = equipes.some((e) => Number(e.id) === Number(conversa.equipe?.id));
+    const retirar = temInboxAtual ? el('button', {
+      type: 'button', class: 'btn-suave hov', id: 'retirar-inbox',
+      title: 'Devolver esta conversa para Todas as conversas',
+      onclick: async () => {
+        if (salvando) return;
+        salvando = true;
+        fundo.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+        retirar.textContent = 'Retirando…';
+        const atualizada = await atualizarConversa({ equipeId: null });
+        salvando = false;
+        if (!atualizada) {
+          fundo.querySelectorAll('button').forEach((b) => { b.disabled = b.classList.contains('atual'); });
+          retirar.textContent = 'Retirar da inbox';
+          retirar.focus();
+          return;
+        }
+        encerrar();
+        toast('Conversa devolvida para Todas as conversas.');
+      },
+    }, 'Retirar da inbox') : null;
+
     const fundo = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === fundo) encerrar(); } },
       el('div', { class: 'modal atribuir-inbox', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': tituloId },
         el('div', { class: 'modal-corpo' },
           el('div', { class: 'modal-cab' },
             el('div', {},
               el('h2', { id: tituloId }, 'Atribuir aos canais existentes'),
-              el('p', {}, `Escolha em qual inbox da equipe ${conversa.contato.nome} deve aparecer.`)),
+              el('p', {}, temInboxAtual
+                ? 'Escolha outra inbox ou retire a conversa para voltar a Todas as conversas.'
+                : `Escolha em qual inbox da equipe ${conversa.contato.nome} deve aparecer.`)),
             el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', 'aria-label': 'Fechar', onclick: encerrar }, svg(ICONE.fechar))),
           el('div', { class: 'atribuir-inbox-lista' }, ...opcoes),
           el('div', { class: 'modal-acoes' },
+            retirar,
             el('button', { type: 'button', class: 'btn-suave hov', onclick: encerrar }, 'Cancelar')))));
     document.body.append(fundo);
     document.addEventListener('keydown', aoTeclado);

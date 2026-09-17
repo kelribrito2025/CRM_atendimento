@@ -81,7 +81,7 @@ test('inbox: encerrar primeiro na equipe não encerra a entrada; reatribuir reab
     const r = await s.api(`/conversas/${s.id}/status`, 'POST', { status: 'resolvida', equipeId: s.equipeId });
     assert.equal(r.conversa.status, 'aberta');
     assert.equal(r.conversa.statusEquipe, 'resolvida');
-    assert.equal(await temConversa(s), true);
+    assert.equal(await temConversa(s), false, 'encerrar na equipe não retira a atribuição');
     assert.equal(await badge(s), 0);
     await s.api(`/conversas/${s.id}/status`, 'POST', { status: 'resolvida' });
     const atribuida = await s.api(`/conversas/${s.id}`, 'PATCH', { equipeId: s.equipeId });
@@ -97,6 +97,8 @@ test('inbox: encerrar primeiro na equipe não encerra a entrada; reatribuir reab
     assert.equal(await badge(s, s.outraId), 1);
     const semEquipe = await s.api(`/conversas/${s.id}`, 'PATCH', { equipeId: null });
     assert.equal(semEquipe.conversa.statusEquipe, null);
+    assert.equal(semEquipe.conversa.status, 'aberta');
+    assert.equal(await temConversa(s), true, 'retirar explicitamente devolve para Todas');
     assert.equal(await badge(s, s.outraId), 0);
   } finally { await s.fechar(); }
 });
@@ -109,7 +111,8 @@ test('inbox: exige login e valida o contexto sem encerrar outra caixa por engano
       assert.equal((await s.api(`/conversas/${s.id}/status`, 'POST', { status: 'resolvida', equipeId })).status, 400);
     }
     assert.equal((await s.api(`/conversas/${s.id}/status`, 'POST', { status: 'resolvida', equipeId: s.outraId })).status, 409);
-    assert.equal(await temConversa(s), true);
+    assert.equal(await temConversa(s), false);
+    assert.equal(await temConversa(s, `equipe=${s.equipeId}`), true);
     assert.equal(await badge(s), 1);
   } finally { await s.fechar(); }
 });
@@ -164,4 +167,137 @@ test('inbox UI: status e exclusão otimista são separados por caixa', async () 
   assert.match(js, /body: \{ status: 'resolvida', equipeId \}/);
   assert.match(js, /conversa\.statusEquipe !== atual\.statusEquipe/);
   assert.match(js, /statusNaInbox\(c, estado\.equipeId\) === 'resolvida'/);
+});
+
+// Recebimento real dos módulos, sempre em SQLite isolado e sem integrar contas externas.
+async function entradaFicticia(s, origem) {
+  const contato = await s.db.prepare('SELECT contato_id FROM conversas WHERE id = ?').get(s.id);
+  if (origem.startsWith('widget')) {
+    const { criarWidget } = require('../src/widget');
+    await s.db.prepare("UPDATE contatos SET site_id = 'inbox-qa' WHERE id = ?").run(contato.contato_id);
+    const widget = criarWidget(s.db, {
+      segredo: 'segredo-apenas-de-teste',
+      avisos: { avisar: e => s.eventos.push(e) },
+      arquivos: { configurado: true, enviar: async bytes => ({ chave: 'teste/recebido.png', tamanho: bytes.length }) },
+    });
+    const aberta = await widget.abrirSessao({ id: 'inbox-qa', nome: 'Cliente fictício' });
+    const sessao = await widget.sessaoDoToken(aberta.token);
+    return async () => origem === 'widget-anexo'
+      ? widget.enviarArquivo(sessao, { bytes: Buffer.from('midia de teste'), nome: 'teste.png', mime: 'image/png' })
+      : widget.enviarMensagem(sessao, 'Nova mensagem do cliente');
+  }
+  const canais = require('../src/canais');
+  const tempo = Date.now();
+  const canalId = Number((await s.db.prepare(`INSERT INTO canais
+    (tipo, nome, instancia_token, status, webhook_segredo, criado_em, atualizado_em)
+    VALUES (?, 'Canal QA', 'token-ficticio', 'connected', 'segredo-ficticio', ?, ?)`)
+    .run(origem, tempo, tempo)).lastInsertRowid);
+  const canal = await s.db.prepare('SELECT * FROM canais WHERE id = ?').get(canalId);
+  const externo = origem === 'whatsapp' ? '5511999990000' : '987654321';
+  await s.db.prepare(`UPDATE contatos SET ${origem === 'whatsapp' ? 'wa_id' : 'tg_id'} = ? WHERE id = ?`).run(externo, contato.contato_id);
+  await s.db.prepare('UPDATE conversas SET canal = ?, canal_id = ? WHERE id = ?').run(origem, canalId, s.id);
+  let sequencia = 0;
+  return async ({ fromMe = false, repetir = false } = {}) => {
+    if (!repetir) sequencia++;
+    if (origem === 'whatsapp') return canais.processarEvento(s.db, canal, {
+      EventType: 'messages', message: { messageid: `inbox-${sequencia}`, chatid: `${externo}@s.whatsapp.net`,
+        fromMe, messageType: 'text', text: `Mensagem ${sequencia}`, messageTimestamp: Math.floor(tempo / 1000) + sequencia },
+    });
+    return canais.processarUpdateTelegram(s.db, canal, {
+      update_id: sequencia, message: { message_id: sequencia, date: Math.floor(tempo / 1000) + sequencia,
+        text: `Mensagem ${sequencia}`, chat: { id: Number(externo), type: 'private' }, from: { id: Number(externo), first_name: 'Cliente fictício' } },
+    });
+  };
+}
+
+for (const origem of ['whatsapp', 'telegram', 'widget-texto', 'widget-anexo']) {
+  test(`inbox: ${origem} mantém novas mensagens na equipe e só retorna a Todas após retirada`, async () => {
+    const s = await ambiente();
+    try {
+      const receber = await entradaFicticia(s, origem);
+      assert.equal(await temConversa(s), false, 'a atribuição já exclui da caixa geral');
+      const canal = origem.startsWith('widget') ? 'widget' : origem;
+      assert.equal(await temConversa(s, `canal=${canal}`), true, 'caixa do canal mantém comportamento anterior');
+      assert.equal((await s.api('/resumo')).porCanal[canal], 1);
+      await receber();
+      assert.equal(await temConversa(s), false);
+      await s.api(`/conversas/${s.id}/status`, 'POST', { status: 'resolvida' });
+      // Testa a equipe aberta e depois encerrada: ambas recebem na mesma inbox.
+      for (const fecharEquipe of [false, true]) {
+        if (fecharEquipe) await s.api(`/conversas/${s.id}/status`, 'POST', { status: 'resolvida', equipeId: s.equipeId });
+        const { detectarNovasMensagens } = await import('../client/assets/js/alerta-mensagem.mjs');
+        const antes = detectarNovasMensagens((await s.api('/resumo')).notificacoes);
+        await receber();
+        const resumo = await s.api('/resumo');
+        assert.equal(detectarNovasMensagens(resumo.notificacoes, antes.referencias, true).recebeuMensagem, true);
+        const c = (await s.api(`/conversas/${s.id}`)).conversa;
+        assert.equal(c.status, 'resolvida', 'mensagem não reabre a entrada geral');
+        assert.equal(c.statusEquipe, 'aberta');
+        assert.equal(c.equipe.id, s.equipeId);
+        assert.equal(c.atendente.id, s.atendenteId);
+        assert.equal(await temConversa(s), false);
+        assert.equal(await temConversa(s, `equipe=${s.equipeId}`), true);
+        assert.equal(await temConversa(s, 'q=Cliente%20fict%C3%ADcio'), true, 'busca explícita mantém o histórico');
+        assert.equal(resumo.caixas.todas, 0);
+        assert.equal(await badge(s), 1);
+        if (origem === 'widget-anexo') assert.equal(c.mensagens.at(-1).midia.tipo, 'imagem');
+      }
+      assert.equal((await s.db.prepare('SELECT COUNT(*) AS n FROM conversas').get()).n, 1, 'não duplica a conversa');
+      const retirada = await s.api(`/conversas/${s.id}`, 'PATCH', { equipeId: null });
+      assert.equal(retirada.conversa.equipe, null);
+      assert.equal(retirada.conversa.statusEquipe, null);
+      assert.equal(retirada.conversa.status, 'aberta');
+      assert.equal(await temConversa(s), true);
+      assert.equal((await s.api('/resumo')).caixas.todas, 1);
+      assert.equal(await badge(s), 0);
+      assert.ok(s.eventos.some(e => e.origem === 'atribuicao' && e.conversaId === s.id));
+      await s.api(`/conversas/${s.id}/status`, 'POST', { status: 'resolvida' });
+      await receber();
+      assert.equal(await temConversa(s), true, 'sem equipe, uma nova mensagem reabre normalmente');
+    } finally { await s.fechar(); }
+  });
+}
+
+test('inbox: eco fromMe e webhook duplicado não reabrem nenhuma das caixas', async () => {
+  const s = await ambiente();
+  try {
+    const receber = await entradaFicticia(s, 'whatsapp');
+    await receber();
+    await s.api(`/conversas/${s.id}/status`, 'POST', { status: 'resolvida' });
+    await s.api(`/conversas/${s.id}/status`, 'POST', { status: 'resolvida', equipeId: s.equipeId });
+    assert.equal((await receber({ repetir: true })).motivo, 'duplicada');
+    await receber({ fromMe: true });
+    const c = (await s.api(`/conversas/${s.id}`)).conversa;
+    assert.equal(c.status, 'resolvida');
+    assert.equal(c.statusEquipe, 'resolvida');
+    assert.equal(await badge(s), 0);
+    assert.equal(await temConversa(s), false);
+  } finally { await s.fechar(); }
+});
+
+test('inbox: Admin oculto não captura a reabertura na caixa geral', async () => {
+  const s = await ambiente();
+  try {
+    const admin = await s.db.prepare("SELECT id FROM equipes WHERE nome = 'Admin'").get();
+    assert.ok(admin);
+    await s.api(`/conversas/${s.id}`, 'PATCH', { equipeId: admin.id });
+    const receber = await entradaFicticia(s, 'widget-texto');
+    await s.api(`/conversas/${s.id}/status`, 'POST', { status: 'resolvida' });
+    await receber();
+    const c = (await s.api(`/conversas/${s.id}`)).conversa;
+    assert.equal(c.status, 'aberta');
+    assert.equal(await temConversa(s), true);
+    assert.equal((await s.api('/resumo')).caixas.todas, 1);
+  } finally { await s.fechar(); }
+});
+
+test('inbox UI: retirada explícita, recuperação do modal e som independente da lista de Todas', () => {
+  const js = require('node:fs').readFileSync(require('node:path').join(__dirname, '../client/assets/js/atendimento.js'), 'utf8');
+  assert.match(js, /id: 'retirar-inbox'/);
+  assert.match(js, /atualizarConversa\(\{ equipeId: null \}\)/);
+  assert.match(js, /temInboxAtual \? el\('button'/);
+  assert.match(js, /b\.disabled = b\.classList\.contains\('atual'\)/);
+  assert.match(js, /Conversa devolvida para Todas as conversas/);
+  assert.match(js, /observarMensagens\(estado\.resumo\.notificacoes, true\)/);
+  assert.match(js, /if \(!alertasAtivos\) observarMensagens\(estado\.resumo\.notificacoes, false\)/);
 });

@@ -14,6 +14,7 @@ const { gerarHashSenha } = require('./senha');
 const presenca = require('./presenca');
 const { normalizarHorario, horarioDoUsuario, estadoDoAtendente } = require('./horarios');
 const { metricasDoDia } = require('./metricas-jornada');
+const { temInboxDaEquipe } = require('./inbox-equipe');
 
 const CAIXAS = new Set(['todas', 'minhas', 'sem_resposta', 'encerradas']);
 // Por onde o cliente escreve: dá para ver a caixa de cada canal separada.
@@ -628,7 +629,7 @@ function criarRotasApi(db, opcoes = {}) {
         aguardandoDezMin: minhasAbertas.filter((c) => c.semResposta && agoraResumo - Number(c.ultimaEm) > 600_000).length,
       },
       caixas: {
-        todas: abertas.length,
+        todas: abertas.filter((c) => !temInboxDaEquipe(c)).length,
         minhas: abertas.filter((c) => c.atendente?.id === req.usuario.id).length,
         semResposta: abertas.filter((c) => c.semResposta).length,
         encerradas: todas.filter((c) => c.status === 'resolvida'
@@ -636,6 +637,9 @@ function criarRotasApi(db, opcoes = {}) {
       },
       // Quantas conversas abertas chegam por cada canal.
       porCanal: Object.fromEntries([...CANAIS_FILTRO].map((canal) => [canal, abertas.filter((c) => c.canal === canal).length])),
+      // O som observa todas as inboxes, sem depender da lista visível em Todas
+      // e sem buscar novamente conversas completas a cada aviso SSE.
+      notificacoes: pendentes.map(({ id, ultimaEm, ultimaTipo, ultimaTexto, naoLidas }) => ({ id, ultimaEm, ultimaTipo, ultimaTexto, naoLidas })),
       equipes,
       atendentes,
       cadastroAtendenteAtivo,
@@ -657,10 +661,13 @@ function criarRotasApi(db, opcoes = {}) {
     const busca = String(req.query.q || '').trim().toLowerCase();
     const limiteResolvidas = Date.now() - DIAS_ENCERRADAS * 24 * 60 * 60 * 1000;
 
+    const canal = CANAIS_FILTRO.has(req.query.canal) ? req.query.canal : null;
     const statusNaCaixa = (c) => equipeId ? c.statusEquipe : c.status;
     let lista = (await todasConversas()).filter((c) => statusNaCaixa(c) === 'aberta' || c.atualizadaEm >= limiteResolvidas);
     if (equipeId) lista = lista.filter((c) => c.equipe?.id === equipeId);
-    const canal = CANAIS_FILTRO.has(req.query.canal) ? req.query.canal : null;
+    // A caixa geral não duplica os destinos da equipe. A busca explícita
+    // e as caixas por canal continuam disponíveis sem desfazer a atribuição.
+    else if (caixa === 'todas' && !busca && !canal) lista = lista.filter((c) => !temInboxDaEquipe(c));
     if (canal) lista = lista.filter((c) => c.canal === canal);
     // "Minhas" e "Sem resposta" mostram só o que está em aberto: ao encerrar, a
     // conversa sai delas e passa para a caixa "Encerradas".
@@ -927,6 +934,8 @@ function criarRotasApi(db, opcoes = {}) {
       valores.push(v);
       campos.push('equipe_status = ?');
       valores.push(v === null ? null : 'aberta');
+      // Retirar da inbox é uma devolução explícita para a caixa de entrada.
+      if (v === null && temInboxDaEquipe(req.conversa)) campos.push("status = 'aberta'");
     }
     if ('atendenteId' in corpo) {
       const v = corpo.atendenteId === null || corpo.atendenteId === '' ? null : Number(corpo.atendenteId);
