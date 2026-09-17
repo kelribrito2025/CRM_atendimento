@@ -7,6 +7,16 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { AsyncLocalStorage } = require('node:async_hooks');
+
+const ERRO_CONTEXTO_ENCERRADO = 'O contexto transacional já foi concluído';
+const ERRO_TRANSACAO_ANINHADA = 'Transações aninhadas não são suportadas';
+
+function exigirContextoAtivo(armazenamento) {
+  const contexto = armazenamento.getStore();
+  if (contexto && contexto.estado !== 'ativo') throw new Error(ERRO_CONTEXTO_ENCERRADO);
+  return contexto;
+}
 
 /* ------------------------------------------------------------------ */
 /* SQLite (arquivo)                                                    */
@@ -73,8 +83,8 @@ function traduzir(sql) {
     .replace(/CAST\(([^)]+)\s+AS\s+INTEGER\)/gi, 'CAST($1 AS SIGNED)');
 }
 
-async function abrirMysql(url) {
-  const mysql = require('mysql2/promise');
+async function abrirMysql(url, driver) {
+  const mysql = driver || require('mysql2/promise');
   const endereco = new URL(url);
   const pool = mysql.createPool({
     host: endereco.hostname,
@@ -92,12 +102,15 @@ async function abrirMysql(url) {
     namedPlaceholders: false,
   });
 
-  // Em transação as consultas precisam ir pela mesma conexão.
-  let emTransacao = null;
+  // Em transação as consultas precisam ir pela mesma conexão. O armazenamento
+  // é local a esta instância, para que transações concorrentes não troquem
+  // de conexão entre si.
+  const armazenamentoTransacao = new AsyncLocalStorage();
 
   async function rodar(sql, parametros) {
     const consulta = traduzir(sql);
-    const alvo = emTransacao || pool;
+    const contexto = exigirContextoAtivo(armazenamentoTransacao);
+    const alvo = contexto ? contexto.conexao : pool;
     const [resultado] = await alvo.query(consulta, parametros.map((v) => (v === undefined ? null : v)));
     return resultado;
   }
@@ -122,28 +135,42 @@ async function abrirMysql(url) {
       }
     },
     async transacao(fn) {
-      const conexao = await pool.getConnection();
-      emTransacao = conexao;
-      try {
-        await conexao.beginTransaction();
-        const r = await fn();
-        await conexao.commit();
-        return r;
-      } catch (erro) {
-        try { await conexao.rollback(); } catch { /* já desfeito */ }
-        throw erro;
-      } finally {
-        emTransacao = null;
-        conexao.release();
+      const existente = armazenamentoTransacao.getStore();
+      if (existente) {
+        exigirContextoAtivo(armazenamentoTransacao);
+        throw new Error(ERRO_TRANSACAO_ANINHADA);
       }
+
+      const conexao = await pool.getConnection();
+      const contexto = { conexao, estado: 'ativo' };
+      return armazenamentoTransacao.run(contexto, async () => {
+        try {
+          await conexao.beginTransaction();
+          const r = await fn();
+          contexto.estado = 'encerrando';
+          await conexao.commit();
+          contexto.estado = 'concluido';
+          return r;
+        } catch (erro) {
+          contexto.estado = 'encerrando';
+          try { await conexao.rollback(); } catch { /* já desfeito */ }
+          contexto.estado = 'concluido';
+          throw erro;
+        } finally {
+          contexto.estado = 'concluido';
+          conexao.release();
+        }
+      });
     },
     async colunas(tabela) {
+      exigirContextoAtivo(armazenamentoTransacao);
       const linhas = await banco.prepare(
         'SELECT COLUMN_NAME AS nome FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ?',
       ).all(tabela);
       return linhas.map((c) => c.nome);
     },
     async criarIndice(nome, tabela, colunas) {
+      exigirContextoAtivo(armazenamentoTransacao);
       const existe = await banco.prepare(
         'SELECT 1 AS ok FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ? LIMIT 1',
       ).get(tabela, nome);
@@ -155,9 +182,12 @@ async function abrirMysql(url) {
 }
 
 // `destino` é um caminho de arquivo (SQLite) ou uma URL mysql:// (publicação).
-async function abrirBanco(destino) {
+async function abrirBanco(destino, opcoes = {}) {
   const alvo = String(destino || '').trim();
-  if (/^mysql(2)?:\/\//i.test(alvo)) return abrirMysql(alvo.replace(/^mysql2:/i, 'mysql:'));
+  if (/^mysql(2)?:\/\//i.test(alvo)) {
+    const driver = opcoes.driver || opcoes.mysql;
+    return abrirMysql(alvo.replace(/^mysql2:/i, 'mysql:'), driver);
+  }
   return abrirSqlite(alvo || ':memory:');
 }
 

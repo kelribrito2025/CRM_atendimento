@@ -21,12 +21,49 @@ const { criarAbrirConta, URL_PADRAO: ABRIR_CONTA_PADRAO } = require('./abrir-con
 const canais = require('./canais');
 
 const RAIZ = path.join(__dirname, '..');
+const TEM_CHAVE = (nome) => Object.prototype.hasOwnProperty.call(process.env, nome);
+
+function lerFlag(nome, padrao) {
+  if (!TEM_CHAVE(nome)) return padrao;
+  const valor = String(process.env[nome]).trim().toLowerCase();
+  if (valor === 'true') return true;
+  if (valor === 'false') return false;
+  throw new Error(`${nome} deve ser true ou false.`);
+}
+
+function ehMysqlValido(valor) {
+  if (!/^mysql2?:\/\//i.test(valor)) return false;
+  try {
+    const url = new URL(valor);
+    return ['mysql:', 'mysql2:'].includes(url.protocol) && Boolean(url.hostname)
+      && Boolean(url.pathname.replace(/^\/+/, ''));
+  } catch {
+    return false;
+  }
+}
 
 function lerConfig() {
   carregarEnv(path.join(RAIZ, '.env'));
+  const ambienteProducao = process.env.NODE_ENV === 'production' || TEM_CHAVE('RAILWAY_ENVIRONMENT_ID');
+  const migracoesAutomaticas = lerFlag('MIGRACOES_AUTOMATICAS', !ambienteProducao);
+  const integracoesAutomaticas = lerFlag('INTEGRACOES_AUTOMATICAS', !ambienteProducao);
+  const databaseUrl = String(process.env.DATABASE_URL || '').trim();
+
+  // Railway/produção nunca usa o fallback de arquivo local.
+  if (ambienteProducao && !ehMysqlValido(databaseUrl)) {
+    throw new Error('Em produção, DATABASE_URL deve apontar para MySQL/TiDB.');
+  }
+  // Sem uma senha fornecida, não há bootstrap implícito do administrador.
+  if (ambienteProducao && migracoesAutomaticas && !String(process.env.ADMIN_SENHA || '').trim()) {
+    throw new Error('ADMIN_SENHA é obrigatória quando as migrações automáticas estão habilitadas em produção.');
+  }
+
   return {
+    ambienteProducao,
+    migracoesAutomaticas,
+    integracoesAutomaticas,
     porta: Number(process.env.PORT || 3100),
-    caminhoBanco: process.env.DATABASE_URL || process.env.DB_PATH || path.join(RAIZ, 'data', 'crm.sqlite'),
+    caminhoBanco: databaseUrl || process.env.DB_PATH || path.join(RAIZ, 'data', 'crm.sqlite'),
     adminEmail: process.env.ADMIN_EMAIL || 'admin@bigteck.com.br',
     adminSenha: process.env.ADMIN_SENHA || 'admin123',
     adminNome: process.env.ADMIN_NOME || 'Gestor Bigteck',
@@ -66,17 +103,25 @@ function pastaPublica() {
 
 async function montarSistema(extras = {}) {
   const config = lerConfig();
-  const db = await abrirBanco(config.caminhoBanco);
-  const resultado = await semear(db, {
-    adminEmail: config.adminEmail,
-    adminSenha: config.adminSenha,
-    adminNome: config.adminNome,
-    comDadosExemplo: config.dadosExemplo,
-  });
-  const enviador = criarEnviador();
+  // A opção é repassada para a camada DB; false não cria schema nem migra.
+  const db = await abrirBanco(config.caminhoBanco, { inicializar: config.migracoesAutomaticas });
+  let resultado = { adminCriado: false, dadosExemploCriados: false, dadosExemploRemovidos: null, botsTelegram: 0 };
+
+  // Seed só pode acompanhar uma abertura explicitamente inicializadora.
+  if (config.migracoesAutomaticas) {
+    resultado = await semear(db, {
+      adminEmail: config.adminEmail,
+      adminSenha: config.adminSenha,
+      adminNome: config.adminNome,
+      comDadosExemplo: config.dadosExemplo,
+    });
+  }
+
+  const enviador = criarEnviador({ modo: 'terminal' });
   const uazapi = criarUazapi({ url: config.uazapiUrl, adminToken: config.uazapiAdminToken });
   const telegram = criarTelegram();
   const saldo = criarSaldo({ url: config.saldoUrl, token: config.saldoToken });
+  // A configuração S3 existente é preservada; a criação aqui não registra nem envia credenciais.
   const arquivos = criarS3({
     bucket: config.s3Bucket,
     regiao: config.s3Regiao,
@@ -84,8 +129,6 @@ async function montarSistema(extras = {}) {
     accessKeyId: config.s3Chave,
     secretAccessKey: config.s3Segredo,
   });
-  // Um avisador só para o sistema inteiro: é ele que faz a mensagem aparecer na
-  // hora, tanto no chat do cliente quanto na tela do atendente.
   const avisos = criarAvisos();
   const widget = criarWidget(db, { segredo: config.widgetSegredo, equipePadraoId: config.widgetEquipeId, arquivos, avisos });
   const abrirConta = criarAbrirConta({ url: config.abrirContaUrl, token: config.abrirContaToken });
@@ -107,56 +150,52 @@ async function montarSistema(extras = {}) {
     ...extras,
   });
 
-  // Limpeza periódica de sessões, códigos e links expirados.
-  setInterval(() => {
-    Promise.all([limparSessoesExpiradas(db), limparAcessosExpirados(db), widget.limparSessoesExpiradas()])
-      .catch((erro) => console.error('Limpeza automática falhou:', erro.message));
-  }, 60 * 60 * 1000).unref();
+  // A integração automática controla polling e manutenção; rotas HTTP autenticadas
+  // e webhooks continuam funcionais quando ela está desligada.
+  const automacoesAtivas = config.integracoesAutomaticas;
+  let intervaloLimpeza = null;
+  if (automacoesAtivas) {
+    intervaloLimpeza = setInterval(() => {
+      Promise.all([limparSessoesExpiradas(db), limparAcessosExpirados(db), widget.limparSessoesExpiradas()])
+        .catch(() => console.error('Limpeza automática falhou.'));
+    }, 60 * 60 * 1000);
+    intervaloLimpeza.unref?.();
+    resultado.botsTelegram = await canais.ligarTelegramTodos(db, telegram, arquivos, avisos);
+  }
 
-  // Religa os bots do Telegram que já estavam conectados.
-  resultado.botsTelegram = await canais.ligarTelegramTodos(db, telegram, arquivos, avisos);
+  let automacoesParadas = false;
+  function pararAutomacoes() {
+    if (automacoesParadas) return;
+    automacoesParadas = true;
+    if (intervaloLimpeza) clearInterval(intervaloLimpeza);
+    telegram.sondagem?.pararTodas?.();
+  }
 
-  return { app, db, config, resultado, enviador, uazapi, telegram, saldo, arquivos, widget };
+  let fechamento = null;
+  function fechar() {
+    if (!fechamento) {
+      pararAutomacoes();
+      fechamento = Promise.resolve().then(() => db.fechar?.());
+    }
+    return fechamento;
+  }
+
+  return { app, db, config, resultado, enviador, uazapi, telegram, saldo, arquivos, widget, pararAutomacoes, fechar };
 }
 
-function mostrarBoasVindas({ config, resultado, db }, endereco) {
+function mostrarBoasVindas({ config, resultado }, endereco) {
   console.log('');
-  console.log(`✅ CRM Atendimento rodando em ${endereco}`);
-  console.log(db?.dialeto === 'mysql'
-    ? `🗄️  Banco de dados: MySQL/TiDB (${db.descricao}) — os dados ficam guardados entre publicações.`
-    : `🗄️  Banco de dados: arquivo ${config.caminhoBanco}`);
-  if (resultado.adminCriado) {
-    console.log(`👤 Primeiro acesso → e-mail: ${config.adminEmail} | senha: ${config.adminSenha}`);
-    console.log('   Troque a senha depois com: npm run usuario -- --email <seu e-mail> --senha <nova senha>');
+  console.log(`CRM Atendimento rodando em ${endereco}`);
+  console.log(`Banco configurado: ${config.ambienteProducao ? 'MySQL/TiDB' : 'ambiente local'}.`);
+  if (resultado.adminCriado) console.log('Administrador inicial criado.');
+  if (resultado.dadosExemploCriados) console.log('Dados de exemplo criados.');
+  if (resultado.dadosExemploRemovidos && Object.values(resultado.dadosExemploRemovidos).some(Boolean)) {
+    console.log('Dados de exemplo anteriores removidos.');
   }
-  if (resultado.dadosExemploCriados) {
-    console.log('📦 Conversas e equipes de exemplo foram criadas para você testar a tela.');
-  }
-  const removidos = resultado.dadosExemploRemovidos;
-  if (removidos && (removidos.conversas || removidos.contatos || removidos.usuarios)) {
-    console.log(`🧹 Dados de exemplo removidos: ${removidos.conversas} conversas, ${removidos.contatos} contatos e ${removidos.usuarios} usuários de teste.`);
-  }
-  console.log(`🔐 Verificação em duas etapas: ${config.doisFatores ? 'ativada' : 'desativada'} (DOIS_FATORES no .env)`);
-  console.log('📧 E-mails (código de verificação, recuperação de senha) aparecem aqui nesta janela até um serviço de e-mail ser configurado.');
-  console.log(config.uazapiUrl && config.uazapiAdminToken
-    ? `📱 WhatsApp (uazapi): configurado em ${config.uazapiUrl}`
-    : '📱 WhatsApp (uazapi): não configurado. Preencha UAZAPI_URL e UAZAPI_ADMIN_TOKEN no .env para conectar.');
-  console.log(resultado.botsTelegram
-    ? `✈️  Telegram: ${resultado.botsTelegram} bot(s) recebendo mensagens.`
-    : '✈️  Telegram: conecte um bot pelo menu da conta (avatar) › Conectar canal. Só precisa do token do @BotFather.');
-  console.log(config.s3Chave && config.s3Segredo
-    ? `🗂️  Arquivos das conversas: guardados no S3 (${config.s3Bucket}/${config.s3Prefixo}/).`
-    : '🗂️  Arquivos das conversas: sem S3. Preencha S3_ACCESS_KEY_ID e S3_SECRET_ACCESS_KEY no .env.');
-  console.log(config.widgetSegredo
-    ? '💬 Chat do site: ligado. O site precisa assinar o id do usuário com o mesmo segredo.'
-    : '💬 Chat do site: DESLIGADO. Preencha WIDGET_SEGREDO no .env para ligar (sem ele, nenhuma conversa abre).');
-  console.log(config.abrirContaToken
-    ? '🔓 Abrir conta do cliente no site: ligado.'
-    : '🔓 Abrir conta do cliente no site: desligado. Preencha ABRIR_CONTA_TOKEN no .env.');
-  console.log(config.saldoToken
-    ? '💰 Consulta de saldo por PIN: configurada.'
-    : '💰 Consulta de saldo por PIN: desligada. Preencha SALDO_TOKEN no .env (a chave fica só no servidor).');
-  if (!config.baseUrl) console.log('🌐 BASE_URL não definida: o WhatsApp só consegue entregar mensagens quando o CRM tiver um endereço público.');
+  console.log(`Verificação em duas etapas: ${config.doisFatores ? 'ativada' : 'desativada'}.`);
+  console.log('Serviço de e-mail: não configurado; mensagens de teste ficam somente em memória.');
+  console.log(`Automações de integração: ${config.integracoesAutomaticas ? 'ativadas' : 'desativadas'}.`);
+  console.log(`Telegram inicializado: ${resultado.botsTelegram ? 'sim' : 'não'}.`);
   console.log('');
 }
 

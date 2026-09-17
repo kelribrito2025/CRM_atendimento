@@ -453,8 +453,15 @@ async function migrar(db) {
 }
 
 // `destino`: caminho de um arquivo SQLite ou uma URL mysql:// (publicação).
-async function abrirBanco(destino = ':memory:') {
+async function abrirBanco(destino = ':memory:', { inicializar = true } = {}) {
+  const alvo = String(destino || '').trim();
+  if (!inicializar && !/^mysql(2)?:\/\//i.test(alvo)) {
+    throw new Error('Modo sem inicialização exige um destino MySQL/TiDB');
+  }
+
   const db = await abrirConexao(destino);
+  if (!inicializar) return db;
+
   await db.exec(montarSchema(db.dialeto));
   await migrar(db);
   return db;
