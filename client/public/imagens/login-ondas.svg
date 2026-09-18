@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Ondas decorativas">
+<!-- Fundo decorativo do login: ondas em verde, azul-petróleo e índigo. Vetor, nítido em qualquer tela. -->
+<defs>
+<linearGradient id="a" x1="0" x2="1"><stop offset="0" stop-color="#12B85C"/><stop offset="1" stop-color="#22D3EE"/></linearGradient>
+<linearGradient id="b" x1="0" x2="1"><stop offset="0" stop-color="#0F9E4E"/><stop offset="1" stop-color="#6366F1"/></linearGradient>
+<linearGradient id="c" x1="0" x2="1"><stop offset="0" stop-color="#12B85C"/><stop offset="1" stop-color="#A855F7"/></linearGradient>
+</defs>
+<path d="M0 120C300 40 520 220 820 120S1100 40 1200 90V0H0Z" fill="url(#a)" opacity=".10"/>
+<path d="M0 640C260 520 420 780 700 640S1100 480 1200 560V900H0Z" fill="url(#a)" opacity=".22"/>
+<path d="M0 720C300 600 500 860 800 720S1150 600 1200 660V900H0Z" fill="url(#b)" opacity=".28"/>
+<path d="M0 810C280 700 560 920 860 800S1120 720 1200 760V900H0Z" fill="url(#c)" opacity=".35"/>
+</svg>

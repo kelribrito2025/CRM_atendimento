@@ -12,22 +12,21 @@ const ler = (arquivo) => fs.readFileSync(path.join(raiz, arquivo), 'utf8');
 test('portabilidade: o fundo de login usa rota local e não Forge ou manus-storage', () => {
   const fundo = ler('src/fundo-login.js');
   const css = ler('client/assets/css/acesso.css');
-  assert.equal(CAMINHO_FUNDO_LOGIN, '/acesso/imagens/login-rotina-equipe.svg');
+  assert.equal(CAMINHO_FUNDO_LOGIN, '/acesso/imagens/login-ondas.svg');
   assert.match(fundo, /fs\.promises\.readFile/);
   assert.doesNotMatch(fundo, /BUILT_IN_FORGE|Authorization|manus-storage|fetch\s*\(/);
-  assert.match(css, /url\('\/acesso\/imagens\/login-rotina-equipe\.svg'\)/);
+  assert.match(css, /url\('\/acesso\/imagens\/login-ondas\.svg'\)/);
   assert.doesNotMatch(css, /manus-storage/);
 });
 
-test('portabilidade: o fundo do login é um SVG estático gerado pelo script do projeto', () => {
-  const ativo = path.join(raiz, 'client/public/imagens/login-rotina-equipe.svg');
+test('portabilidade: o fundo do login é um SVG estático local', () => {
+  const ativo = path.join(raiz, 'client/public/imagens/login-ondas.svg');
   const texto = fs.readFileSync(ativo, 'utf8');
   assert.ok(Buffer.byteLength(texto) < 100_000);
-  assert.match(texto, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 1600 900"/);
+  assert.match(texto, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 1200 900"/);
   assert.doesNotMatch(texto, /<script|https?:\/\/(?!www\.w3\.org)|\son[a-z]+=/i);
-  assert.ok((texto.match(/<use /g) || []).length > 40, 'o padrão tem dezenas de ícones');
+  assert.ok((texto.match(/<path /g) || []).length >= 4, 'tem as camadas de ondas');
   assert.ok(!fs.existsSync(path.join(raiz, 'client/public/imagens/login-rotina-equipe.webp')), 'o WebP pixelado saiu do projeto');
-  assert.match(ler('scripts/gerar-fundo-login.js'), /login-rotina-equipe\.svg/);
 });
 
 test('portabilidade: Vite mantém somente o plugin crm-atendimento e o multipage real', () => {

@@ -3,8 +3,7 @@
 
 /* Lado escuro */
 .hero { width: 58%; flex-shrink: 0; position: relative; background: var(--rail); padding: 44px; display: flex; flex-direction: column; overflow: hidden; color: #fff; }
-/* Padrão sobre o verde original: 10% de opacidade.
-   A camada negativa fica acima do fundo, mas abaixo de todo o conteúdo. */
+/* Ondas vetoriais sobre o verde original, atrás de todo o conteúdo do login. */
 body[data-pagina="login"] .hero { isolation: isolate; }
 @media (min-width: 861px) {
   body[data-pagina="login"] .hero::before {
@@ -13,8 +12,8 @@ body[data-pagina="login"] .hero { isolation: isolate; }
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    opacity: .1;
-    background: url('/acesso/imagens/login-rotina-equipe.svg') center / cover no-repeat;
+    opacity: 1;
+    background: url('/acesso/imagens/login-ondas.svg') center / cover no-repeat, linear-gradient(180deg, #071510 0%, #0B1F14 100%);
   }
 }
 .hero-glow { position: absolute; right: -180px; top: -140px; width: 620px; height: 620px; border-radius: 50%; background: radial-gradient(circle, rgba(18, 184, 92, .22), rgba(18, 184, 92, 0) 70%); pointer-events: none; }

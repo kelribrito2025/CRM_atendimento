@@ -5,8 +5,8 @@ const path = require('node:path');
 
 // Ativo decorativo aprovado, servido localmente para não depender de Forge,
 // credenciais ou de um proxy genérico de armazenamento.
-const CAMINHO_FUNDO_LOGIN = '/acesso/imagens/login-rotina-equipe.svg';
-const NOME_ATIVO = 'login-rotina-equipe.svg';
+const CAMINHO_FUNDO_LOGIN = '/acesso/imagens/login-ondas.svg';
+const NOME_ATIVO = 'login-ondas.svg';
 const MAX_BYTES = 100_000;
 const RAIZ = path.join(__dirname, '..');
 

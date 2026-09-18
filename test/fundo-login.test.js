@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { criarFundoLogin, CAMINHO_FUNDO_LOGIN } = require('../src/fundo-login');
-const arquivo = path.join(__dirname, '..', 'client', 'public', 'imagens', 'login-rotina-equipe.svg');
+const arquivo = path.join(__dirname, '..', 'client', 'public', 'imagens', 'login-ondas.svg');
 const bytes = fs.readFileSync(arquivo);
 function resposta() {
   return { statusCode: 200, headers: {}, setHeader(n,v){this.headers[n]=v;}, end(b){this.body=b;} };
@@ -31,13 +31,13 @@ test('fundo login: erro local responde indisponível sem corpo ou credencial', a
   assert.equal(erro.headers['Cache-Control'],'no-store');
 });
 
-test('fundo login UI: decoração a 10% de opacidade só no login desktop e atrás dos textos', () => {
+test('fundo login UI: ondas só no login desktop e atrás dos textos', () => {
   const ler=p=>fs.readFileSync(path.join(__dirname,'..',p),'utf8');
   const css=ler('client/assets/css/acesso.css');
   assert.match(css,/body\[data-pagina="login"\] \.hero \{ isolation: isolate; \}/);
   const camada=css.match(/body\[data-pagina="login"\] \.hero::before \{([^}]+)\}/)?.[1];
   assert.ok(camada);
-  assert.match(camada,/opacity: \.1;/);
+  assert.match(camada,/opacity: 1;/);
   assert.match(camada,/z-index: -1;/);
   assert.match(camada,/pointer-events: none;/);
   assert.ok(camada.includes(CAMINHO_FUNDO_LOGIN));

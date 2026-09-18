@@ -371,11 +371,11 @@ client/assets/            CSS, JavaScript e ícones
 client/public/__manus__/  coletor de logs usado pelo Manus
 client/public/icones/     ícones do Iconly (SVG estático e Lottie animado)
 client/public/vendor/     biblioteca que reproduz as animações Lottie
+client/public/imagens/    ondas vetoriais (SVG) que decoram o lado esquerdo do login
 client/assets/js/icones.js carrega os ícones do Iconly com reserva no código
 scripts/criar-usuario.js  gerenciar usuários pelo terminal
 scripts/criar-convite.js  gerar links de convite
 scripts/copiar-banco.js   copiar um banco MySQL/TiDB para outro (ambiente dev, migração)
-scripts/gerar-fundo-login.js  gera o padrão vetorial (SVG) que decora o lado esquerdo do login
 test/                     testes automáticos
 docs/chat-do-site.md      guia do chat do site para entregar ao dev
 docs/ambiente-dev-railway.md  ambiente de desenvolvimento no Railway e cópia do banco
