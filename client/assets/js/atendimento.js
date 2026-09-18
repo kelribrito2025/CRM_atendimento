@@ -1579,8 +1579,11 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
 
     const busca = el('input', {
       type: 'text', class: 'rapida-busca', placeholder: 'Buscar atalho ou título…', value: rapidas.busca,
-      // O painel é redesenhado a cada letra: o cursor volta para onde estava.
-      oninput: () => {
+      oninput: (e) => {
+        // "//" com o painel aberto pela barra: a segunda barra chega aqui, não no
+        // campo de escrever (que está coberto). Insere a Saudação lá e fecha.
+        if (rapidas.origem === 'barra' && busca.value === '/' && e.inputType === 'insertText' && inserirSaudacaoPelaBusca()) return;
+        // O painel é redesenhado a cada letra: o cursor volta para onde estava.
         const posicao = busca.selectionStart;
         rapidas.busca = busca.value;
         desenharRapidas();
@@ -1626,10 +1629,16 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
     // Cobre o card da conversa inteiro, inclusive o campo de escrever, tenha uma
     // resposta salva ou vinte.
     const chat = $('#chat');
+    // Redesenho com a busca em foco (a lista acabou de chegar, por exemplo): o
+    // foco e o cursor continuam onde estavam.
+    const ativo = document.activeElement;
+    const buscaTinhaFoco = Boolean(antigo && ativo && antigo.contains(ativo) && ativo.classList.contains('rapida-busca'));
+    const posicaoAntiga = buscaTinhaFoco ? ativo.selectionStart : null;
     if (antigo) antigo.replaceWith(painel); else (chat || document.body).append(painel);
     // O campo de escrever fica coberto: quem digitou "/" continua digitando na
     // busca do painel, já com o que escreveu depois da barra.
     if (!f && !antigo) { busca.focus(); busca.setSelectionRange(busca.value.length, busca.value.length); }
+    else if (!f && buscaTinhaFoco) { busca.focus(); busca.setSelectionRange(posicaoAntiga ?? busca.value.length, posicaoAntiga ?? busca.value.length); }
   }
 
   // A primeira letra que o atendente digita já sai maiúscula.
@@ -1730,6 +1739,22 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
     if (estado.modo !== 'resposta' || evento.isComposing
         || evento.inputType !== 'insertText' || !/^\/{1,2}$/.test(evento.data || '')) return false;
     const expansao = expandirAtalhoSaudacao(campo.value, campo.selectionStart, campo.selectionEnd);
+    if (!expansao) return false;
+    campo.value = expansao.texto;
+    campo.setSelectionRange(expansao.cursor, expansao.cursor);
+    ajustarAltura(campo);
+    fecharRapidas();
+    return true;
+  }
+
+  // A segunda barra do "//" foi digitada na busca do painel: completa o atalho
+  // no campo de escrever (que já tem a primeira barra) e insere a Saudação.
+  function inserirSaudacaoPelaBusca() {
+    const campo = $('#texto-msg');
+    if (!campo || estado.modo !== 'resposta') return false;
+    const inicio = campo.selectionStart ?? campo.value.length;
+    const texto = `${campo.value.slice(0, inicio)}/${campo.value.slice(inicio)}`;
+    const expansao = expandirAtalhoSaudacao(texto, inicio + 1, inicio + 1);
     if (!expansao) return false;
     campo.value = expansao.texto;
     campo.setSelectionRange(expansao.cursor, expansao.cursor);
