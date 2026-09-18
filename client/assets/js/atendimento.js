@@ -1579,7 +1579,21 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
 
     const busca = el('input', {
       type: 'text', class: 'rapida-busca', placeholder: 'Buscar atalho ou título…', value: rapidas.busca,
-      oninput: () => { rapidas.busca = busca.value; desenharRapidas(); $('#painel-rapidas .rapida-busca')?.focus(); },
+      // O painel é redesenhado a cada letra: o cursor volta para onde estava.
+      oninput: () => {
+        const posicao = busca.selectionStart;
+        rapidas.busca = busca.value;
+        desenharRapidas();
+        const novo = $('#painel-rapidas .rapida-busca');
+        if (novo) { novo.focus(); novo.setSelectionRange(posicao, posicao); }
+      },
+      // Enter escolhe a primeira resposta da lista filtrada, como no campo de escrever.
+      onkeydown: (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const escolhidas = filtrarRapidas();
+        if (escolhidas.length) usarResposta(escolhidas[0]);
+      },
     });
 
     const corpo = f ? formRapida() : el('div', { class: 'rapidas-corpo lista' },
@@ -1610,14 +1624,13 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
       f ? null : el('div', { class: 'rapidas-dica' }, 'Digite ', el('strong', {}, '/'), ' para buscar respostas ou ', el('strong', {}, '//'), ' para inserir a Saudação.'),
       rodape);
 
-    // Cobre o card da conversa inteiro (do topo até o campo de escrever), tenha
-    // uma resposta salva ou vinte. O campo de escrever continua visível embaixo.
+    // Cobre o card da conversa inteiro, inclusive o campo de escrever, tenha uma
+    // resposta salva ou vinte.
     const chat = $('#chat');
-    const compositor = chat?.querySelector('.compositor');
-    painel.style.bottom = `${compositor ? compositor.offsetHeight : 0}px`;
     if (antigo) antigo.replaceWith(painel); else (chat || document.body).append(painel);
-    // Aberto pelo botão: o cursor vai para a busca. Aberto pela barra: fica na mensagem.
-    if (!f && !antigo && rapidas.origem === 'botao') busca.focus();
+    // O campo de escrever fica coberto: quem digitou "/" continua digitando na
+    // busca do painel, já com o que escreveu depois da barra.
+    if (!f && !antigo) { busca.focus(); busca.setSelectionRange(busca.value.length, busca.value.length); }
   }
 
   // A primeira letra que o atendente digita já sai maiúscula.

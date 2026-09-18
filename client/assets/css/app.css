@@ -319,12 +319,11 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .midia-arquivo { display: inline-flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, .18); color: inherit; font-size: 13px; font-weight: 600; text-decoration: none; }
 .midia-arquivo:hover { background: rgba(255, 255, 255, .3); }
 /* ===== Respostas rápidas (painel que cobre o chat) =====
-   Ocupa o card da conversa inteiro, do topo até o campo de escrever, com as
-   mesmas bordas arredondadas do card. */
+   Ocupa o card da conversa inteiro, inclusive o campo de escrever, para caber
+   o máximo de respostas. A busca continua no campo do próprio painel. */
 .rapidas {
-  position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 40;
-  background: var(--superficie); border-radius: 20px 20px 0 0;
-  border-bottom: 1px solid var(--borda);
+  position: absolute; inset: 0; z-index: 40;
+  background: var(--superficie); border-radius: 20px;
   display: flex; flex-direction: column; overflow: hidden;
   animation: subir .16s ease-out;
 }
