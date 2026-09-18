@@ -15,9 +15,6 @@ body[data-pagina="login"] .hero { isolation: isolate; }
     pointer-events: none;
     opacity: .3;
     background: url('/acesso/imagens/login-rotina-equipe.svg') center / cover no-repeat;
-    /* Esmaece o padrão onde ficam o título e o texto (canto inferior esquerdo). */
-    -webkit-mask-image: radial-gradient(ellipse 60% 45% at 28% 72%, rgba(0, 0, 0, .25), #000 100%);
-    mask-image: radial-gradient(ellipse 60% 45% at 28% 72%, rgba(0, 0, 0, .25), #000 100%);
   }
 }
 .hero-glow { position: absolute; right: -180px; top: -140px; width: 620px; height: 620px; border-radius: 50%; background: radial-gradient(circle, rgba(18, 184, 92, .22), rgba(18, 184, 92, 0) 70%); pointer-events: none; }
