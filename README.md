@@ -375,6 +375,7 @@ client/assets/js/icones.js carrega os ícones do Iconly com reserva no código
 scripts/criar-usuario.js  gerenciar usuários pelo terminal
 scripts/criar-convite.js  gerar links de convite
 scripts/copiar-banco.js   copiar um banco MySQL/TiDB para outro (ambiente dev, migração)
+scripts/gerar-fundo-login.js  gera o padrão vetorial (SVG) que decora o lado esquerdo do login
 test/                     testes automáticos
 docs/chat-do-site.md      guia do chat do site para entregar ao dev
 docs/ambiente-dev-railway.md  ambiente de desenvolvimento no Railway e cópia do banco

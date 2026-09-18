@@ -5,8 +5,8 @@ const path = require('node:path');
 
 // Ativo decorativo aprovado, servido localmente para não depender de Forge,
 // credenciais ou de um proxy genérico de armazenamento.
-const CAMINHO_FUNDO_LOGIN = '/acesso/imagens/login-rotina-equipe.webp';
-const NOME_ATIVO = 'login-rotina-equipe.webp';
+const CAMINHO_FUNDO_LOGIN = '/acesso/imagens/login-rotina-equipe.svg';
+const NOME_ATIVO = 'login-rotina-equipe.svg';
 const MAX_BYTES = 100_000;
 const RAIZ = path.join(__dirname, '..');
 
@@ -17,11 +17,12 @@ function caminhosPadrao() {
   ];
 }
 
-function validarWebp(bytes) {
+// Só aceita um SVG estático: sem script, sem eventos e sem referências externas.
+function validarSvg(bytes) {
   if (bytes.length > MAX_BYTES) throw new Error('Arquivo muito grande.');
-  if (bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WEBP') {
-    throw new Error('Formato inválido.');
-  }
+  const texto = bytes.toString('utf8');
+  if (!/^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<svg[\s>]/i.test(texto)) throw new Error('Formato inválido.');
+  if (/<script|\son[a-z]+\s*=|href\s*=\s*["']?(https?:|\/\/)|<foreignObject|<!ENTITY/i.test(texto)) throw new Error('Conteúdo não permitido.');
   return bytes;
 }
 
@@ -33,7 +34,7 @@ function criarFundoLogin({ arquivo = null } = {}) {
     let ultimoErro;
     for (const candidato of candidatos) {
       try {
-        return validarWebp(await fs.promises.readFile(candidato));
+        return validarSvg(await fs.promises.readFile(candidato));
       } catch (erro) {
         ultimoErro = erro;
         if (erro?.code !== 'ENOENT') break;
@@ -46,7 +47,8 @@ function criarFundoLogin({ arquivo = null } = {}) {
     try {
       if (!pendente) pendente = carregar().catch((erro) => { pendente = null; throw erro; });
       const bytes = await pendente;
-      res.setHeader('Content-Type', 'image/webp');
+      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       res.setHeader('Content-Length', bytes.length);
       res.setHeader('X-Content-Type-Options', 'nosniff');
