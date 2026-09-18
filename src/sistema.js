@@ -19,7 +19,7 @@ const { criarWidget } = require('./widget');
 const { criarAvisos } = require('./eventos');
 const { criarAbrirConta, URL_PADRAO: ABRIR_CONTA_PADRAO } = require('./abrir-conta');
 const canais = require('./canais');
-const { aplicarSandbox } = require('./sandbox');
+const { aplicarSandbox, carregarTokensProtegidos } = require('./sandbox');
 
 const RAIZ = path.join(__dirname, '..');
 const TEM_CHAVE = (nome) => Object.prototype.hasOwnProperty.call(process.env, nome);
@@ -135,7 +135,11 @@ async function montarSistema(extras = {}) {
   const avisos = criarAvisos();
   const widget = criarWidget(db, { segredo: config.widgetSegredo, equipePadraoId: config.widgetEquipeId, arquivos, avisos });
   let abrirConta = criarAbrirConta({ url: config.abrirContaUrl, token: config.abrirContaToken });
-  if (config.sandbox) ({ uazapi, telegram, abrirConta } = aplicarSandbox({ uazapi, telegram, abrirConta }));
+  if (config.sandbox) {
+    const protegidos = await carregarTokensProtegidos(db);
+    resultado.sandboxProtegidos = protegidos.size;
+    ({ uazapi, telegram, abrirConta } = aplicarSandbox({ uazapi, telegram, abrirConta, protegidos }));
+  }
   const app = criarApp(db, {
     uazapi,
     telegram,
@@ -165,9 +169,11 @@ async function montarSistema(extras = {}) {
         .catch(() => console.error('Limpeza automática falhou.'));
     }, 60 * 60 * 1000);
     intervaloLimpeza.unref?.();
-    // No sandbox nenhum bot é religado: o ambiente de teste não pode disputar
-    // as mensagens do Telegram com produção.
-    resultado.botsTelegram = config.sandbox ? 0 : await canais.ligarTelegramTodos(db, telegram, arquivos, avisos);
+  }
+  // Bots do Telegram: com as automações ligadas ou no sandbox, onde só os bots
+  // criados no próprio ambiente de teste recebem (os copiados de produção não).
+  if (automacoesAtivas || config.sandbox) {
+    resultado.botsTelegram = await canais.ligarTelegramTodos(db, telegram, arquivos, avisos);
   }
 
   let automacoesParadas = false;
@@ -193,7 +199,7 @@ async function montarSistema(extras = {}) {
 function mostrarBoasVindas({ config, resultado }, endereco) {
   console.log('');
   console.log(`CRM Atendimento rodando em ${endereco}`);
-  if (config.sandbox) console.log('MODO SANDBOX (ambiente de teste): nada é enviado ao WhatsApp, ao Telegram nem ao site; nenhum bot recebe mensagens.');
+  if (config.sandbox) console.log(`MODO SANDBOX (ambiente de teste): ${resultado.sandboxProtegidos || 0} canal(is) copiado(s) de produção ficam inertes; canais criados aqui funcionam de verdade.`);
   console.log(`Banco configurado: ${config.ambienteProducao ? 'MySQL/TiDB' : 'ambiente local'}.`);
   if (resultado.adminCriado) console.log('Administrador inicial criado.');
   if (resultado.dadosExemploCriados) console.log('Dados de exemplo criados.');

@@ -25,6 +25,7 @@ function conexaoFalsa({ tabelas = {}, existentes = [] } = {}) {
         return [linhas.slice(Number(m[4]), Number(m[4]) + Number(m[3]))];
       }
       if (/^UPDATE canais SET status = 'disconnected'/.test(sql)) return [{ affectedRows: 2 }];
+      if (/^SELECT instancia_token FROM canais/.test(sql)) return [[{ instancia_token: 'tok-wa' }, { instancia_token: '123:abc' }, { instancia_token: 'tok-wa' }]];
       return [{ affectedRows: 0 }];
     },
   };
@@ -33,7 +34,7 @@ function conexaoFalsa({ tabelas = {}, existentes = [] } = {}) {
 const ORIGEM = {
   usuarios: { chave: ['id'], linhas: [{ id: 1, nome: 'Ana' }, { id: 2, nome: 'Bia' }, { id: 3, nome: 'Caio' }] },
   equipe_membros: { chave: ['equipe_id', 'usuario_id'], linhas: [{ equipe_id: 1, usuario_id: 2 }] },
-  ajustes: { chave: [], linhas: [] },
+  ajustes: { chave: ['chave'], linhas: [] },
   canais: { chave: ['id'], linhas: [{ id: 7, tipo: 'telegram', status: 'connected' }] },
 };
 
@@ -70,10 +71,15 @@ test('copiar-banco: desliga os bots do Telegram na cópia, a menos que --manter-
   assert.match(update.sql, /WHERE tipo = 'telegram' AND status = 'connected'/);
   assert.equal(update.params[0], AVISO_TELEGRAM);
   assert.equal(r.telegramDesligados, 2);
+  const lista = destino.consultas.find((c) => c.sql.startsWith('INSERT INTO ajustes'));
+  assert.ok(lista, 'grava a lista de canais de produção para o sandbox');
+  assert.deepEqual(lista.params, ['sandbox_tokens_producao', JSON.stringify(['tok-wa', '123:abc'])]);
+  assert.equal(r.canaisProtegidos, 2);
 
   const destino2 = conexaoFalsa();
   const r2 = await copiarBanco({ origem: conexaoFalsa({ tabelas: ORIGEM }), destino: destino2, manterTelegram: true });
   assert.ok(!destino2.consultas.some((c) => c.sql.startsWith('UPDATE canais')));
+  assert.ok(!destino2.consultas.some((c) => c.sql.startsWith('INSERT INTO ajustes')), 'migração de produção não marca nada como inerte');
   assert.equal(r2.telegramDesligados, 0);
 });
 

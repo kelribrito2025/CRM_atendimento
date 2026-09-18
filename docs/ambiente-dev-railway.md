@@ -103,14 +103,22 @@ das instâncias reais. Sem o sandbox, responder uma conversa no dev mandaria a
 mensagem ao cliente de verdade, e excluir um canal de WhatsApp apagaria a
 instância no servidor uazapi que produção usa. Com o sandbox ligado:
 
-| Ação no dev | O que acontece |
-|---|---|
-| Responder WhatsApp ou Telegram | a mensagem fica gravada e aparece como enviada, mas **não vai para o cliente** |
-| Excluir ou desconectar um canal | some só do banco de dev; a instância real não é tocada |
-| Conectar WhatsApp novo | bloqueado com aviso |
-| Abrir conta do cliente no site | bloqueado com aviso |
-| Receber mensagens do Telegram | nenhum bot é ligado no dev (produção continua recebendo normalmente) |
-| Consultar saldo por PIN, ver anexos, chat do site | funcionam normalmente (só leitura, ou isolados do dev) |
+A regra é **por canal**. O script de cópia grava no banco de dev a lista dos
+canais que vieram de produção (`ajustes.sandbox_tokens_producao`); se a lista não
+existir, o primeiro boot em sandbox trata tudo o que já existe como produção.
+
+| Ação no dev | Canal copiado de produção | Canal criado no próprio dev |
+|---|---|---|
+| Responder WhatsApp ou Telegram | fica gravada como enviada, mas **não vai para o cliente** | vai de verdade |
+| Receber mensagens do Telegram | o bot **não é ligado** no dev (produção continua recebendo) | o bot recebe normalmente |
+| Excluir, desconectar, configurar webhook | some só do banco de dev; a instância real não é tocada | de verdade |
+| Conectar (QR / bot) | bloqueado com aviso | de verdade |
+| Abrir conta do cliente no site | bloqueado | bloqueado |
+| Consultar saldo por PIN, ver anexos, chat do site | funcionam normalmente | funcionam normalmente |
+
+Para testar Telegram de ponta a ponta no dev: crie um bot novo no @BotFather e
+conecte-o em **Configurações › Canais** do dev. Para WhatsApp, crie uma instância
+nova no dev com um número de testes. Nunca reconecte no dev um canal de produção.
 
 Gere segredos novos com:
 
@@ -125,9 +133,8 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ## 5. Canais em dev
 
 Com `MODO_SANDBOX=true`, os canais copiados de produção aparecem no dev, mas
-nenhum recebe nem envia de verdade. Para testar recebimento de ponta a ponta,
-use um ambiente sem sandbox e com canais próprios de teste (bot novo no
-@BotFather, instância de WhatsApp de testes), nunca os de produção.
+ficam inertes. Canais criados no próprio dev (bot novo no @BotFather, instância
+de WhatsApp com número de testes) recebem e enviam de verdade.
 
 ---
 

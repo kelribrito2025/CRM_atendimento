@@ -22,6 +22,8 @@ const { parseArgs } = require('node:util');
 const { opcoesMysql } = require('../src/banco');
 
 const AVISO_TELEGRAM = 'Desligado na cópia do banco. Reconecte o bot só se este ambiente for o único a usá-lo.';
+// Mesma chave que src/sandbox.js lê: os canais copiados ficam inertes no MODO_SANDBOX.
+const CHAVE_TOKENS_PROTEGIDOS = 'sandbox_tokens_producao';
 
 function identidade(url) {
   const o = opcoesMysql(url);
@@ -88,7 +90,18 @@ async function copiarBanco({ origem, destino, substituir = false, manterTelegram
       if (telegramDesligados) log(`📴 Telegram: ${telegramDesligados} bot(s) marcados como desconectados na cópia`);
     }
 
-    return { tabelas: resumo, telegramDesligados };
+    // Lista dos canais de produção para o MODO_SANDBOX do destino: esses ficam
+    // inertes; canais criados depois, no próprio dev, funcionam de verdade.
+    let canaisProtegidos = 0;
+    if (!manterTelegram && tabelas.includes('canais') && tabelas.includes('ajustes')) {
+      const [linhas] = await destino.query("SELECT instancia_token FROM canais WHERE instancia_token IS NOT NULL AND instancia_token != ''");
+      const tokens = [...new Set(linhas.map((l) => String(l.instancia_token)))];
+      await destino.query('INSERT INTO ajustes (chave, valor) VALUES (?, ?) ON DUPLICATE KEY UPDATE valor = VALUES(valor)', [CHAVE_TOKENS_PROTEGIDOS, JSON.stringify(tokens)]);
+      canaisProtegidos = tokens.length;
+      log(`🛡️  Sandbox: ${canaisProtegidos} canal(is) de produção marcados para ficar inertes no destino`);
+    }
+
+    return { tabelas: resumo, telegramDesligados, canaisProtegidos };
   } finally {
     await destino.query('SET FOREIGN_KEY_CHECKS = 1').catch(() => {});
   }
@@ -150,4 +163,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { copiarBanco, identidade, AVISO_TELEGRAM };
+module.exports = { copiarBanco, identidade, AVISO_TELEGRAM, CHAVE_TOKENS_PROTEGIDOS };
