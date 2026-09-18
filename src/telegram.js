@@ -28,6 +28,8 @@ function traduzirErro(status, descricao) {
   if (/blocked by the user/i.test(d)) return 'O cliente bloqueou o bot no Telegram.';
   if (/chat not found/i.test(d)) return 'Conversa não encontrada no Telegram.';
   if (/user is deactivated/i.test(d)) return 'A conta do cliente no Telegram foi desativada.';
+  if (/can't be edited|cannot be edited/i.test(d)) return 'O Telegram não permite mais editar esta mensagem.';
+  if (/message to edit not found/i.test(d)) return 'A mensagem não existe mais no Telegram.';
   return d.replace(/^Bad Request:\s*/i, '') || `O Telegram respondeu com erro ${status}.`;
 }
 
@@ -96,6 +98,18 @@ function criarTelegram({ fetchImpl = globalThis.fetch, base = 'https://api.teleg
   async function enviarTexto(token, chatId, texto) {
     const r = await chamar(token, 'sendMessage', { chat_id: chatId, text: String(texto) });
     return { messageId: r?.message_id ?? null, chatId: r?.chat?.id ?? chatId };
+  }
+
+  // Troca o texto de uma mensagem que o bot já enviou; o cliente vê a mensagem
+  // marcada como "editada" no Telegram. Texto igual ao atual conta como feito.
+  async function editarTexto(token, chatId, messageId, texto) {
+    try {
+      const r = await chamar(token, 'editMessageText', { chat_id: chatId, message_id: Number(messageId), text: String(texto) });
+      return { messageId: r?.message_id ?? Number(messageId), chatId: r?.chat?.id ?? chatId, editado: true };
+    } catch (erro) {
+      if (/not modified/i.test(String(erro.corpo?.description || erro.message))) return { messageId: Number(messageId), chatId, editado: false };
+      throw erro;
+    }
   }
 
   // Envia um arquivo para o cliente. O Telegram busca sozinho pelo endereço
@@ -217,7 +231,7 @@ function criarTelegram({ fetchImpl = globalThis.fetch, base = 'https://api.teleg
     },
   };
 
-  return { base, validarToken, removerWebhook, enviarTexto, enviarArquivo, obterArquivo, baixarArquivo, obterFotoPerfil, obterUpdates, sondagem };
+  return { base, validarToken, removerWebhook, enviarTexto, editarTexto, enviarArquivo, obterArquivo, baixarArquivo, obterFotoPerfil, obterUpdates, sondagem };
 }
 
 module.exports = { criarTelegram, tokenValido, traduzirErro, ErroTelegram };

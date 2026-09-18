@@ -311,7 +311,7 @@ Use uma chave separada da chave de saldo: assim dá para revogar o "abrir conta"
 
 Botões que mostram um aviso e ainda não fazem nada: **Entrar com Google**, **Abrir conta**, **Nova equipe**, **Adicionar à equipe**, **Filtros** e os outros módulos do menu lateral.
 
-No Telegram, a foto de perfil do cliente aparece no avatar (o CRM confere uma vez por dia se mudou). No WhatsApp, a foto aparece quando o servidor do uazapi manda o endereço dela no aviso da mensagem; a API oficial deles não tem um jeito de pedir a foto de um contato. Fotos, áudios, vídeos e documentos aparecem dentro da conversa (o CRM baixa o arquivo com o token do bot, que nunca vai para o navegador). No WhatsApp, mídias ainda aparecem só como texto, por exemplo "[Imagem]".
+No Telegram, uma resposta de texto já entregue pode ser **editada** (lápis ao passar o mouse na mensagem): o bot troca o texto no chat do cliente, que a vê marcada como editada, e o CRM registra a alteração na auditoria. Só quem enviou (ou um administrador) pode editar. No Telegram, a foto de perfil do cliente aparece no avatar (o CRM confere uma vez por dia se mudou). No WhatsApp, a foto aparece quando o servidor do uazapi manda o endereço dela no aviso da mensagem; a API oficial deles não tem um jeito de pedir a foto de um contato. Fotos, áudios, vídeos e documentos aparecem dentro da conversa (o CRM baixa o arquivo com o token do bot, que nunca vai para o navegador). No WhatsApp, mídias ainda aparecem só como texto, por exemplo "[Imagem]".
 
 ## Variáveis de ambiente (opcional)
 

@@ -16,6 +16,6 @@ test('mensagem falhou: não enviada aparece isolado em badge vermelho', () => {
 });
 
 test('mensagem falhou: horário e atendente permanecem fora do badge', () => {
-  assert.match(tela, /`\$\{horaCurta\(m\.criadaEm\)\} · \$\{autor\}`/);
+  assert.match(tela, /`\$\{horaCurta\(m\.criadaEm\)\} · \$\{autor\}\$\{m\.editadaEm \? ' · editada' : ''\}`/);
   assert.match(tela, /entrega \? ' · ' : null/);
 });

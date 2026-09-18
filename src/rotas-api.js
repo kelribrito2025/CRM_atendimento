@@ -889,6 +889,70 @@ function criarRotasApi(db, opcoes = {}) {
     res.json({ ok: true, id: mensagemId });
   });
 
+  // Edita o texto de uma resposta já entregue. Por enquanto só no Telegram: o bot
+  // troca o texto no chat do cliente (editMessageText) e o CRM guarda o novo texto.
+  r.patch('/conversas/:id/mensagens/:mensagemId', comConversa, async (req, res) => {
+    const c = req.conversa;
+    const mensagemId = Number(req.params.mensagemId);
+    if (!Number.isInteger(mensagemId) || mensagemId < 1) {
+      return res.status(404).json({ erro: 'Mensagem não encontrada.' });
+    }
+    const mensagem = await sql.mensagemPorId.get(mensagemId);
+    if (!mensagem || Number(mensagem.conversa_id) !== Number(c.id)) {
+      return res.status(404).json({ erro: 'Mensagem não encontrada.' });
+    }
+    if (mensagem.tipo !== 'atendente') {
+      return res.status(400).json({ erro: 'Só é possível editar mensagens enviadas pela equipe.' });
+    }
+    if (c.canal !== 'telegram') {
+      return res.status(400).json({ erro: 'Por enquanto só é possível editar mensagens enviadas pelo Telegram.' });
+    }
+    if (mensagem.midia_tipo || mensagem.midia_chave || mensagem.midia_id) {
+      return res.status(400).json({ erro: 'Só é possível editar mensagens de texto.' });
+    }
+    if (mensagem.entrega !== 'enviada') {
+      return res.status(400).json({ erro: 'Só é possível editar mensagens que foram entregues ao cliente.' });
+    }
+    const ehAutor = Number(mensagem.autor_id) === Number(req.usuario.id);
+    if (!ehAutor && req.conta?.papel !== 'admin') {
+      return res.status(403).json({ erro: 'Só quem enviou a mensagem (ou um administrador) pode editá-la.' });
+    }
+    const texto = String(req.body?.texto ?? '').trim();
+    if (!texto) return res.status(400).json({ erro: 'Escreva a mensagem antes de salvar.' });
+    if (texto.length > TAMANHO_MAXIMO_MENSAGEM) {
+      return res.status(400).json({ erro: `Mensagem muito longa (máximo ${TAMANHO_MAXIMO_MENSAGEM} caracteres).` });
+    }
+    if (texto === String(mensagem.texto)) {
+      return res.json({ ok: true, mensagem: formatarMensagem(mensagem, c.canal) });
+    }
+
+    const externo = String(mensagem.externo_id || '').match(/^tg:(-?\d+):(\d+)$/);
+    if (!externo) {
+      return res.status(400).json({ erro: 'Esta mensagem não tem identificação no Telegram e não pode ser editada.' });
+    }
+    if (!telegram?.editarTexto) return res.status(400).json({ erro: 'Integração com Telegram indisponível.' });
+    const canalRow = c.canalId ? await db.prepare('SELECT * FROM canais WHERE id = ?').get(c.canalId) : null;
+    if (!canalRow?.instancia_token) return res.status(400).json({ erro: 'O canal desta conversa não existe mais.' });
+    try {
+      await telegram.editarTexto(canalRow.instancia_token, externo[1], Number(externo[2]), texto);
+    } catch (erro) {
+      return res.status(502).json({ erro: `O Telegram não aceitou a edição: ${erro.message}` });
+    }
+
+    const agora = Date.now();
+    await db.transacao(async () => {
+      await db.prepare('UPDATE mensagens SET texto = ?, editada_em = ? WHERE id = ?').run(texto, agora, mensagemId);
+      await db.prepare(`INSERT INTO auditoria_eventos
+        (acao, usuario_id, usuario_nome, usuario_email, conta_id, conta_email, conversa_id, protocolo, canal,
+         contato_id, contato_nome, criado_em, origem_mensagem_id, detalhe)
+        VALUES ('mensagem_editar', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(req.usuario.id, req.usuario.nome, req.usuario.email, req.conta.id, req.conta.email, c.id, c.protocolo,
+          c.canal, c.contato.id, c.contato.nome, agora, mensagemId, `Editou a mensagem #${mensagemId} enviada no Telegram.`);
+    });
+    avisos?.avisar({ origem: 'edicao', conversaId: c.id, contatoId: c.contato.id, mensagemId });
+    res.json({ ok: true, mensagem: formatarMensagem(await sql.mensagemPorId.get(mensagemId), c.canal) });
+  });
+
   // Notas internas: só quem escreveu (ou um administrador) pode alterar ou apagar.
   async function comNota(req, res, next) {
     try {

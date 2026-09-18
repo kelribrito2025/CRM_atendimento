@@ -351,8 +351,8 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
       const atual = estado.conversa?.id === conversa.id ? estado.conversa : null;
       const ultimaNova = conversa.mensagens.at(-1)?.id ?? null;
       const ultimaAtual = atual?.mensagens.filter((m) => !m.provisoria).at(-1)?.id ?? null;
-      const idsNovos = conversa.mensagens.map((m) => m.id).join(',');
-      const idsAtuais = atual?.mensagens.filter((m) => !m.provisoria).slice(-conversa.mensagens.length).map((m) => m.id).join(',') ?? '';
+      const idsNovos = conversa.mensagens.map((m) => `${m.id}:${m.editadaEm || 0}`).join(',');
+      const idsAtuais = atual?.mensagens.filter((m) => !m.provisoria).slice(-conversa.mensagens.length).map((m) => `${m.id}:${m.editadaEm || 0}`).join(',') ?? '';
       const mudou = !atual
         || ultimaNova !== ultimaAtual
         || idsNovos !== idsAtuais
@@ -685,6 +685,67 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
     } catch (e) {
       toast(e.message, 5000);
     }
+  }
+
+  /* ------------------ editar mensagem já enviada (Telegram) ------------------ */
+  const edicaoMensagem = { id: null };
+
+  function podeEditarMensagem(m, conversa = estado.conversa) {
+    const usuario = estado.resumo?.usuario;
+    const conta = estado.resumo?.conta || usuario;
+    return Boolean(conversa?.canal === 'telegram'
+      && m?.tipo === 'atendente'
+      && !m.provisoria
+      && !m.midia
+      && m.entrega === 'enviada'
+      && usuario
+      && (m.autor?.id === usuario.id || conta?.papel === 'admin'));
+  }
+
+  function editarMensagemEnviada(m) {
+    if (!podeEditarMensagem(m)) return;
+    edicaoMensagem.id = m.id;
+    aplicarConversa(estado.conversa);
+    const campo = document.querySelector('.mensagem-edicao textarea');
+    if (campo) { campo.focus(); campo.setSelectionRange(campo.value.length, campo.value.length); }
+  }
+
+  function fecharEdicaoMensagem() {
+    edicaoMensagem.id = null;
+    aplicarConversa(estado.conversa);
+  }
+
+  async function salvarMensagemEditada(m, texto) {
+    const limpo = String(texto || '').trim();
+    if (!limpo) return toast('Escreva a mensagem antes de salvar.');
+    const conversaId = estado.conversa?.id;
+    if (!conversaId) return;
+    if (limpo === m.texto) return fecharEdicaoMensagem();
+    try {
+      const r = await api(`/conversas/${conversaId}/mensagens/${m.id}`, { method: 'PATCH', body: { texto: limpo } });
+      if (estado.conversa?.id === conversaId) {
+        const posicao = estado.conversa.mensagens.findIndex((item) => item.id === m.id);
+        if (posicao >= 0) estado.conversa.mensagens[posicao] = r.mensagem;
+        edicaoMensagem.id = null;
+        aplicarConversa(estado.conversa);
+      }
+      toast('Mensagem editada no Telegram do cliente.');
+    } catch (e) {
+      toast(e.message, 5000);
+    }
+  }
+
+  // A mensagem vira um campo de texto enquanto está sendo editada.
+  function edicaoDaMensagem(m) {
+    const campo = el('textarea', { class: 'area', rows: '3', maxlength: '4000', lang: 'pt-BR', spellcheck: 'true' }, m.texto);
+    campo.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); fecharEdicaoMensagem(); }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); salvarMensagemEditada(m, campo.value); }
+    });
+    return el('div', { class: 'mensagem-edicao' }, campo,
+      el('div', { class: 'rodape' },
+        el('button', { type: 'button', class: 'btn-suave hov', onclick: fecharEdicaoMensagem }, 'Cancelar'),
+        el('button', { type: 'button', class: 'btn-escuro', onclick: () => salvarMensagemEditada(m, campo.value) }, 'Salvar')));
   }
 
   // Os dois botõezinhos (lápis e lixeira) que aparecem em cada nota.
@@ -1714,8 +1775,14 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
         const entrega = m.entrega === 'falhou'
           ? el('span', { class: 'msg-entrega-falhou' }, 'não enviada')
           : (m.entrega === 'enviando' ? 'enviando…' : m.entrega);
-        nos.push(el('div', { class: 'msg saida' },
-          el('div', { class: 'mensagem-linha' },
+        nos.push(el('div', { class: `msg saida${edicaoMensagem.id === m.id ? ' editando' : ''}` },
+          edicaoMensagem.id === m.id ? edicaoDaMensagem(m) : el('div', { class: 'mensagem-linha' },
+            podeEditarMensagem(m, c)
+              ? el('button', {
+                type: 'button', class: 'btn-editar-mensagem hov', title: 'Editar mensagem', 'aria-label': 'Editar mensagem',
+                onclick: () => editarMensagemEnviada(m),
+              }, svg(ICONE.lapisPequeno))
+              : null,
             podeApagarMensagem(m, c)
               ? el('button', {
                 type: 'button', class: 'btn-excluir-mensagem hov', title: 'Excluir mensagem', 'aria-label': 'Excluir mensagem',
@@ -1724,7 +1791,7 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
               : null,
             balaoMensagem(m)),
           el('span', { class: `msg-meta${m.provisoria ? ' enviando' : ''}` },
-            `${horaCurta(m.criadaEm)} · ${autor}`,
+            `${horaCurta(m.criadaEm)} · ${autor}${m.editadaEm ? ' · editada' : ''}`,
             entrega ? ' · ' : null,
             entrega)));
       } else {

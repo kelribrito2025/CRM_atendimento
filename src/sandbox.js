@@ -59,6 +59,7 @@ function envolverTelegram(telegram) {
     sondagem,
     removerWebhook: async () => ({ ok: true, sandbox: true }),
     enviarTexto: async () => ({ messageId: idFalso('tg') }),
+    editarTexto: async (token, chatId, messageId) => ({ messageId: Number(messageId), chatId, editado: true }),
     enviarArquivo: async () => ({ messageId: idFalso('tg') }),
   };
 }

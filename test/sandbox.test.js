@@ -51,6 +51,8 @@ test('sandbox: Telegram não recebe (sondagem desligada) e não envia de verdade
 
   const r = await telegram.enviarTexto('123:abc', 42, 'oi');
   assert.match(r.messageId, /^sandbox:tg:/);
+  const e = await telegram.editarTexto('123:abc', 42, 77, 'novo texto');
+  assert.deepEqual(e, { messageId: 77, chatId: 42, editado: true });
   const a = await telegram.enviarArquivo('123:abc', 42, { url: 'https://x/y.png' });
   assert.match(a.messageId, /^sandbox:tg:/);
   assert.deepEqual(await telegram.removerWebhook('123:abc'), { ok: true, sandbox: true });

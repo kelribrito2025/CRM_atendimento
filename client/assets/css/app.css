@@ -290,11 +290,19 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .msg { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; gap: 5px; max-width: 78%; }
 .msg.saida { align-self: flex-end; align-items: flex-end; }
 .mensagem-linha { display: flex; align-items: flex-end; justify-content: flex-end; gap: 6px; max-width: 100%; }
-.btn-excluir-mensagem { width: 28px; height: 28px; border: 0; border-radius: 9px; background: var(--superficie); color: var(--texto-suave); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer; opacity: 0; box-shadow: 0 2px 8px rgba(11, 31, 20, .08); transition: opacity .14s ease-out, color .14s ease-out, background .14s ease-out; }
-.btn-excluir-mensagem svg { width: 15px; height: 15px; }
+.btn-editar-mensagem, .btn-excluir-mensagem { width: 28px; height: 28px; border: 0; border-radius: 9px; background: var(--superficie); color: var(--texto-suave); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer; opacity: 0; box-shadow: 0 2px 8px rgba(11, 31, 20, .08); transition: opacity .14s ease-out, color .14s ease-out, background .14s ease-out; }
+.btn-editar-mensagem svg, .btn-excluir-mensagem svg { width: 15px; height: 15px; }
+.msg.saida:hover .btn-editar-mensagem, .btn-editar-mensagem:focus-visible,
 .msg.saida:hover .btn-excluir-mensagem, .btn-excluir-mensagem:focus-visible { opacity: 1; }
+.btn-editar-mensagem:hover { color: var(--verde-texto); background: var(--verde-claro); }
 .btn-excluir-mensagem:hover { color: var(--vermelho); background: var(--vermelho-claro); }
-@media (hover: none) { .btn-excluir-mensagem { opacity: 1; } }
+@media (hover: none) { .btn-editar-mensagem, .btn-excluir-mensagem { opacity: 1; } }
+/* Mensagem enviada sendo editada no lugar (Telegram) */
+.msg.saida.editando { width: min(100%, 460px); align-items: stretch; }
+.mensagem-edicao { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.mensagem-edicao textarea { border: 1px solid var(--verde-borda); border-radius: 14px; background: var(--superficie); padding: 10px 12px; font: inherit; font-size: 13.5px; line-height: 1.5; color: var(--texto); resize: vertical; outline: none; width: 100%; }
+.mensagem-edicao textarea:focus { border-color: var(--verde); }
+.mensagem-edicao .rodape { display: flex; justify-content: flex-end; gap: 7px; }
 .balao { width: fit-content; max-width: 100%; background: var(--verde); border: 1px solid var(--verde); border-radius: 16px 16px 16px 6px; padding: 12px 14px; font-size: 13.5px; line-height: 1.55; color: #fff; white-space: pre-wrap; word-break: break-word; }
 .msg.saida .balao { background: var(--rail); color: #fff; border: 0; border-radius: 16px 16px 6px 16px; }
 .balao.midia { padding: 4px; display: inline-flex; flex-direction: column; gap: 4px; }
