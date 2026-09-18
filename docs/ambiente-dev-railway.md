@@ -49,32 +49,34 @@ automático ligado. Confira que o ambiente `production` continua em `main`.
 ## 3. Banco de dados separado (obrigatório)
 
 Dev **nunca** pode apontar para o banco de produção: além dos dados, a tabela
-`canais` guarda os tokens dos bots do Telegram e das instâncias do uazapi. Se dev
-subir com uma cópia do banco de produção, ele passa a **buscar as mensagens do
-Telegram junto com produção** (os dois disputam o `getUpdates` do mesmo bot e as
-mensagens se dividem entre eles). Por isso dev começa com banco **vazio**.
+`canais` guarda os tokens dos bots do Telegram. Ao subir, o CRM religa todos os
+bots marcados como conectados; com dois CRMs no mesmo banco, produção e dev
+disputam o `getUpdates` do mesmo bot, o Telegram recusa um deles com erro 409, o
+canal aparece com erro em produção e as mensagens chegam com atraso.
 
-Duas opções:
+A solução é um banco só de dev, **copiado de produção** para testar com dados
+reais. Hoje produção usa o TiDB que vem com o Manus. Para o dev:
 
-**Opção A — MySQL do próprio Railway (mais simples)**
+1. No [TiDB Cloud](https://tidbcloud.com), crie um cluster **Serverless** (tem faixa
+   gratuita) ou use o cluster que já existe, e crie o banco `crm_dev`.
+2. Anote a URL de conexão no formato `mysql://usuario:senha@host:4000/crm_dev`
+   (o TiDB Cloud mostra host, porta, usuário e senha em **Connect**; a senha vai na
+   URL com caracteres especiais codificados, por exemplo `@` vira `%40`).
+3. No seu computador, com o projeto instalado (`npm install`), copie produção para o
+   dev:
 
-1. No ambiente `dev`: **+ New › Database › MySQL**.
-2. No serviço do CRM, variável `DATABASE_URL` com o valor:
-
+   ```bash
+   npm run copiar-banco -- --de "<DATABASE_URL de produção>" --para "<URL do crm_dev>"
    ```
-   ${{MySQL.MYSQL_URL}}?ssl=false
-   ```
 
-   O `?ssl=false` é necessário: o CRM liga TLS para qualquer host que não seja
-   local, e o MySQL interno do Railway (`mysql.railway.internal`) não usa TLS.
+   O script lê a origem (nunca a altera), recria as tabelas no destino, copia as
+   linhas e **deixa os bots do Telegram desconectados na cópia**. Para renovar o dev
+   com dados frescos depois, repita com `--substituir`.
 
-**Opção B — segundo banco no mesmo TiDB de produção**
-
-Crie um banco `crm_dev` no cluster e use a mesma URL trocando só o nome do banco no
-final (`.../crm_dev`). Mesmo cluster, dados separados.
-
-No primeiro acesso o CRM cria as tabelas e o usuário administrador sozinho
-(`ADMIN_EMAIL` / `ADMIN_SENHA`).
+Alternativa sem copiar dados: `DATABASE_URL` apontando para um banco vazio. No
+primeiro acesso o CRM cria as tabelas e o administrador (`ADMIN_EMAIL` /
+`ADMIN_SENHA`). Se for usar o MySQL do próprio Railway, acrescente `?ssl=false` à
+URL, porque o CRM liga TLS para qualquer host que não seja local.
 
 ---
 
@@ -85,7 +87,7 @@ a produção.
 
 | Variável | Valor em dev | Por quê |
 |---|---|---|
-| `DATABASE_URL` | banco de dev (seção 3) | nunca o de produção |
+| `DATABASE_URL` | URL do `crm_dev` (seção 3) | nunca o de produção |
 | `BASE_URL` | `https://<domínio gerado>` | links de convite, nova senha e webhook do WhatsApp |
 | `COOKIE_SEGURO` | `true` | o Railway entrega HTTPS |
 | `TRUST_PROXY` | `true` | o CRM fica atrás do proxy do Railway; sem isso o bloqueio de tentativas de login vê o IP do proxy |
@@ -135,3 +137,28 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 2. Faça merge no `dev` → o Railway publica em dev sozinho.
 3. Teste no domínio de dev.
 4. Aprovado, faça merge de `dev` em `main` → o Railway publica em produção.
+
+---
+
+## 8. Depois: tirar produção do banco do Manus
+
+Produção hoje usa o TiDB que o Manus fornece (mais caro). O mesmo script migra para
+um TiDB próprio, com uma pausa curta:
+
+1. Crie o banco `crm` no TiDB Cloud próprio e anote a URL.
+2. **Pare o serviço de produção no Railway** (Settings › Remove/Sleep, ou reduza as
+   réplicas a zero). Assim nenhuma mensagem nova entra durante a cópia. Mensagens de
+   WhatsApp e do chat do site ficam na fila de quem envia por alguns minutos; o
+   Telegram guarda as mensagens não lidas e entrega quando o bot voltar.
+3. Copie, mantendo os bots ligados (o CRM antigo está parado, então não há disputa):
+
+   ```bash
+   npm run copiar-banco -- --de "<URL do TiDB do Manus>" --para "<URL do TiDB próprio>/crm" --manter-telegram
+   ```
+
+4. No Railway, ambiente `production`, troque `DATABASE_URL` para a URL nova e suba o
+   serviço de novo.
+5. Confira `/saude`, faça login (as sessões foram copiadas, ninguém precisa entrar de
+   novo) e veja em **Configurações › Canais** que os canais estão conectados.
+6. Só depois cancele o banco do Manus. Os arquivos das conversas ficam no S3 e não
+   dependem do banco.

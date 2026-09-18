@@ -73,16 +73,19 @@ function traduzir(sql) {
     .replace(/CAST\(([^)]+)\s+AS\s+INTEGER\)/gi, 'CAST($1 AS SIGNED)');
 }
 
-async function abrirMysql(url) {
-  const mysql = require('mysql2/promise');
-  const endereco = new URL(url);
-  const pool = mysql.createPool({
+// Opções de conexão a partir de uma URL mysql://usuario:senha@host:porta/banco.
+// TLS fica ligado para qualquer servidor que não seja local (TiDB Cloud exige);
+// `?ssl=false` desliga (MySQL interno do Railway, por exemplo).
+function opcoesMysql(url) {
+  const endereco = new URL(String(url).replace(/^mysql2:/i, 'mysql:'));
+  const local = endereco.hostname.endsWith('.local') || endereco.hostname === '127.0.0.1' || endereco.hostname === 'localhost';
+  return {
     host: endereco.hostname,
     port: Number(endereco.port || 3306),
     user: decodeURIComponent(endereco.username),
     password: decodeURIComponent(endereco.password),
     database: decodeURIComponent(endereco.pathname.replace(/^\//, '')),
-    ssl: endereco.searchParams.get('ssl') === 'false' ? undefined : (endereco.hostname.endsWith('.local') || endereco.hostname === '127.0.0.1' || endereco.hostname === 'localhost' ? undefined : { rejectUnauthorized: true }),
+    ssl: endereco.searchParams.get('ssl') === 'false' ? undefined : (local ? undefined : { rejectUnauthorized: true }),
     waitForConnections: true,
     connectionLimit: Number(endereco.searchParams.get('pool') || 8),
     charset: 'utf8mb4_general_ci',
@@ -90,7 +93,13 @@ async function abrirMysql(url) {
     supportBigNumbers: true,
     bigNumberStrings: false,
     namedPlaceholders: false,
-  });
+  };
+}
+
+async function abrirMysql(url) {
+  const mysql = require('mysql2/promise');
+  const endereco = new URL(url);
+  const pool = mysql.createPool(opcoesMysql(url));
 
   // Em transação as consultas precisam ir pela mesma conexão.
   let emTransacao = null;
@@ -161,4 +170,4 @@ async function abrirBanco(destino) {
   return abrirSqlite(alvo || ':memory:');
 }
 
-module.exports = { abrirBanco, traduzir };
+module.exports = { abrirBanco, traduzir, opcoesMysql };

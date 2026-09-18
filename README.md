@@ -332,6 +332,7 @@ Copie `.env.example` para `.env` e ajuste:
 | `UAZAPI_URL`    | Endereço do servidor uazapi (WhatsApp)                    |
 | `UAZAPI_ADMIN_TOKEN` | Token de administrador do uazapi                     |
 | `COOKIE_SEGURO` | `true` quando o sistema estiver publicado com HTTPS       |
+| `TRUST_PROXY`   | `true` quando o sistema roda atrás de um proxy (Railway), para o bloqueio de tentativas ver o IP real |
 
 O banco de dados fica em `data/crm.sqlite`. Para começar do zero, pare o servidor e apague essa pasta.
 
@@ -371,8 +372,10 @@ client/public/vendor/     biblioteca que reproduz as animações Lottie
 client/assets/js/icones.js carrega os ícones do Iconly com reserva no código
 scripts/criar-usuario.js  gerenciar usuários pelo terminal
 scripts/criar-convite.js  gerar links de convite
+scripts/copiar-banco.js   copiar um banco MySQL/TiDB para outro (ambiente dev, migração)
 test/                     testes automáticos
 docs/chat-do-site.md      guia do chat do site para entregar ao dev
+docs/ambiente-dev-railway.md  ambiente de desenvolvimento no Railway e cópia do banco
 ```
 
 ## Comandos úteis

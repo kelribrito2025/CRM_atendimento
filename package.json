@@ -13,6 +13,7 @@
     "start": "node --disable-warning=ExperimentalWarning server.js",
     "usuario": "node --disable-warning=ExperimentalWarning scripts/criar-usuario.js",
     "convite": "node --disable-warning=ExperimentalWarning scripts/criar-convite.js",
+    "copiar-banco": "node --disable-warning=ExperimentalWarning scripts/copiar-banco.js",
     "test": "node --test --disable-warning=ExperimentalWarning \"test/**/*.test.js\"",
     "test:mysql": "node --test --test-concurrency=1 --disable-warning=ExperimentalWarning \"test/**/*.test.js\""
   },
