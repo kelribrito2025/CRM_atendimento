@@ -1611,13 +1611,11 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
       f ? null : el('div', { class: 'rapidas-dica' }, 'Digite ', el('strong', {}, '/'), ' para buscar respostas ou ', el('strong', {}, '//'), ' para inserir a Saudação.'),
       rodape);
 
-    // Sobe de dentro do chat, na largura toda, parando acima do campo de escrever.
+    // Cobre o card da conversa inteiro (do topo até o campo de escrever), tenha
+    // uma resposta salva ou vinte. O campo de escrever continua visível embaixo.
     const chat = $('#chat');
     const compositor = chat?.querySelector('.compositor');
-    const alturaCompositor = compositor ? compositor.offsetHeight + 8 : 16;
-    painel.style.bottom = `${alturaCompositor}px`;
-    // Altura fixa: o painel ocupa o chat todo, tenha uma resposta salva ou vinte.
-    painel.style.height = `calc(90% - ${alturaCompositor}px)`;
+    painel.style.bottom = `${compositor ? compositor.offsetHeight : 0}px`;
     if (antigo) antigo.replaceWith(painel); else (chat || document.body).append(painel);
     // Aberto pelo botão: o cursor vai para a busca. Aberto pela barra: fica na mensagem.
     if (!f && !antigo && rapidas.origem === 'botao') busca.focus();
