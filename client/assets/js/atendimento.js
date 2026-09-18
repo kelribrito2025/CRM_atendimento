@@ -687,13 +687,14 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
     }
   }
 
-  /* ------------------ editar mensagem já enviada (Telegram) ------------------ */
+  /* ------------ editar mensagem já enviada (Telegram e Chat do site) ------------ */
+  const CANAIS_COM_EDICAO = ['telegram', 'widget'];
   const edicaoMensagem = { id: null };
 
   function podeEditarMensagem(m, conversa = estado.conversa) {
     const usuario = estado.resumo?.usuario;
     const conta = estado.resumo?.conta || usuario;
-    return Boolean(conversa?.canal === 'telegram'
+    return Boolean(CANAIS_COM_EDICAO.includes(conversa?.canal)
       && m?.tipo === 'atendente'
       && !m.provisoria
       && !m.midia
@@ -729,7 +730,7 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
         edicaoMensagem.id = null;
         aplicarConversa(estado.conversa);
       }
-      toast('Mensagem editada no Telegram do cliente.');
+      toast(estado.conversa?.canal === 'telegram' ? 'Mensagem editada no Telegram do cliente.' : 'Mensagem editada no chat do cliente.');
     } catch (e) {
       toast(e.message, 5000);
     }

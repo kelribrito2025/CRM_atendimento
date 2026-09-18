@@ -131,22 +131,25 @@ function criarWidget(db, { segredo = '', equipePadraoId = null, arquivos = null,
     if (!sessao.conversa_id) return { mensagens: [], total: 0, atendimento };
     const linhas = await db.prepare(`
       SELECT m.id, m.tipo, m.texto, m.criada_em, m.entrega, m.midia_tipo, m.midia_nome, m.midia_mime, m.midia_chave, m.midia_id,
-             u.nome AS autor_nome
+             m.editada_em, u.nome AS autor_nome
       FROM mensagens m LEFT JOIN usuarios u ON u.id = m.autor_id
       WHERE m.conversa_id = ? AND m.tipo != 'nota' AND m.id > ?
       ORDER BY m.id`).all(sessao.conversa_id, Number(desde) || 0);
-    const total = await db.prepare("SELECT COUNT(*) AS n FROM mensagens WHERE conversa_id = ? AND tipo != 'nota'").get(sessao.conversa_id);
+    // `ultimaEdicao` muda quando uma resposta já mostrada é editada: o chat que
+    // ficou sem o aviso em tempo real percebe e recarrega a conversa.
+    const total = await db.prepare("SELECT COUNT(*) AS n, MAX(editada_em) AS edicao FROM mensagens WHERE conversa_id = ? AND tipo != 'nota'").get(sessao.conversa_id);
     const mensagens = linhas.map((m) => ({
       id: m.id,
       de: m.tipo === 'cliente' ? 'voce' : 'atendimento',
       texto: m.texto,
       criadaEm: m.criada_em,
+      editadaEm: m.editada_em || null,
       autor: m.tipo === 'cliente' ? null : (m.autor_nome ? String(m.autor_nome).split(' ')[0] : 'Atendimento'),
       midia: (m.midia_chave || m.midia_id)
         ? { tipo: m.midia_tipo || 'documento', nome: m.midia_nome || null, mime: m.midia_mime || null, url: `/widget/midia/${m.id}` }
         : null,
     }));
-    return { mensagens, total: Number(total?.n) || 0, atendimento };
+    return { mensagens, total: Number(total?.n) || 0, ultimaEdicao: Number(total?.edicao) || 0, atendimento };
   }
 
   // O arquivo que o cliente anexa no chat do site. Ele vai direto do navegador

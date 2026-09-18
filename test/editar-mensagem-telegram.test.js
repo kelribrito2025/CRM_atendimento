@@ -124,8 +124,8 @@ test('editar mensagem: a resposta entregue pelo Telegram é editada no chat do c
     assert.ok(Number(noBanco.editada_em) >= antes);
     const auditoria = await s.db.prepare("SELECT * FROM auditoria_eventos WHERE acao = 'mensagem_editar'").all();
     assert.equal(auditoria.length, 1);
-    assert.equal(Number(auditoria[0].origem_mensagem_id), m.id);
-    assert.match(auditoria[0].detalhe, /Editou a mensagem/);
+    assert.match(auditoria[0].detalhe, new RegExp(`Editou a mensagem #${m.id} enviada no Telegram`));
+    assert.doesNotMatch(auditoria[0].detalhe, /razão social/, 'o texto da mensagem não vai para a auditoria');
     const detalhe = await s.chamar(`/api/conversas/${conversa.id}`);
     assert.equal(detalhe.dados.conversa.mensagens.find((x) => x.id === m.id).editadaEm, editada.dados.mensagem.editadaEm);
 
@@ -154,14 +154,14 @@ test('editar mensagem: a resposta entregue pelo Telegram é editada no chat do c
     assert.equal(negado.status, 403);
 
     // conversa que não é do Telegram: ainda não dá
-    const outra = lista.dados.conversas.find((c) => c.canal !== 'telegram');
+    const outra = lista.dados.conversas.find((c) => c.canal === 'whatsapp');
     if (outra) {
       const msgs = (await s.chamar(`/api/conversas/${outra.id}`)).dados.conversa.mensagens;
       const daEquipe = msgs.find((x) => x.tipo === 'atendente');
       if (daEquipe) {
         const r = await s.chamar(`/api/conversas/${outra.id}/mensagens/${daEquipe.id}`, 'PATCH', { texto: 'novo' });
         assert.equal(r.status, 400);
-        assert.match(r.dados.erro, /Telegram/);
+        assert.match(r.dados.erro, /Telegram ou pelo Chat do site/);
       }
     }
   } finally {
@@ -175,7 +175,8 @@ test('editar mensagem UI: lápis nas respostas do Telegram, editor no lugar e ma
   const fim = js.indexOf('// Os dois botõezinhos (lápis e lixeira)', inicio);
   const trecho = js.slice(inicio, fim);
   assert.ok(inicio >= 0);
-  assert.match(trecho, /conversa\?\.canal === 'telegram'/);
+  assert.match(trecho, /CANAIS_COM_EDICAO\.includes\(conversa\?\.canal\)/);
+  assert.match(js, /const CANAIS_COM_EDICAO = \['telegram', 'widget'\];/);
   assert.match(trecho, /m\?\.tipo === 'atendente'/);
   assert.match(trecho, /!m\.midia/);
   assert.match(trecho, /m\.entrega === 'enviada'/);

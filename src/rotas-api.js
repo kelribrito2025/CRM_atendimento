@@ -889,8 +889,9 @@ function criarRotasApi(db, opcoes = {}) {
     res.json({ ok: true, id: mensagemId });
   });
 
-  // Edita o texto de uma resposta já entregue. Por enquanto só no Telegram: o bot
-  // troca o texto no chat do cliente (editMessageText) e o CRM guarda o novo texto.
+  // Edita o texto de uma resposta já entregue. No Telegram o bot troca o texto no
+  // chat do cliente (editMessageText); no Chat do site basta trocar no CRM, que o
+  // widget recarrega. WhatsApp ainda não.
   r.patch('/conversas/:id/mensagens/:mensagemId', comConversa, async (req, res) => {
     const c = req.conversa;
     const mensagemId = Number(req.params.mensagemId);
@@ -904,8 +905,8 @@ function criarRotasApi(db, opcoes = {}) {
     if (mensagem.tipo !== 'atendente') {
       return res.status(400).json({ erro: 'Só é possível editar mensagens enviadas pela equipe.' });
     }
-    if (c.canal !== 'telegram') {
-      return res.status(400).json({ erro: 'Por enquanto só é possível editar mensagens enviadas pelo Telegram.' });
+    if (!['telegram', 'widget'].includes(c.canal)) {
+      return res.status(400).json({ erro: 'Por enquanto só é possível editar mensagens enviadas pelo Telegram ou pelo Chat do site.' });
     }
     if (mensagem.midia_tipo || mensagem.midia_chave || mensagem.midia_id) {
       return res.status(400).json({ erro: 'Só é possível editar mensagens de texto.' });
@@ -926,28 +927,32 @@ function criarRotasApi(db, opcoes = {}) {
       return res.json({ ok: true, mensagem: formatarMensagem(mensagem, c.canal) });
     }
 
-    const externo = String(mensagem.externo_id || '').match(/^tg:(-?\d+):(\d+)$/);
-    if (!externo) {
-      return res.status(400).json({ erro: 'Esta mensagem não tem identificação no Telegram e não pode ser editada.' });
-    }
-    if (!telegram?.editarTexto) return res.status(400).json({ erro: 'Integração com Telegram indisponível.' });
-    const canalRow = c.canalId ? await db.prepare('SELECT * FROM canais WHERE id = ?').get(c.canalId) : null;
-    if (!canalRow?.instancia_token) return res.status(400).json({ erro: 'O canal desta conversa não existe mais.' });
-    try {
-      await telegram.editarTexto(canalRow.instancia_token, externo[1], Number(externo[2]), texto);
-    } catch (erro) {
-      return res.status(502).json({ erro: `O Telegram não aceitou a edição: ${erro.message}` });
+    if (c.canal === 'telegram') {
+      const externo = String(mensagem.externo_id || '').match(/^tg:(-?\d+):(\d+)$/);
+      if (!externo) {
+        return res.status(400).json({ erro: 'Esta mensagem não tem identificação no Telegram e não pode ser editada.' });
+      }
+      if (!telegram?.editarTexto) return res.status(400).json({ erro: 'Integração com Telegram indisponível.' });
+      const canalRow = c.canalId ? await db.prepare('SELECT * FROM canais WHERE id = ?').get(c.canalId) : null;
+      if (!canalRow?.instancia_token) return res.status(400).json({ erro: 'O canal desta conversa não existe mais.' });
+      try {
+        await telegram.editarTexto(canalRow.instancia_token, externo[1], Number(externo[2]), texto);
+      } catch (erro) {
+        return res.status(502).json({ erro: `O Telegram não aceitou a edição: ${erro.message}` });
+      }
     }
 
     const agora = Date.now();
     await db.transacao(async () => {
       await db.prepare('UPDATE mensagens SET texto = ?, editada_em = ? WHERE id = ?').run(texto, agora, mensagemId);
+      // Uma mensagem pode ser editada várias vezes, então o id dela vai no detalhe
+      // (origem_mensagem_id é único por mensagem e serve às ações migradas de notas).
       await db.prepare(`INSERT INTO auditoria_eventos
         (acao, usuario_id, usuario_nome, usuario_email, conta_id, conta_email, conversa_id, protocolo, canal,
-         contato_id, contato_nome, criado_em, origem_mensagem_id, detalhe)
-        VALUES ('mensagem_editar', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+         contato_id, contato_nome, criado_em, detalhe)
+        VALUES ('mensagem_editar', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(req.usuario.id, req.usuario.nome, req.usuario.email, req.conta.id, req.conta.email, c.id, c.protocolo,
-          c.canal, c.contato.id, c.contato.nome, agora, mensagemId, `Editou a mensagem #${mensagemId} enviada no Telegram.`);
+          c.canal, c.contato.id, c.contato.nome, agora, `Editou a mensagem #${mensagemId} enviada ${c.canal === 'telegram' ? 'no Telegram' : 'no Chat do site'}.`);
     });
     avisos?.avisar({ origem: 'edicao', conversaId: c.id, contatoId: c.contato.id, mensagemId });
     res.json({ ok: true, mensagem: formatarMensagem(await sql.mensagemPorId.get(mensagemId), c.canal) });

@@ -151,7 +151,7 @@ function desenharMensagem(m) {
   else desenharTexto(balao, m.texto);
   const meta = document.createElement('span');
   meta.className = 'meta';
-  meta.textContent = [m.de === 'voce' ? 'Você' : (m.autor || 'Atendimento'), hora(m.criadaEm)].join(' · ');
+  meta.textContent = [m.de === 'voce' ? 'Você' : (m.autor || 'Atendimento'), hora(m.criadaEm), m.editadaEm ? 'editada' : null].filter(Boolean).join(' · ');
   linha.append(balao, meta);
   $('#mensagens').append(linha);
   rolarParaFim();
@@ -197,14 +197,21 @@ async function buscarMensagens(primeira = false, recarregar = false) {
   estado.ultimaBusca = Date.now();
   try {
     const totalAnterior = estado.totalMensagens;
-    const { mensagens, total, atendimento } = await chamar(`/widget/mensagens?desde=${recarregar ? 0 : estado.ultimaId}`);
+    const { mensagens, total, ultimaEdicao, atendimento } = await chamar(`/widget/mensagens?desde=${recarregar ? 0 : estado.ultimaId}`);
     aplicarAtendimento(atendimento);
     const totalAtual = Number(total);
-    // Sem o SSE, a exclusão é percebida pela quantidade: mensagens novas só
-    // aumentam o total; se a conta não fechar, recarrega a conversa inteira.
+    const edicaoAtual = Number(ultimaEdicao) || 0;
+    // Sem o SSE, a exclusão é percebida pela quantidade (mensagens novas só
+    // aumentam o total) e a edição pela data da última edição; se algo não
+    // fechar, recarrega a conversa inteira.
     if (!recarregar && Number.isFinite(totalAtual) && totalAtual < totalAnterior + mensagens.length) {
       return buscarMensagens(primeira, true);
     }
+    if (!recarregar && !primeira && edicaoAtual > (estado.ultimaEdicao || 0)) {
+      estado.ultimaEdicao = edicaoAtual;
+      return buscarMensagens(primeira, true);
+    }
+    estado.ultimaEdicao = edicaoAtual;
     if (recarregar) {
       $('#mensagens').replaceChildren();
       estado.ultimaId = 0;
@@ -283,14 +290,14 @@ async function ouvirAvisos() {
         sobra += decodificador.decode(value, { stream: true });
         const blocos = sobra.split('\n\n');
         sobra = blocos.pop() || '';
-        // Exclusão recarrega a conversa inteira para remover o balão já visível;
-        // respostas novas continuam usando a busca incremental.
+        // Exclusão e edição recarregam a conversa inteira para mexer num balão já
+        // visível; respostas novas continuam usando a busca incremental.
         for (const bloco of blocos) {
           const linha = bloco.split('\n').find((item) => item.startsWith('data:'));
           if (!linha) continue;
           let evento = null;
           try { evento = JSON.parse(linha.slice(5).trim()); } catch { /* aviso antigo */ }
-          buscarMensagens(false, evento?.origem === 'exclusao');
+          buscarMensagens(false, evento?.origem === 'exclusao' || evento?.origem === 'edicao');
         }
       }
     } catch {

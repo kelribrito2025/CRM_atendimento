@@ -206,6 +206,6 @@ test('mensagem do site: interface oferece lixeira e confirmação apenas no cana
   assert.match(tela, /m\?\.tipo === 'atendente'/);
   assert.match(tela, /titulo: 'Excluir mensagem\?'/);
   assert.match(tela, /class: 'btn-excluir-mensagem hov'/);
-  assert.match(widget, /buscarMensagens\(false, evento\?\.origem === 'exclusao'\)/);
+  assert.match(widget, /buscarMensagens\(false, evento\?\.origem === 'exclusao' \|\| evento\?\.origem === 'edicao'\)/);
   assert.match(css, /\.btn-excluir-mensagem\s*\{/);
 });

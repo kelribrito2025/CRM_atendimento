@@ -495,7 +495,7 @@ function criarApp(db, opcoes = {}) {
           return;
         }
         // Nota interna e mensagem do próprio cliente não interessam ao chat.
-        if (!['atendente', 'exclusao'].includes(evento.origem) || Number(evento.contatoId) !== meuContato) return;
+        if (!['atendente', 'exclusao', 'edicao'].includes(evento.origem) || Number(evento.contatoId) !== meuContato) return;
         try { res.write(`data: ${JSON.stringify({ novidade: 1, origem: evento.origem })}\n\n`); } catch { /* conexão caiu */ }
       });
       const batida = setInterval(() => { try { res.write(': batida\n\n'); } catch { /* idem */ } }, 25_000);
