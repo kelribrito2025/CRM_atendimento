@@ -1621,7 +1621,6 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
         el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', onclick: fecharRapidas }, svg(ICONE.fechar))),
       f ? null : el('div', { class: 'rapidas-busca' }, busca),
       corpo,
-      f ? null : el('div', { class: 'rapidas-dica' }, 'Digite ', el('strong', {}, '/'), ' para buscar respostas ou ', el('strong', {}, '//'), ' para inserir a Saudação.'),
       rodape);
 
     // Cobre o card da conversa inteiro, inclusive o campo de escrever, tenha uma
