@@ -3,10 +3,11 @@
 
 /* Lado escuro */
 .hero { width: 58%; flex-shrink: 0; position: relative; background: var(--rail); padding: 44px; display: flex; flex-direction: column; overflow: hidden; color: #fff; }
-/* Ondas vetoriais sobre o verde original, atrás de todo o conteúdo do login. */
-body[data-pagina="login"] .hero { isolation: isolate; }
+/* Ondas vetoriais sobre o verde original, atrás de todo o conteúdo, no login e em
+   "Quem está atendendo agora?". */
+body:is([data-pagina="login"], [data-pagina="escolher-atendente"]) .hero { isolation: isolate; }
 @media (min-width: 861px) {
-  body[data-pagina="login"] .hero::before {
+  body:is([data-pagina="login"], [data-pagina="escolher-atendente"]) .hero::before {
     content: '';
     position: absolute;
     inset: 0;
