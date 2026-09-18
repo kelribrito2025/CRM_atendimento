@@ -3,7 +3,7 @@
 
 /* Lado escuro */
 .hero { width: 58%; flex-shrink: 0; position: relative; background: var(--rail); padding: 44px; display: flex; flex-direction: column; overflow: hidden; color: #fff; }
-/* Imagem sobre o verde original: 30% de opacidade = 70% de transparência.
+/* Padrão sobre o verde original: 70% de opacidade.
    A camada negativa fica acima do fundo, mas abaixo de todo o conteúdo. */
 body[data-pagina="login"] .hero { isolation: isolate; }
 @media (min-width: 861px) {
@@ -13,7 +13,7 @@ body[data-pagina="login"] .hero { isolation: isolate; }
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    opacity: .3;
+    opacity: .7;
     background: url('/acesso/imagens/login-rotina-equipe.svg') center / cover no-repeat;
   }
 }
