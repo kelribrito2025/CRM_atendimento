@@ -1598,7 +1598,6 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
           icone('mais', ICONE.mais, { classe: 'branco' }), 'Nova resposta rápida'));
 
     const painel = el('aside', { class: 'rapidas', id: 'painel-rapidas', role: 'dialog', 'aria-label': 'Respostas rápidas' },
-      el('span', { class: 'rapidas-alca' }),
       el('div', { class: 'rapidas-topo' },
         el('span', { class: 'rapidas-icone' }, icone('raio', ICONE.raio)),
         el('div', { class: 'rapidas-titulo' },

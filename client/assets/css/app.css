@@ -329,7 +329,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
   animation: subir .16s ease-out;
 }
 @keyframes subir { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
-.rapidas-alca { width: 46px; height: 4px; border-radius: 999px; background: var(--borda); margin: 8px auto 0; flex-shrink: 0; }
 .rapidas-topo { padding: 16px 18px 14px; border-bottom: 1px solid var(--borda); display: flex; align-items: flex-start; gap: 11px; }
 .rapidas-icone { width: 34px; height: 34px; border-radius: 12px; background: var(--verde-claro); color: var(--verde-texto); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .rapidas-titulo { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
