@@ -14,7 +14,7 @@ body[data-pagina="login"] .hero { isolation: isolate; }
     z-index: -1;
     pointer-events: none;
     opacity: .3;
-    background: url('/manus-storage/login-rotina-equipe_2c5eff27.webp') center / cover no-repeat;
+    background: url('/acesso/imagens/login-rotina-equipe.webp') center / cover no-repeat;
   }
 }
 .hero-glow { position: absolute; right: -180px; top: -140px; width: 620px; height: 620px; border-radius: 50%; background: radial-gradient(circle, rgba(18, 184, 92, .22), rgba(18, 184, 92, 0) 70%); pointer-events: none; }

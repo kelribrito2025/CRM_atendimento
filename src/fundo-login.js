@@ -1,43 +1,50 @@
 'use strict';
 
-// Único ativo decorativo aprovado para acesso público. Não é um proxy aberto
-// de arquivos de clientes. O nome versionado permite cache longo no navegador.
-const CAMINHO_FUNDO_LOGIN = '/manus-storage/login-rotina-equipe_2c5eff27.webp';
-const MAX_BYTES = 100_000;
+const fs = require('node:fs');
+const path = require('node:path');
 
-function criarFundoLogin({
-  baseUrl,
-  chave,
-  fetchFn = globalThis.fetch,
-} = {}) {
-  let pendente = null;
-  async function carregar() {
-    const endereco = baseUrl ?? process.env.BUILT_IN_FORGE_API_URL;
-    const credencial = chave ?? process.env.BUILT_IN_FORGE_API_KEY;
-    if (!endereco || !credencial) throw new Error('Armazenamento indisponível.');
-    const url = new URL('v1/storage/presign/get', `${String(endereco).replace(/\/+$/, '')}/`);
-    url.searchParams.set('path', CAMINHO_FUNDO_LOGIN.slice('/manus-storage/'.length));
-    const resposta = await fetchFn(url, { headers: { Authorization: `Bearer ${credencial}` }, signal: AbortSignal.timeout(8000) });
-    if (!resposta.ok) throw new Error('Imagem indisponível.');
-    const { url: assinada } = await resposta.json();
-    if (new URL(assinada).protocol !== 'https:') throw new Error('URL inválida.');
-    // A chave da plataforma nunca é repassada ao servidor do arquivo.
-    const arquivo = await fetchFn(assinada, { signal: AbortSignal.timeout(8000) });
-    if (!arquivo.ok || !arquivo.body || Number(arquivo.headers.get('content-length')) > MAX_BYTES) throw new Error('Arquivo inválido.');
-    const partes = [];
-    let tamanho = 0;
-    for await (const parte of arquivo.body) {
-      tamanho += parte.byteLength;
-      if (tamanho > MAX_BYTES) throw new Error('Arquivo muito grande.');
-      partes.push(Buffer.from(parte));
-    }
-    const bytes = Buffer.concat(partes);
-    if (bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WEBP') throw new Error('Formato inválido.');
-    return bytes;
+// Ativo decorativo aprovado, servido localmente para não depender de Forge,
+// credenciais ou de um proxy genérico de armazenamento.
+const CAMINHO_FUNDO_LOGIN = '/acesso/imagens/login-rotina-equipe.webp';
+const NOME_ATIVO = 'login-rotina-equipe.webp';
+const MAX_BYTES = 100_000;
+const RAIZ = path.join(__dirname, '..');
+
+function caminhosPadrao() {
+  return [
+    path.join(RAIZ, 'dist', 'public', 'imagens', NOME_ATIVO),
+    path.join(RAIZ, 'client', 'public', 'imagens', NOME_ATIVO),
+  ];
+}
+
+function validarWebp(bytes) {
+  if (bytes.length > MAX_BYTES) throw new Error('Arquivo muito grande.');
+  if (bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WEBP') {
+    throw new Error('Formato inválido.');
   }
+  return bytes;
+}
+
+function criarFundoLogin({ arquivo = null } = {}) {
+  let pendente = null;
+
+  async function carregar() {
+    const candidatos = arquivo ? [arquivo] : caminhosPadrao();
+    let ultimoErro;
+    for (const candidato of candidatos) {
+      try {
+        return validarWebp(await fs.promises.readFile(candidato));
+      } catch (erro) {
+        ultimoErro = erro;
+        if (erro?.code !== 'ENOENT') break;
+      }
+    }
+    throw ultimoErro || new Error('Imagem indisponível.');
+  }
+
   return async (req, res) => {
     try {
-      if (!pendente) pendente = carregar().catch(erro => { pendente = null; throw erro; });
+      if (!pendente) pendente = carregar().catch((erro) => { pendente = null; throw erro; });
       const bytes = await pendente;
       res.setHeader('Content-Type', 'image/webp');
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -48,7 +55,7 @@ function criarFundoLogin({
     } catch {
       res.statusCode = 503;
       res.setHeader('Cache-Control', 'no-store');
-      res.end(); // O fundo verde continua disponível mesmo sem a decoração.
+      res.end();
     }
   };
 }

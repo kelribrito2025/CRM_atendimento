@@ -79,6 +79,9 @@ function criarApp(db, opcoes = {}) {
     app.use('/vendor', express.static(path.join(publicoDir, 'vendor'), { maxAge: '1d' }));
   }
 
+  // Sinal mínimo para health checks; não consulta o banco nem exige sessão.
+  app.get('/api/heartbeat', (req, res) => res.json({ ok: true }));
+
   // Identifica o usuário logado pelo cookie de sessão
   app.use(async (req, res, next) => {
     try {
@@ -155,7 +158,7 @@ function criarApp(db, opcoes = {}) {
       para: usuario.email,
       assunto: 'Seu código de verificação',
       texto: `Olá, ${usuario.nome}!\n\nSeu código de verificação é: ${codigo}\nEle vale por 5 minutos.\n\nSe não foi você que tentou entrar, troque sua senha.`,
-    }).catch((erro) => console.error('Falha ao enviar e-mail:', erro));
+    }).catch(() => console.error('Falha ao enviar e-mail.'));
   }
 
   function tokenVerificacao(req) {
@@ -325,7 +328,7 @@ function criarApp(db, opcoes = {}) {
         para: usuario.email,
         assunto: 'Recuperação de acesso ao CRM',
         texto: `Olá, ${usuario.nome}!\n\nPara definir uma nova senha, abra o link abaixo. Ele vale por 30 minutos e só funciona uma vez:\n${link}\n\nSe você não pediu isso, ignore este e-mail.`,
-      }).catch((erro) => console.error('Falha ao enviar e-mail:', erro));
+      }).catch(() => console.error('Falha ao enviar e-mail.'));
     }
     // Resposta igual existindo ou não a conta, para não revelar e-mails cadastrados.
     res.json({ ok: true, modoTeste });
@@ -470,7 +473,7 @@ function criarApp(db, opcoes = {}) {
         const mensagem = await widget.enviarArquivo(req.sessaoWidget, { bytes, nome, mime });
         res.status(201).json({ mensagem });
       } catch (erro) {
-        console.error('Anexo do chat do site não foi guardado:', erro.message);
+        console.error('Anexo do chat do site não foi guardado.');
         res.status(/muito grande/i.test(erro.message) ? 413 : 400).json({ erro: erro.message });
       }
     });
@@ -512,7 +515,7 @@ function criarApp(db, opcoes = {}) {
         res.setHeader('Cache-Control', 'private, max-age=600');
         res.send(bytes);
       } catch (erro) {
-        console.error('Arquivo do chat do site indisponível:', erro.message);
+        console.error('Arquivo do chat do site indisponível.');
         res.status(502).json({ erro: 'Não foi possível abrir o arquivo.' });
       }
     });
@@ -538,8 +541,8 @@ function criarApp(db, opcoes = {}) {
         avisos.avisar({ origem: 'canal', conversaId: resultado.conversaId, contatoId: resultado.contatoId ?? null });
       }
     } catch (erro) {
-      console.error('Erro ao processar webhook do WhatsApp:', erro);
-      resultado = { resultado: 'erro', motivo: erro.message };
+      console.error('Erro ao processar webhook do WhatsApp.');
+      resultado = { resultado: 'erro', motivo: 'falha no processamento' };
     }
     res.json({ ok: true, ...resultado });
   });
@@ -561,7 +564,7 @@ function criarApp(db, opcoes = {}) {
   app.use((erro, req, res, next) => {
     if (erro.type === 'entity.parse.failed') return res.status(400).json({ erro: 'Dados inválidos.' });
     if (erro.type === 'entity.too.large') return res.status(413).json({ erro: 'Conteúdo muito grande.' });
-    console.error(erro);
+    console.error('Erro interno do servidor.');
     res.status(500).json({ erro: 'Erro interno do servidor.' });
   });
 
