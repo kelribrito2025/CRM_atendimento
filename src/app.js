@@ -170,6 +170,8 @@ function criarApp(db, opcoes = {}) {
   /* -------------------------------- páginas -------------------------------- */
 
   app.get('/saude', (req, res) => res.json({ ok: true }));
+  // Informa se o modo de teste (MODO_SANDBOX) está ligado neste servidor.
+  app.get('/ambiente', (req, res) => res.json({ sandbox: opcoes.sandbox === true }));
 
   app.get('/login', (req, res) => {
     if (req.usuario) return res.redirect('/');

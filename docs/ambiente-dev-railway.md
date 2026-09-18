@@ -88,17 +88,29 @@ a produção.
 | Variável | Valor em dev | Por quê |
 |---|---|---|
 | `DATABASE_URL` | URL do `crm_dev` (seção 3) | nunca o de produção |
-| `BASE_URL` | `https://<domínio gerado>` | links de convite, nova senha e webhook do WhatsApp |
+| `MODO_SANDBOX` | `true` | **o mais importante**: com os dados reais copiados, garante que nada feito no dev saia para fora (veja abaixo) |
+| `BASE_URL` | `https://<domínio gerado>` | links de convite e nova senha apontam para o dev |
 | `COOKIE_SEGURO` | `true` | o Railway entrega HTTPS |
 | `TRUST_PROXY` | `true` | o CRM fica atrás do proxy do Railway; sem isso o bloqueio de tentativas de login vê o IP do proxy |
-| `ADMIN_SENHA` | uma senha própria de dev | o admin é criado no primeiro acesso |
-| `DADOS_EXEMPLO` | `true` (opcional) | conversas de exemplo para testar sem cliente real |
-| `UAZAPI_URL` / `UAZAPI_ADMIN_TOKEN` | em branco, ou um servidor uazapi só de testes | evita que dev crie ou reconfigure instâncias de WhatsApp de produção |
-| `SALDO_TOKEN` | em branco | dev não deve consultar saldo de clientes reais |
-| `ABRIR_CONTA_TOKEN` | em branco | dev não deve abrir contas reais |
-| `S3_PREFIXO` | `chat-app-numeros-dev` | arquivos de teste não se misturam com os de produção (as chaves S3 podem ser as mesmas) |
-| `WIDGET_SEGREDO` | um segredo novo | o chat do site de produção não deve aceitar dev, nem o contrário |
-| `WIDGET_EQUIPE_ID` | em branco | os ids de equipe do banco de dev são outros |
+
+As demais (uazapi, saldo, S3, chat do site, abrir conta) podem ficar iguais a
+produção: o sandbox cuida de não usar as que teriam efeito de verdade.
+
+### O que o `MODO_SANDBOX=true` faz
+
+O dev usa uma cópia de produção, então a tabela `canais` tem os tokens dos bots e
+das instâncias reais. Sem o sandbox, responder uma conversa no dev mandaria a
+mensagem ao cliente de verdade, e excluir um canal de WhatsApp apagaria a
+instância no servidor uazapi que produção usa. Com o sandbox ligado:
+
+| Ação no dev | O que acontece |
+|---|---|
+| Responder WhatsApp ou Telegram | a mensagem fica gravada e aparece como enviada, mas **não vai para o cliente** |
+| Excluir ou desconectar um canal | some só do banco de dev; a instância real não é tocada |
+| Conectar WhatsApp novo | bloqueado com aviso |
+| Abrir conta do cliente no site | bloqueado com aviso |
+| Receber mensagens do Telegram | nenhum bot é ligado no dev (produção continua recebendo normalmente) |
+| Consultar saldo por PIN, ver anexos, chat do site | funcionam normalmente (só leitura, ou isolados do dev) |
 
 Gere segredos novos com:
 
@@ -112,22 +124,20 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 ## 5. Canais em dev
 
-- **Telegram:** crie um bot separado no @BotFather só para dev. Nunca conecte em dev
-  um bot que está conectado em produção.
-- **WhatsApp (uazapi):** só com uma instância de testes. Um número em uso pela
-  equipe não deve ser conectado em dev.
-- **Chat do site:** aponte um site de homologação para o domínio de dev com o
-  `WIDGET_SEGREDO` de dev.
+Com `MODO_SANDBOX=true`, os canais copiados de produção aparecem no dev, mas
+nenhum recebe nem envia de verdade. Para testar recebimento de ponta a ponta,
+use um ambiente sem sandbox e com canais próprios de teste (bot novo no
+@BotFather, instância de WhatsApp de testes), nunca os de produção.
 
 ---
 
 ## 6. Conferir
 
-1. Abra `https://<domínio de dev>/saude`: deve responder `{"ok":true}`.
-2. Entre com o admin de dev e confira em **Configurações › Canais** que não há
-   nenhum canal de produção listado.
-3. Nos logs do serviço, a linha de boas-vindas mostra o banco em uso: deve ser o de
-   dev.
+1. Abra `https://<domínio de dev>/saude`: deve responder `{"ok":true}` e
+   `https://<domínio de dev>/ambiente` deve responder `{"sandbox":true}`.
+2. Entre no dev com seu login de sempre (usuários e senhas foram copiados).
+3. Nos logs do serviço, a linha de boas-vindas mostra `MODO SANDBOX` e o banco em
+   uso deve ser o `crm_dev`.
 
 ---
 

@@ -19,6 +19,7 @@ const { criarWidget } = require('./widget');
 const { criarAvisos } = require('./eventos');
 const { criarAbrirConta, URL_PADRAO: ABRIR_CONTA_PADRAO } = require('./abrir-conta');
 const canais = require('./canais');
+const { aplicarSandbox } = require('./sandbox');
 
 const RAIZ = path.join(__dirname, '..');
 
@@ -35,6 +36,7 @@ function lerConfig() {
     baseUrl: process.env.BASE_URL || '',
     cookieSeguro: process.env.COOKIE_SEGURO === 'true',
     trustProxy: process.env.TRUST_PROXY === 'true' ? 1 : false,
+    sandbox: process.env.MODO_SANDBOX === 'true',
     uazapiUrl: process.env.UAZAPI_URL || '',
     uazapiAdminToken: process.env.UAZAPI_ADMIN_TOKEN || '',
     saldoUrl: process.env.SALDO_URL || SALDO_URL_PADRAO,
@@ -74,8 +76,8 @@ async function montarSistema(extras = {}) {
     comDadosExemplo: config.dadosExemplo,
   });
   const enviador = criarEnviador();
-  const uazapi = criarUazapi({ url: config.uazapiUrl, adminToken: config.uazapiAdminToken });
-  const telegram = criarTelegram();
+  let uazapi = criarUazapi({ url: config.uazapiUrl, adminToken: config.uazapiAdminToken });
+  let telegram = criarTelegram();
   const saldo = criarSaldo({ url: config.saldoUrl, token: config.saldoToken });
   const arquivos = criarS3({
     bucket: config.s3Bucket,
@@ -88,7 +90,9 @@ async function montarSistema(extras = {}) {
   // hora, tanto no chat do cliente quanto na tela do atendente.
   const avisos = criarAvisos();
   const widget = criarWidget(db, { segredo: config.widgetSegredo, equipePadraoId: config.widgetEquipeId, arquivos, avisos });
-  const abrirConta = criarAbrirConta({ url: config.abrirContaUrl, token: config.abrirContaToken });
+  let abrirConta = criarAbrirConta({ url: config.abrirContaUrl, token: config.abrirContaToken });
+  // Ambiente de teste: dados reais, mas nenhuma ação sai para fora.
+  if (config.sandbox) ({ uazapi, telegram, abrirConta } = aplicarSandbox({ uazapi, telegram, abrirConta }));
   const app = criarApp(db, {
     uazapi,
     telegram,
@@ -99,6 +103,7 @@ async function montarSistema(extras = {}) {
     avisos,
     cookieSeguro: config.cookieSeguro,
     trustProxy: config.trustProxy,
+    sandbox: config.sandbox,
     doisFatores: config.doisFatores,
     baseUrl: config.baseUrl,
     enviador,
@@ -113,8 +118,9 @@ async function montarSistema(extras = {}) {
       .catch((erro) => console.error('Limpeza automática falhou:', erro.message));
   }, 60 * 60 * 1000).unref();
 
-  // Religa os bots do Telegram que já estavam conectados.
-  resultado.botsTelegram = await canais.ligarTelegramTodos(db, telegram, arquivos, avisos);
+  // Religa os bots do Telegram que já estavam conectados (nunca no sandbox: o
+  // dev não pode disputar as mensagens com produção).
+  resultado.botsTelegram = config.sandbox ? 0 : await canais.ligarTelegramTodos(db, telegram, arquivos, avisos);
 
   return { app, db, config, resultado, enviador, uazapi, telegram, saldo, arquivos, widget };
 }
@@ -122,6 +128,7 @@ async function montarSistema(extras = {}) {
 function mostrarBoasVindas({ config, resultado, db }, endereco) {
   console.log('');
   console.log(`✅ CRM Atendimento rodando em ${endereco}`);
+  if (config.sandbox) console.log('🧪 MODO SANDBOX (ambiente de teste): nada é enviado ao WhatsApp, ao Telegram nem ao site. Nenhum bot recebe mensagens.');
   console.log(db?.dialeto === 'mysql'
     ? `🗄️  Banco de dados: MySQL/TiDB (${db.descricao}) — os dados ficam guardados entre publicações.`
     : `🗄️  Banco de dados: arquivo ${config.caminhoBanco}`);
