@@ -4165,6 +4165,8 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
       alertasAtivos = true;
     } catch (e) {
       toast(e.message);
+      // O skeleton das colunas não pode ficar "carregando" para sempre.
+      document.querySelectorAll('.esqueleto, .somente-leitor').forEach((no) => no.remove());
       $('#chat').replaceChildren(el('div', { class: 'chat-vazio' }, el('strong', {}, 'Não foi possível carregar'), el('span', {}, e.message)));
     }
     // Com o fluxo aberto, a mensagem chega na hora: a checagem periódica vira só
