@@ -147,7 +147,10 @@ import { montarIcones } from './icones.js';
       const erro = $('#erro');
       const form = $('#form-atendente');
       const botao = $('#btn');
+      const campoSenha = $('#senha-admin');
+      const senha = $('#senha-perfil');
       let selecionadoId = null;
+      let pedeSenha = {};
 
       const iniciais = (nome) => {
         const partes = String(nome || '').trim().split(/\s+/).filter(Boolean);
@@ -156,13 +159,18 @@ import { montarIcones } from './icones.js';
           : String(partes[0] || '?').slice(0, 2).toUpperCase();
       };
 
-      const selecionar = (id) => {
+      const selecionar = (id, { foco = true } = {}) => {
         selecionadoId = Number(id);
         lista.querySelectorAll('.opcao-atendente').forEach((item) => {
           const ativo = Number(item.dataset.id) === selecionadoId;
           item.classList.toggle('selecionado', ativo);
           item.setAttribute('aria-pressed', String(ativo));
         });
+        // Perfil de administrador: o campo de senha aparece logo abaixo da lista.
+        const precisa = Boolean(pedeSenha[selecionadoId]);
+        campoSenha.hidden = !precisa;
+        if (!precisa) senha.value = '';
+        else if (foco) senha.focus();
         botao.disabled = false;
       };
 
@@ -172,6 +180,7 @@ import { montarIcones } from './icones.js';
           $('#conta-iniciais').textContent = iniciais(dados.conta.nome);
           $('#conta-nome').textContent = dados.conta.nome;
           $('#conta-email').textContent = dados.conta.email;
+          pedeSenha = Object.fromEntries(dados.atendentes.map((a) => [Number(a.id), Boolean(a.pedeSenha)]));
           lista.replaceChildren(...dados.atendentes.map((atendente) => {
             const item = document.createElement('button');
             item.type = 'button';
@@ -187,7 +196,7 @@ import { montarIcones } from './icones.js';
             const nome = document.createElement('strong');
             nome.textContent = atendente.nome;
             const status = document.createElement('small');
-            status.textContent = atendente.presenca === 'online' ? 'Disponível para atendimento' : 'Atendente';
+            status.textContent = atendente.pedeSenha ? 'Administrador · pede senha' : (atendente.presenca === 'online' ? 'Disponível para atendimento' : 'Atendente');
             informacoes.append(nome, status);
             const marcador = document.createElement('span');
             marcador.className = 'marcador-atendente';
@@ -199,7 +208,7 @@ import { montarIcones } from './icones.js';
           if (!dados.atendentes.length) {
             mostrar(erro, 'Nenhum atendente está disponível. Peça ajuda a um administrador.');
           } else if (dados.selecionadoId) {
-            selecionar(dados.selecionadoId);
+            selecionar(dados.selecionadoId, { foco: false });
           }
         } catch (e) {
           mostrar(erro, e.message);
@@ -210,11 +219,12 @@ import { montarIcones } from './icones.js';
         evento.preventDefault();
         mostrar(erro);
         if (!selecionadoId) return mostrar(erro, 'Escolha seu nome para continuar.');
+        if (pedeSenha[selecionadoId] && !senha.value) { senha.focus(); return mostrar(erro, 'Digite a senha do administrador para usar este perfil.'); }
         carregando(botao, true);
         try {
           const dados = await chamar('/acesso/atendente', {
             method: 'POST',
-            body: { atendenteId: selecionadoId, next: destinoSeguro(params.get('next')) },
+            body: { atendenteId: selecionadoId, next: destinoSeguro(params.get('next')), senha: pedeSenha[selecionadoId] ? senha.value : undefined },
           });
           location.href = dados.redirect || '/';
         } catch (e) {

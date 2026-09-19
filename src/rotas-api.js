@@ -317,7 +317,7 @@ function criarRotasApi(db, opcoes = {}) {
     const online = await presenca.atendentesOnline(db);
     const usuarios = (await db.prepare(`SELECT id, nome, email, papel, presenca, ativo, pode_logar, criado_em,
       horario_inicio, pausa_inicio, pausa_fim, horario_fim, retorno_confirmado_em
-      FROM usuarios ORDER BY ativo DESC, nome`).all())
+      FROM usuarios WHERE presenca != 'excluido' ORDER BY ativo DESC, nome`).all())
       .map((u) => ({ ...formatarUsuario({ ...u, presenca: online.has(Number(u.id)) ? 'online' : 'offline' }), estadoHorario: estadoDoAtendente(u, agora()), ativo: Number(u.ativo) === 1, equipes: daPessoa(u.id) }));
     const convites = (await acesso.listarConvitesPendentes(db)).map((c) => ({
       id: c.token_hash,
@@ -474,9 +474,9 @@ function criarRotasApi(db, opcoes = {}) {
     if (!alvo) return res.status(404).json({ erro: 'Atendente não encontrado.' });
     const corpo = req.body || {};
     const euMesmo = Number(alvo.id) === Number(req.conta.id);
-    if (!alvo.pode_logar && 'papel' in corpo) {
-      return res.status(400).json({ erro: 'Perfis de atendimento usam as permissões da conta que fez login.' });
-    }
+    if (alvo.presenca === 'excluido') return res.status(404).json({ erro: 'Atendente não encontrado.' });
+    // Num perfil interno, "Administrador" não dá permissão (ela vem da conta que
+    // fez login): só faz a escolha do perfil pedir a senha do administrador.
 
     const campos = [];
     const valores = [];
@@ -490,7 +490,7 @@ function criarRotasApi(db, opcoes = {}) {
     if ('papel' in corpo) {
       const papel = corpo.papel === 'admin' ? 'admin' : 'atendente';
       if (euMesmo && papel !== 'admin') return res.status(400).json({ erro: 'Você não pode tirar o seu próprio acesso de administrador.' });
-      if (papel !== 'admin' && !await outroAdminAtivo(alvo.id)) {
+      if (papel !== 'admin' && alvo.pode_logar && !await outroAdminAtivo(alvo.id)) {
         return res.status(400).json({ erro: 'Precisa sobrar pelo menos um administrador ativo.' });
       }
       campos.push('papel = ?');
@@ -565,6 +565,27 @@ function criarRotasApi(db, opcoes = {}) {
       avisos?.avisar({ origem: 'horario', atendenteId: req.usuario.id });
     }
     res.json({ ok: true });
+  });
+
+  // Exclui um atendente. Ele some da equipe e das listas, mas a linha continua
+  // no banco para o histórico manter o nome em mensagens e auditoria.
+  r.delete('/equipe/usuarios/:id', soAdmin, async (req, res) => {
+    const id = idDaRota(req);
+    const alvo = id ? await db.prepare('SELECT * FROM usuarios WHERE id = ?').get(id) : null;
+    if (!alvo || alvo.presenca === 'excluido') return res.status(404).json({ erro: 'Atendente não encontrado.' });
+    if (Number(alvo.id) === Number(req.conta.id)) return res.status(400).json({ erro: 'Você não pode excluir a sua própria conta.' });
+    if (alvo.pode_logar && alvo.papel === 'admin' && alvo.ativo && !await outroAdminAtivo(alvo.id)) {
+      return res.status(400).json({ erro: 'Precisa sobrar pelo menos um administrador ativo.' });
+    }
+    // O e-mail fica livre para um novo convite; o nome fica para o histórico.
+    const emailLivre = alvo.email ? `excluido-${alvo.id}-${alvo.email}`.slice(0, 191) : alvo.email;
+    await db.transacao(async () => {
+      await db.prepare("UPDATE usuarios SET ativo = 0, pode_logar = 0, presenca = 'excluido', email = ? WHERE id = ?").run(emailLivre, alvo.id);
+      await db.prepare('DELETE FROM sessoes WHERE usuario_id = ? OR atendente_id = ?').run(alvo.id, alvo.id);
+      await db.prepare('DELETE FROM equipe_membros WHERE usuario_id = ?').run(alvo.id);
+    });
+    avisos?.avisar({ origem: 'equipe_alterada', usuarioId: Number(alvo.id) });
+    res.json({ ok: true, id: Number(alvo.id) });
   });
 
   async function outroAdminAtivo(exceto) {

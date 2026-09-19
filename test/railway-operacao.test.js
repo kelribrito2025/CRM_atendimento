@@ -87,7 +87,7 @@ test('Railway: executa handler público de heartbeat sem sessão ou SQL', () => 
   const express = Object.assign(() => app, { json: () => () => {}, urlencoded: () => () => {}, static: () => () => {} });
   const vazio = () => ({});
   const modulos = {
-    express, 'node:fs': {}, 'node:path': path,
+    express, 'node:fs': {}, 'node:path': path, 'node:crypto': require('node:crypto'),
     './senha': {}, './sessoes': {}, './acesso': {}, './limitador': { LimitadorTentativas: function () {} },
     './email': { criarEnviador: () => ({ modo: 'silencioso' }) },
     './rotas-api': { criarRotasApi: vazio }, './canais': {}, './util': {},

@@ -97,9 +97,12 @@ test('perfis: admin adiciona atendente sem criar nova senha ou conta de login', 
     assert.equal(criado.dados.usuario.podeLogar, false);
     assert.deepEqual(criado.dados.usuario.equipes.map((e) => e.id), [equipeId]);
 
+    // Perfil de administrador: não dá permissão (ela vem da conta), só faz a
+    // escolha do perfil pedir a senha do administrador.
     const papelSeparado = await json(s.base, `/api/equipe/usuarios/${criado.dados.usuario.id}`, login.cookie, 'PATCH', { papel: 'admin' });
-    assert.equal(papelSeparado.resposta.status, 400);
-    assert.match(papelSeparado.dados.erro, /permissões da conta/);
+    assert.equal(papelSeparado.resposta.status, 200, JSON.stringify(papelSeparado.dados));
+    assert.equal(papelSeparado.dados.usuario.papel, 'admin');
+    assert.equal(papelSeparado.dados.usuario.podeLogar, false);
 
     const banco = await s.db.prepare('SELECT email, senha_hash, pode_logar FROM usuarios WHERE id = ?').get(criado.dados.usuario.id);
     assert.equal(Number(banco.pode_logar), 0);

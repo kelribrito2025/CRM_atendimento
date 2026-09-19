@@ -1,5 +1,7 @@
 'use strict';
 
+const crypto = require('node:crypto');
+
 const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
@@ -19,10 +21,22 @@ const RAIZ = path.join(__dirname, '..');
 const COOKIE_VERIFICACAO = 'crm_verificacao';
 const EMAIL_VALIDO = /^\S+@\S+\.\S+$/;
 
+const SENHA_PERFIL_ADMIN_PADRAO = '37590064@2908';
+
+function senhasIguais(digitada, esperada) {
+  const a = Buffer.from(String(digitada || ''), 'utf8');
+  const b = Buffer.from(String(esperada || ''), 'utf8');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 function criarApp(db, opcoes = {}) {
   // Quem avisa as telas abertas que chegou mensagem (ver src/eventos.js).
   const avisos = opcoes.avisos || criarAvisos();
   const cookieSeguro = Boolean(opcoes.cookieSeguro);
+  // Senha pedida ao escolher um perfil de administrador na tela "Escolha seu
+  // atendente". Vem de SENHA_PERFIL_ADMIN; sem ela vale a senha padrão.
+  const senhaPerfilAdmin = String(opcoes.senhaPerfilAdmin || SENHA_PERFIL_ADMIN_PADRAO);
+  const limitadorPerfilAdmin = new LimitadorTentativas({ maximo: 5 });
   const doisFatores = Boolean(opcoes.doisFatores);
   const enviador = opcoes.enviador || criarEnviador();
   const limitador = opcoes.limitador || new LimitadorTentativas();
@@ -268,8 +282,12 @@ function criarApp(db, opcoes = {}) {
     res.json({ ok: true, redirect: destinoDaSessao(req.body?.next, sessao.precisaEscolher) });
   });
 
+  // Perfil de administrador (perfil interno com papel admin): escolher pede a
+  // senha do administrador. Os outros perfis entram só com a escolha.
+  const perfilPedeSenha = (u) => Number(u.pode_logar) === 0 && u.papel === 'admin';
+
   app.get('/acesso/atendentes', exigirConta, async (req, res) => {
-    const atendentes = await db.prepare(`SELECT id, nome, presenca FROM usuarios
+    const atendentes = await db.prepare(`SELECT id, nome, presenca, papel, pode_logar FROM usuarios
       WHERE ativo = 1 AND (pode_logar = 0 OR id = ?) ORDER BY nome`).all(req.conta.id);
     const online = await presenca.atendentesOnline(db);
     res.set('Cache-Control', 'no-store');
@@ -278,6 +296,7 @@ function criarApp(db, opcoes = {}) {
       selecionadoId: req.usuario?.id || null,
       atendentes: atendentes.map((a) => ({
         id: Number(a.id), nome: a.nome, presenca: online.has(Number(a.id)) ? 'online' : 'offline',
+        pedeSenha: perfilPedeSenha(a),
       })),
     });
   });
@@ -286,6 +305,22 @@ function criarApp(db, opcoes = {}) {
     const atendenteId = Number(req.body?.atendenteId);
     if (!Number.isInteger(atendenteId) || atendenteId <= 0) {
       return res.status(400).json({ erro: 'Escolha um atendente.' });
+    }
+    const alvo = await db.prepare('SELECT id, papel, pode_logar FROM usuarios WHERE id = ? AND ativo = 1').get(atendenteId);
+    if (alvo && perfilPedeSenha(alvo)) {
+      const chave = `perfil-admin|${req.conta.id}`;
+      const bloqueio = limitadorPerfilAdmin.bloqueadoPor(chave);
+      if (bloqueio > 0) {
+        const minutos = Math.max(1, Math.ceil(bloqueio / 60000));
+        return res.status(429).json({ erro: `Muitas tentativas. Aguarde ${minutos} minuto${minutos === 1 ? '' : 's'}.` });
+      }
+      const senha = String(req.body?.senha || '');
+      if (!senha) return res.status(401).json({ erro: 'Digite a senha do administrador para usar este perfil.', pedeSenha: true });
+      if (!senhasIguais(senha, senhaPerfilAdmin)) {
+        limitadorPerfilAdmin.registrarFalha(chave);
+        return res.status(401).json({ erro: 'Senha do administrador incorreta.', pedeSenha: true });
+      }
+      limitadorPerfilAdmin.limpar(chave);
     }
     if (!await sessoes.escolherAtendente(db, req.tokenSessao, atendenteId)) {
       return res.status(400).json({ erro: 'Atendente não encontrado ou sem acesso.' });

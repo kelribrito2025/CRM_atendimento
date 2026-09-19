@@ -333,6 +333,7 @@ Copie `.env.example` para `.env` e ajuste:
 | `UAZAPI_ADMIN_TOKEN` | Token de administrador do uazapi                     |
 | `COOKIE_SEGURO` | `true` quando o sistema estiver publicado com HTTPS       |
 | `TRUST_PROXY`   | `true` quando o sistema roda atrás de um proxy (Railway), para o bloqueio de tentativas ver o IP real |
+| `SENHA_PERFIL_ADMIN` | Senha pedida ao escolher um perfil de administrador na tela "Escolha seu atendente" (em branco: senha padrão) |
 | `MODO_SANDBOX`  | `true` só no ambiente de teste: dados normais, mas nada é enviado ao WhatsApp, ao Telegram nem ao site, e nenhum bot recebe mensagens |
 
 O banco de dados fica em `data/crm.sqlite`. Para começar do zero, pare o servidor e apague essa pasta.

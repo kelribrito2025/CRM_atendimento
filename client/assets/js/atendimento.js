@@ -3418,12 +3418,11 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
       el('div', { class: 'equipes' }, ...(u.equipes.length
         ? u.equipes.map((e) => el('span', { class: 'selo-equipe' }, el('span', { class: 'ponto', style: `background:${e.cor}` }), e.nome))
         : [el('span', { class: 'dica' }, 'sem equipe')])),
-      u.podeLogar
-        ? el('select', {
-          class: 'papel', 'aria-label': `Papel de ${u.nome}`, disabled: ehConta ? 'disabled' : null,
-          onchange: (ev) => salvarPessoa(u.id, { papel: ev.target.value }),
-        }, ...['atendente', 'admin'].map((v) => el('option', { value: v, selected: u.papel === v ? 'selected' : null }, v === 'admin' ? 'Administrador' : 'Atendente')))
-        : el('span', { class: 'selo-equipe' }, 'Atendente'),
+      el('select', {
+        class: 'papel', 'aria-label': `Papel de ${u.nome}`, disabled: ehConta ? 'disabled' : null,
+        title: u.podeLogar ? null : 'Perfil de administrador: pede a senha do administrador ao ser escolhido no login',
+        onchange: (ev) => salvarPessoa(u.id, { papel: ev.target.value }),
+      }, ...['atendente', 'admin'].map((v) => el('option', { value: v, selected: u.papel === v ? 'selected' : null }, v === 'admin' ? 'Administrador' : 'Atendente'))),
       el('span', { class: `selo-presenca ${classePresenca}`.trim() }, presenca),
       el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => editarHorarioDe(u) }, 'Horário'),
       el('button', {
@@ -3431,7 +3430,30 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
         disabled: eu || ehConta ? 'disabled' : null,
         onclick: () => salvarPessoa(u.id, { ativo: !u.ativo }),
       }, svg(u.ativo ? ICONE.cadeado : ICONE.check)),
-      el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => editarEquipesDe(u, equipes) }, 'Equipes'));
+      el('button', { type: 'button', class: 'btn-contorno hov', onclick: () => editarEquipesDe(u, equipes) }, 'Equipes'),
+      el('button', {
+        type: 'button', class: 'btn-icone perigo hov', title: `Excluir ${u.nome}`, 'aria-label': `Excluir ${u.nome}`,
+        disabled: eu || ehConta ? 'disabled' : null,
+        onclick: () => excluirPessoa(u),
+      }, svg(ICONE.lixeira)));
+  }
+
+  // Exclui um atendente (só administrador). Ele some das listas; o histórico
+  // das conversas continua mostrando o nome dele.
+  async function excluirPessoa(u) {
+    const confirmado = await confirmarNoSite({
+      titulo: `Excluir ${u.nome}?`,
+      texto: 'O atendente sai da equipe e de todas as listas, e o acesso dele é encerrado. As mensagens que ele enviou continuam no histórico com o nome dele.',
+      rotuloConfirmar: 'Excluir atendente',
+    });
+    if (!confirmado) return;
+    try {
+      await api(`/equipe/usuarios/${u.id}`, { method: 'DELETE' });
+      await Promise.all([carregarEquipe(), carregarResumo()]);
+      toast(`${u.nome} foi excluído da equipe.`);
+    } catch (e) {
+      toast(e.message, 5000);
+    }
   }
 
   function editarHorarioDe(u) {
