@@ -353,6 +353,30 @@ function criarRotasApi(db, opcoes = {}) {
     res.status(201).json({ equipe: { ...equipe, abertas: 0, semResposta: 0, membros: [] } });
   });
 
+  // Renomeia (e recolore) uma inbox da equipe. A Admin é reservada e não muda.
+  r.patch('/equipe/inboxes/:id', soAdmin, async (req, res) => {
+    const id = idDaRota(req);
+    const equipe = id ? await db.prepare('SELECT id, nome, cor FROM equipes WHERE id = ?').get(id) : null;
+    if (!equipe) return res.status(404).json({ erro: 'Inbox não encontrada.' });
+    if (String(equipe.nome).trim().toLocaleLowerCase('pt-BR') === 'admin') {
+      return res.status(400).json({ erro: 'A inbox Admin é reservada pelo sistema e não pode ser alterada.' });
+    }
+    const nome = String(req.body?.nome ?? equipe.nome).trim().replace(/\s+/g, ' ');
+    const cor = req.body?.cor === undefined ? equipe.cor : normalizarCorCanal(req.body.cor);
+    if (nome.length < 2) return res.status(400).json({ erro: 'Digite um nome com pelo menos 2 caracteres.' });
+    if (nome.length > 60) return res.status(400).json({ erro: 'O nome da inbox pode ter no máximo 60 caracteres.' });
+    if (nome.toLocaleLowerCase('pt-BR') === 'admin') {
+      return res.status(400).json({ erro: 'O nome Admin é reservado pelo sistema.' });
+    }
+    if (!cor) return res.status(400).json({ erro: 'Escolha uma cor válida para a inbox.' });
+    const repetida = await db.prepare('SELECT id FROM equipes WHERE LOWER(nome) = LOWER(?) AND id != ?').get(nome, equipe.id);
+    if (repetida) return res.status(409).json({ erro: 'Já existe uma inbox com esse nome.' });
+
+    await db.prepare('UPDATE equipes SET nome = ?, cor = ? WHERE id = ?').run(nome, cor, equipe.id);
+    avisos?.avisar({ origem: 'equipe_alterada', equipeId: Number(equipe.id) });
+    res.json({ equipe: { id: Number(equipe.id), nome, cor } });
+  });
+
   // Perfil interno: não recebe senha nem pode entrar sozinho. Depois do login,
   // a conta escolhe qual pessoa está atendendo e toda autoria usa esse perfil.
   r.post('/equipe/usuarios', soAdmin, async (req, res) => {

@@ -147,6 +147,12 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--verde); ou
 .nav-item.ativo .cont { background: var(--verde); color: #fff; padding: 2px 7px; border-radius: 6px; }
 .nav-item .cont.urgente { background: var(--vermelho-claro); color: var(--vermelho); padding: 2px 7px; border-radius: 6px; }
 .nav-item .cont.verde { background: var(--verde); color: #fff; padding: 2px 7px; border-radius: 6px; }
+/* Inbox da equipe com lápis (administrador): o lápis aparece ao passar o mouse. */
+.nav-linha { display: flex; align-items: center; gap: 2px; }
+.nav-linha .nav-item { flex: 1; min-width: 0; }
+.nav-linha .btn-editar-nome { opacity: 0; transition: opacity .14s ease-out; }
+.nav-linha:hover .btn-editar-nome, .nav-linha .btn-editar-nome:focus-visible, .nav-linha:focus-within .btn-editar-nome { opacity: 1; }
+@media (hover: none) { .nav-linha .btn-editar-nome { opacity: 1; } }
 .cor-equipe { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
 .separador { height: 1px; background: var(--borda); margin: 2px 4px; flex-shrink: 0; }
 .linha-rotulo { display: flex; align-items: center; gap: 8px; padding: 0 4px; }

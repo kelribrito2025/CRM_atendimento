@@ -1066,7 +1066,16 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
       el('div', { class: 'lista-nav' },
         ...r.equipes
           .filter((e) => e.nome.trim().toLocaleLowerCase('pt-BR') !== 'admin')
-          .map((e) => navItem({ cor: e.cor, nome: e.nome, cont: e.abertas, ativo: estado.equipeId === e.id, onclick: () => selecionarEquipe(e.id) }))),
+          .map((e) => {
+            const item = navItem({ cor: e.cor, nome: e.nome, cont: e.abertas, ativo: estado.equipeId === e.id, onclick: () => selecionarEquipe(e.id) });
+            if ((r.conta || r.usuario).papel !== 'admin') return item;
+            // Administrador: lápis ao lado da inbox para trocar nome e cor.
+            return el('div', { class: 'nav-linha' }, item,
+              el('button', {
+                type: 'button', class: 'btn-editar-nome hov', title: `Editar inbox ${e.nome}`,
+                'aria-label': `Editar inbox ${e.nome}`, onclick: () => editarInbox(e),
+              }, svg(ICONE.lapisPequeno)));
+          })),
       el('span', { class: 'separador' }),
       el('span', { class: 'rotulo' }, equipeSel ? `Equipe de ${equipeSel.nome}` : 'Atendentes'),
       el('div', { class: 'membros' },
@@ -1169,6 +1178,85 @@ import { statusNaInbox, chaveDaInbox } from './status-inbox.mjs';
     document.body.append(fundo);
     document.addEventListener('keydown', aoTeclado);
     nome.focus();
+  }
+
+  // Troca o nome e a cor de uma inbox da equipe (só administrador).
+  function editarInbox(e) {
+    if ((estado.resumo?.conta || estado.resumo?.usuario)?.papel !== 'admin') {
+      return toast('Só um administrador pode editar inboxes da equipe.');
+    }
+    const erro = el('span', { class: 'dica erro-texto', 'aria-live': 'polite' });
+    const nome = el('input', {
+      type: 'text', maxlength: '60', autocomplete: 'off', value: e.nome,
+      'aria-label': 'Nome da inbox',
+    });
+    const cor = el('input', {
+      type: 'color', value: e.cor || '#12B85C', 'aria-label': 'Cor da inbox', title: 'Escolher cor da inbox',
+    });
+    let salvando = false;
+    const fundo = el('div', { class: 'modal-fundo' });
+    const cancelar = el('button', { type: 'button', class: 'btn-suave hov' }, 'Cancelar');
+    const salvar = el('button', { type: 'button', class: 'btn-primario' }, 'Salvar');
+
+    function fechar() {
+      if (salvando) return;
+      document.removeEventListener('keydown', aoTeclado);
+      fundo.remove();
+    }
+    const aoTeclado = (ev) => { if (ev.key === 'Escape') fechar(); };
+    fundo.addEventListener('click', (ev) => { if (ev.target === fundo) fechar(); });
+    cancelar.addEventListener('click', fechar);
+
+    async function concluir() {
+      if (salvando) return;
+      const nomeLimpo = nome.value.trim().replace(/\s+/g, ' ');
+      if (nomeLimpo.length < 2) {
+        erro.textContent = 'Digite um nome com pelo menos 2 caracteres.';
+        nome.focus();
+        return;
+      }
+      if (nomeLimpo.toLocaleLowerCase('pt-BR') === 'admin') {
+        erro.textContent = 'O nome Admin é reservado pelo sistema.';
+        nome.focus();
+        return;
+      }
+      salvando = true;
+      salvar.disabled = true;
+      cancelar.disabled = true;
+      erro.textContent = '';
+      try {
+        const { equipe } = await api(`/equipe/inboxes/${e.id}`, { method: 'PATCH', body: { nome: nomeLimpo, cor: cor.value } });
+        document.removeEventListener('keydown', aoTeclado);
+        fundo.remove();
+        await Promise.all([carregarResumo(), carregarConversas()]);
+        toast(`Inbox ${equipe.nome} atualizada.`);
+      } catch (err) {
+        salvando = false;
+        salvar.disabled = false;
+        cancelar.disabled = false;
+        erro.textContent = err.message;
+        nome.focus();
+      }
+    }
+
+    nome.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' && !ev.isComposing) { ev.preventDefault(); concluir(); }
+    });
+    salvar.addEventListener('click', concluir);
+    fundo.append(el('div', { class: 'modal criar-inbox editar-inbox', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'editar-inbox-titulo' },
+      el('div', { class: 'modal-corpo' },
+        el('div', { class: 'modal-cab' },
+          el('div', {}, el('h2', { id: 'editar-inbox-titulo' }, 'Editar inbox da equipe'), el('p', {}, 'O novo nome aparece para toda a equipe e nas conversas já atribuídas.')),
+          el('button', { type: 'button', class: 'btn-icone hov', title: 'Fechar', 'aria-label': 'Fechar', onclick: fechar }, svg(ICONE.fechar))),
+        el('div', { class: 'criar-inbox-campos' },
+          el('label', { class: 'config-campo' }, el('span', {}, 'Nome da inbox'), nome),
+          el('label', { class: 'config-campo criar-inbox-cor' }, el('span', {}, 'Cor'), cor)),
+        erro,
+        el('div', { class: 'modal-acoes' }, cancelar, salvar))));
+    document.body.append(fundo);
+    document.addEventListener('keydown', aoTeclado);
+    nome.focus();
+    nome.setSelectionRange(nome.value.length, nome.value.length);
   }
 
   /* ================================================================

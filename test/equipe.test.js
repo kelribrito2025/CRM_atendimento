@@ -91,6 +91,49 @@ test('inbox da equipe: recusa nome repetido, reservado ou inválido e cor invál
   } finally { await s.fechar(); }
 });
 
+test('inbox da equipe: administrador renomeia e recolore; o resumo e as conversas refletem', async () => {
+  const avisos = criarAvisos();
+  const eventos = [];
+  avisos.assinar((evento) => eventos.push(evento));
+  const s = await subirServidor({ avisos });
+  try {
+    const equipes = (await s.chamar('/api/equipe')).dados.equipes;
+    const reembolso = equipes.find((e) => e.nome === 'Reembolso');
+    const r = await s.chamar(`/api/equipe/inboxes/${reembolso.id}`, 'PATCH', { nome: '  Financeiro   VIP ', cor: '#a1b2c3' });
+    assert.equal(r.status, 200, JSON.stringify(r.dados));
+    assert.deepEqual(r.dados.equipe, { id: reembolso.id, nome: 'Financeiro VIP', cor: '#A1B2C3' });
+    assert.deepEqual(eventos.at(-1), { origem: 'equipe_alterada', equipeId: reembolso.id });
+    const resumo = await s.chamar('/api/resumo');
+    const inbox = resumo.dados.equipes.find((e) => Number(e.id) === Number(reembolso.id));
+    assert.deepEqual({ nome: inbox.nome, cor: inbox.cor }, { nome: 'Financeiro VIP', cor: '#A1B2C3' });
+    assert.ok(!resumo.dados.equipes.some((e) => e.nome === 'Reembolso'));
+
+    // só o nome, mantendo a cor
+    const soNome = await s.chamar(`/api/equipe/inboxes/${reembolso.id}`, 'PATCH', { nome: 'Financeiro' });
+    assert.equal(soNome.status, 200);
+    assert.equal(soNome.dados.equipe.cor, '#A1B2C3');
+  } finally { await s.fechar(); }
+});
+
+test('inbox da equipe: renomear recusa repetido, reservado, inválido, inexistente e a Admin', async () => {
+  const s = await subirServidor();
+  try {
+    const equipes = (await s.chamar('/api/equipe')).dados.equipes;
+    const reembolso = equipes.find((e) => e.nome === 'Reembolso');
+    const admin = equipes.find((e) => e.nome === 'Admin');
+    const patch = (id, corpo) => s.chamar(`/api/equipe/inboxes/${id}`, 'PATCH', corpo);
+    assert.equal((await patch(reembolso.id, { nome: 'prioridade' })).status, 409, 'nome de outra inbox');
+    assert.equal((await patch(reembolso.id, { nome: 'REEMBOLSO' })).status, 200, 'o próprio nome, só mudando a caixa, pode');
+    assert.equal((await patch(reembolso.id, { nome: 'Admin' })).status, 400);
+    assert.equal((await patch(reembolso.id, { nome: 'A' })).status, 400);
+    assert.equal((await patch(reembolso.id, { nome: 'x'.repeat(61) })).status, 400);
+    assert.equal((await patch(reembolso.id, { nome: 'Suporte', cor: 'verde' })).status, 400);
+    assert.equal((await patch(999999, { nome: 'Suporte' })).status, 404);
+    assert.equal((await patch(admin.id, { nome: 'Gestão' })).status, 400, 'a Admin é reservada');
+    assert.equal((await s.chamar('/api/equipe')).dados.equipes.find((e) => e.id === admin.id).nome, 'Admin');
+  } finally { await s.fechar(); }
+});
+
 test('equipe: convidar por e-mail gera link, aparece na lista e dá para cancelar', async () => {
   const s = await subirServidor();
   try {
@@ -208,6 +251,7 @@ test('equipe: atendente comum não entra nas configurações da equipe', async (
     for (const [caminho, metodo, corpo] of [
       ['/api/equipe', 'GET', null],
       ['/api/equipe/inboxes', 'POST', { nome: 'Financeiro', cor: '#12B85C' }],
+      ['/api/equipe/inboxes/1', 'PATCH', { nome: 'Outro nome' }],
       ['/api/equipe/convites', 'POST', { email: 'x@y.com' }],
       ['/api/equipe/convites/abc', 'DELETE', null],
       ['/api/equipe/usuarios/1', 'PATCH', { nome: 'Nome alterado' }],
