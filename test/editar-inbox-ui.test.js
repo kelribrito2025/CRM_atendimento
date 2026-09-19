@@ -14,7 +14,8 @@ test('inbox da equipe: cada inbox da barra lateral tem lápis para o administrad
   assert.match(javascript, /title: `Editar inbox \$\{e\.nome\}`/);
   assert.match(javascript, /onclick: \(\) => editarInbox\(e\)/);
   assert.match(css, /\.nav-linha:hover \.btn-editar-nome/);
-  assert.match(css, /@media \(hover: none\) \{ \.nav-linha \.btn-editar-nome \{ opacity: 1; \} \}/);
+  assert.match(css, /\.nav-linha \.btn-editar-nome \{ width: 0;/, 'sem hover o lápis não ocupa espaço');
+  assert.match(css, /@media \(hover: none\) \{ \.nav-linha \.btn-editar-nome \{ width: 26px; margin-left: 2px; opacity: 1; \} \}/);
 });
 
 test('inbox da equipe: edição usa modal do CRM com nome e cor, salva pela API e atualiza a tela', () => {
