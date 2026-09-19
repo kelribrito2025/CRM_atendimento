@@ -166,6 +166,12 @@ chave e os dois veem a mesma conversa.
 **O chat aparece para quem não está logado?** Só se vocês chamarem o `identificar()`
 fora da área logada. O recomendado é carregar o script apenas nas páginas logadas.
 
+**Áudio gravado no chat.** O cliente pode gravar um áudio pelo microfone (botão ao lado
+do clipe) e enviá-lo como mensagem; ele chega no CRM como um áudio, com player. O
+`widget.js` já cria o quadro com `allow="microphone"`; se o site montar o iframe por
+conta própria, precisa desse atributo, senão o navegador nega o microfone. A gravação
+usa o mesmo caminho dos anexos, então também depende do S3 configurado no CRM.
+
 **Onde ficam as imagens e os arquivos?** No S3 privado do CRM, junto com os anexos do
 WhatsApp e do Telegram. O site de vocês não guarda nada e não precisa de credencial
 nenhuma do bucket (veja o item 4).

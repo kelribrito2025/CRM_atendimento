@@ -103,6 +103,15 @@ function desenharTexto(balao, texto) {
 function desenharArquivo(balao, m) {
   const midia = m.midia;
   balao.classList.add('com-arquivo');
+  if (midia.tipo === 'audio') {
+    const audio = document.createElement('audio');
+    audio.className = 'arquivo-audio';
+    audio.controls = true;
+    audio.preload = 'metadata';
+    balao.append(audio);
+    baixarArquivo(midia).then((url) => { audio.src = url; }).catch(() => { balao.textContent = 'Não foi possível abrir o áudio.'; });
+    return;
+  }
   if (midia.tipo === 'imagem') {
     const imagem = document.createElement('img');
     imagem.className = 'arquivo-imagem';
@@ -190,6 +199,7 @@ function liberarEnvio(pode) {
   $('#texto').disabled = !pode;
   $('#enviar').disabled = !pode;
   $('#btn-anexar').disabled = !pode;
+  $('#btn-gravar').disabled = !pode || !suporteGravacao();
 }
 
 async function buscarMensagens(primeira = false, recarregar = false) {
@@ -366,6 +376,114 @@ async function enviarArquivo(arquivo) {
   }
 }
 
+/* ---------------- áudio gravado no navegador do cliente ---------------- */
+// O cliente grava pelo microfone e o áudio segue pelo mesmo caminho dos anexos:
+// vai para o nosso S3 e aparece no CRM como uma mensagem de áudio.
+const LIMITE_GRAVACAO_S = 300;
+const gravacao = { recorder: null, stream: null, pedacos: [], inicio: 0, timer: null, contexto: null, quadro: null, cancelada: false };
+
+function suporteGravacao() {
+  return Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+}
+
+// Cada navegador grava num formato: Chrome/Firefox em webm/opus, Safari em mp4.
+function formatoGravacao() {
+  const tipos = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+  return tipos.find((t) => window.MediaRecorder?.isTypeSupported?.(t)) || '';
+}
+
+function tempoGravado() {
+  const s = Math.floor((Date.now() - gravacao.inicio) / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+async function iniciarGravacao() {
+  if (estado.enviando || gravacao.recorder || !estado.token) return;
+  if (!suporteGravacao()) { mostrarEstado('Seu navegador não permite gravar áudio. Envie um arquivo pelo clipe.'); return; }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    mostrarEstado('Permita o uso do microfone para gravar um áudio.');
+    return;
+  }
+  const mime = formatoGravacao();
+  let recorder;
+  try {
+    recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  } catch {
+    stream.getTracks().forEach((t) => t.stop());
+    mostrarEstado('Não foi possível iniciar a gravação neste navegador.');
+    return;
+  }
+  Object.assign(gravacao, { recorder, stream, pedacos: [], inicio: Date.now(), cancelada: false });
+  recorder.addEventListener('dataavailable', (e) => { if (e.data?.size) gravacao.pedacos.push(e.data); });
+  recorder.addEventListener('stop', aoPararGravacao);
+  recorder.start(250);
+  limparEstado();
+  $('#form').classList.add('gravando');
+  $('#gravar-tempo').textContent = '0:00';
+  gravacao.timer = setInterval(() => {
+    $('#gravar-tempo').textContent = tempoGravado();
+    if (Date.now() - gravacao.inicio >= LIMITE_GRAVACAO_S * 1000) pararGravacao(false);
+  }, 250);
+  iniciarOnda(stream);
+}
+
+// Barrinhas que sobem e descem com o volume da voz. Sem AudioContext, ficam paradas.
+function iniciarOnda(stream) {
+  try {
+    const Contexto = window.AudioContext || window.webkitAudioContext;
+    if (!Contexto) return;
+    const contexto = new Contexto();
+    const analisador = contexto.createAnalyser();
+    analisador.fftSize = 64;
+    contexto.createMediaStreamSource(stream).connect(analisador);
+    const dados = new Uint8Array(analisador.frequencyBinCount);
+    const barras = [...$('#gravar-onda').children];
+    const desenhar = () => {
+      analisador.getByteFrequencyData(dados);
+      barras.forEach((barra, i) => {
+        const volume = dados[Math.floor((i * dados.length) / barras.length)] / 255;
+        barra.style.height = `${4 + Math.round(volume * 18)}px`;
+      });
+      gravacao.quadro = requestAnimationFrame(desenhar);
+    };
+    gravacao.contexto = contexto;
+    desenhar();
+  } catch { /* sem visualização, a gravação segue normal */ }
+}
+
+function pararGravacao(cancelar) {
+  const recorder = gravacao.recorder;
+  if (!recorder) return;
+  gravacao.cancelada = cancelar;
+  if (recorder.state !== 'inactive') recorder.stop();
+  else aoPararGravacao();
+}
+
+function encerrarGravacao() {
+  clearInterval(gravacao.timer);
+  if (gravacao.quadro) cancelAnimationFrame(gravacao.quadro);
+  gravacao.stream?.getTracks().forEach((t) => t.stop());
+  gravacao.contexto?.close().catch(() => {});
+  Object.assign(gravacao, { recorder: null, stream: null, contexto: null, quadro: null, timer: null });
+  $('#form').classList.remove('gravando');
+  [...$('#gravar-onda').children].forEach((barra) => { barra.style.height = ''; });
+}
+
+async function aoPararGravacao() {
+  const { pedacos, cancelada } = gravacao;
+  const mime = String(gravacao.recorder?.mimeType || 'audio/webm').split(';')[0];
+  const duracaoMs = Date.now() - gravacao.inicio;
+  encerrarGravacao();
+  if (cancelada) return;
+  if (!pedacos.length || duracaoMs < 700) { mostrarEstado('Gravação curta demais. Toque no microfone e fale por mais tempo.'); return; }
+  const extensao = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm';
+  const nome = `audio-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${extensao}`;
+  await enviarArquivo(new File(pedacos, nome, { type: mime }));
+}
+
 function ajustarAltura() {
   const campo = $('#texto');
   campo.style.height = 'auto';
@@ -384,10 +502,17 @@ window.addEventListener('message', (evento) => {
     buscarMensagens().then(rolarParaFim);
     $('#texto')?.focus();
   }
-  else if (dados.tipo === 'sair') { guardarToken(null); pararSondagem(); estado.ultimaId = 0; estado.totalMensagens = 0; $('#mensagens').replaceChildren(); $('#aviso-horario').hidden = true; liberarEnvio(false); }
+  else if (dados.tipo === 'sair') { pararGravacao(true); guardarToken(null); pararSondagem(); estado.ultimaId = 0; estado.totalMensagens = 0; $('#mensagens').replaceChildren(); $('#aviso-horario').hidden = true; liberarEnvio(false); }
 });
 
-$('#form').addEventListener('submit', (e) => { e.preventDefault(); enviar(); });
+$('#form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  // Gravando: o botão de enviar encerra a gravação e manda o áudio.
+  if (gravacao.recorder) pararGravacao(false);
+  else enviar();
+});
+$('#btn-gravar').addEventListener('click', iniciarGravacao);
+$('#gravar-cancelar').addEventListener('click', () => pararGravacao(true));
 $('#texto').addEventListener('input', ajustarAltura);
 $('#texto').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); }

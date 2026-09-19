@@ -45,7 +45,7 @@
     quadro = document.createElement('iframe');
     quadro.src = `${BASE}/widget`;
     quadro.title = TITULO;
-    quadro.setAttribute('allow', 'clipboard-write');
+    quadro.setAttribute('allow', 'clipboard-write; microphone');
     estilo(quadro, {
       width: 'min(384px, calc(100vw - 40px))', height: 'min(600px, calc(100vh - 120px))',
       border: '0', borderRadius: '18px', boxShadow: '0 24px 60px rgba(11, 31, 20, .28)',

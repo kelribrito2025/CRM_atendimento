@@ -92,6 +92,7 @@ body {
   background: none; color: inherit; font: inherit; font-size: 13px; text-align: left;
   cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
 }
+.arquivo-audio { display: block; width: 240px; max-width: 100%; height: 40px; }
 .arquivo-linha span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .arquivo-linha svg { flex-shrink: 0; }
 .msg.entrada .arquivo-linha:hover { background: var(--fundo); }
@@ -147,6 +148,24 @@ body {
 .compositor button.anexar { background: none; color: var(--texto-suave); }
 .compositor button.anexar:hover:not(:disabled) { background: var(--fundo); color: var(--texto); }
 .compositor button.anexar:disabled { background: none; color: #C9D6CE; }
+/* Microfone: mesmo visual discreto do clipe. */
+.compositor button.gravar { background: none; color: var(--texto-suave); }
+.compositor button.gravar:hover:not(:disabled) { background: var(--fundo); color: var(--texto); }
+.compositor button.gravar:disabled { background: none; color: #C9D6CE; }
+
+/* Gravando: o campo de texto dá lugar à barra com lixeira, ondas e tempo;
+   o botão verde de enviar encerra a gravação e manda o áudio. */
+.gravacao { display: none; flex: 1; min-width: 0; min-height: 40px; align-items: center; gap: 8px; }
+.compositor.gravando textarea, .compositor.gravando .anexar, .compositor.gravando .gravar { display: none; }
+.compositor.gravando .gravacao { display: flex; }
+.compositor button.gravar-lixeira { background: none; color: #C62838; }
+.compositor button.gravar-lixeira:hover:not(:disabled) { background: #FCE5E8; color: #C62838; }
+.onda { flex: 1; min-width: 0; height: 28px; display: flex; align-items: center; justify-content: center; gap: 3px; overflow: hidden; }
+.onda i { display: block; width: 3px; height: 4px; border-radius: 2px; background: #C9D6CE; transition: height .08s linear; }
+.gravar-tempo { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border-radius: 11px; background: #C62838; color: #fff; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.gravar-tempo::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: pulso-gravacao 1s ease-in-out infinite; }
+@keyframes pulso-gravacao { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .gravar-tempo::before { animation: none; } .onda i { transition: none; } }
 
 /* Telas pequenas: o quadro ocupa a tela toda */
 @media (max-width: 420px) {

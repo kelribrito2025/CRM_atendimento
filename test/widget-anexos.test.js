@@ -128,6 +128,32 @@ test('chat do site: o arquivo do cliente vai para o nosso S3 e aparece no CRM', 
   } finally { await s.fechar(); }
 });
 
+test('chat do site: o áudio gravado pelo cliente chega no CRM como mensagem de áudio', async () => {
+  const s = await subirServidor();
+  try {
+    const { dados: sessao } = await s.abrirSessao({ id: 'u-71', nome: 'Paulo Reis' });
+    const AUDIO = Buffer.from('bytes-de-audio-webm');
+    const r = await s.anexar(sessao.token, AUDIO, 'audio-2026-09-19-10-00-00.webm', 'audio/webm');
+    assert.equal(r.status, 201, JSON.stringify(r.dados));
+    assert.equal(r.dados.mensagem.midia.tipo, 'audio');
+    assert.equal(r.dados.mensagem.midia.mime, 'audio/webm');
+    assert.equal(r.dados.mensagem.texto, '[Áudio]');
+
+    const { dados: lista } = await s.crm('/api/conversas?caixa=todas');
+    const conversa = lista.conversas.find((c) => c.canal === 'widget');
+    const { dados: aberta } = await s.crm(`/api/conversas/${conversa.id}`);
+    const mensagem = aberta.conversa.mensagens.at(-1);
+    assert.equal(mensagem.midia.tipo, 'audio');
+    const baixado = await s.crmBaixar(mensagem.midia.url);
+    assert.equal(baixado.status, 200);
+    assert.deepEqual(baixado.bytes, AUDIO);
+
+    // Safari grava em mp4: também é áudio.
+    const safari = await s.anexar(sessao.token, AUDIO, 'audio-x.m4a', 'audio/mp4');
+    assert.equal(safari.dados.mensagem.midia.tipo, 'audio');
+  } finally { await s.fechar(); }
+});
+
 test('chat do site: o cliente abre o próprio arquivo, e o de outro cliente não', async () => {
   const s = await subirServidor();
   try {
